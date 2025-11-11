@@ -1,0 +1,11 @@
+{
+  "version": "1.0.0",
+  "name": "platform-navigator",
+  "description": "Platform engineering knowledge navigator",
+  "communicationLayerVersion": "^1.0.0",
+  "sdkAdapterVersion": "^1.0.0",
+  "knowledgeBasePath": "knowledge-base",
+  "instructionsPath": "CLAUDE.md",
+  "createdAt": "2025-11-11T22:52:58.754Z",
+  "updatedAt": "2025-11-11T22:52:58.754Z"
+}
