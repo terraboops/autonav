@@ -1,0 +1,36 @@
+{
+  "name": "platform-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multi-agent Platform AI system for knowledge management and support toil reduction",
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm test --workspaces --if-present",
+    "clean": "rm -rf packages/*/dist packages/*/build examples/*/dist",
+    "typecheck": "tsc --noEmit --workspaces"
+  },
+  "keywords": [
+    "platform-engineering",
+    "knowledge-management",
+    "claude",
+    "agent-sdk",
+    "ai",
+    "observability"
+  ],
+  "author": "Terra",
+  "license": "TBD",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "tsx": "^4.7.0",
+    "vitest": "^1.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
