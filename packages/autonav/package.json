@@ -1,0 +1,44 @@
+{
+  "name": "@platform-ai/autonav",
+  "version": "1.0.0",
+  "description": "CLI tools and Claude SDK Adapter for Platform AI navigators",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "nav-init": "./dist/cli/nav-init.js",
+    "nav-query": "./dist/cli/nav-query.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc && chmod +x dist/cli/*.js && cp src/templates/*.template dist/templates/",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "platform-ai",
+    "navigator",
+    "cli",
+    "claude",
+    "agent-sdk"
+  ],
+  "author": "Terra",
+  "license": "TBD",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.68.0",
+    "@platform-ai/communication-layer": "*",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.2.0"
+  }
+}

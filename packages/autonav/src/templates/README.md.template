@@ -1,0 +1,122 @@
+# {{NAVIGATOR_NAME}}
+
+{{NAVIGATOR_DESCRIPTION}}
+
+## Setup
+
+This navigator was created using `@platform-ai/autonav`.
+
+### Directory Structure
+
+```
+{{NAVIGATOR_NAME}}/
+├── config.json          # Navigator configuration
+├── CLAUDE.md           # System prompt and grounding rules
+├── knowledge-base/     # Add your documentation here
+└── README.md          # This file
+```
+
+## Adding Documentation
+
+1. Add your markdown files, text files, or documentation to the `knowledge-base/` directory
+2. Organize files in subdirectories as needed
+3. The navigator will search all files in this directory when answering questions
+
+Example structure:
+```
+knowledge-base/
+├── getting-started/
+│   └── quickstart.md
+├── deployment/
+│   ├── aws.md
+│   └── kubernetes.md
+└── troubleshooting/
+    └── common-issues.md
+```
+
+## Querying the Navigator
+
+Use the `nav-query` command to ask questions:
+
+```bash
+npx nav-query . "How do I deploy to production?"
+```
+
+Or from the parent directory:
+```bash
+npx nav-query ./{{NAVIGATOR_NAME}} "Your question here"
+```
+
+## Response Format
+
+The navigator returns structured JSON responses:
+
+```json
+{
+  "protocolVersion": "1.0.0",
+  "query": "Your question",
+  "answer": "Detailed answer with citations",
+  "sources": [
+    {
+      "filePath": "path/to/source.md",
+      "excerpt": "Relevant quote",
+      "section": "Section name"
+    }
+  ],
+  "confidence": 0.95
+}
+```
+
+## Customization
+
+### Updating Instructions
+
+Edit `CLAUDE.md` to customize how the navigator behaves:
+- Add domain-specific rules
+- Include terminology definitions
+- Specify answer formatting preferences
+
+### Configuration
+
+Edit `config.json` to:
+- Update the navigator name or description
+- Change the knowledge base path
+- Add metadata fields
+
+## Best Practices
+
+1. **Keep docs updated**: The navigator is only as good as the knowledge base
+2. **Organize clearly**: Use directories and clear file names
+3. **Version control**: Commit both the navigator and knowledge base to git
+4. **Review responses**: Check that citations are accurate and relevant
+
+## Troubleshooting
+
+### Navigator can't find files
+
+- Ensure files are in the `knowledge-base/` directory
+- Check that file paths in responses match actual files
+- Verify the `knowledgeBasePath` in `config.json` is correct
+
+### Low confidence responses
+
+- Add more detailed documentation
+- Ensure docs cover the topic thoroughly
+- Check that docs are up to date
+
+### No answers to questions
+
+- Verify the knowledge base contains relevant information
+- Try rephrasing the question
+- Check that Claude API key is set: `ANTHROPIC_API_KEY`
+
+## Support
+
+For issues with the navigator framework:
+- GitHub: https://github.com/yourusername/platform-ai
+- Documentation: See the main project README
+
+---
+
+**Created**: {{CREATED_AT}}
+**Protocol Version**: 1.0.0
