@@ -1,0 +1,11 @@
+{
+  "version": "1.0.0",
+  "name": "{{NAVIGATOR_NAME}}",
+  "description": "{{NAVIGATOR_DESCRIPTION}}",
+  "communicationLayerVersion": "^1.0.0",
+  "sdkAdapterVersion": "^1.0.0",
+  "knowledgeBasePath": "knowledge-base",
+  "instructionsPath": "CLAUDE.md",
+  "createdAt": "{{CREATED_AT}}",
+  "updatedAt": "{{UPDATED_AT}}"
+}
