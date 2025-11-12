@@ -1,18 +1,23 @@
 {
   "name": "@platform-ai/communication-layer",
-  "version": "1.0.0",
-  "description": "Protocol definitions, schemas, and validation for Platform AI navigators",
-  "type": "module",
+  "version": "0.1.0",
+  "description": "Communication protocol and schemas for Platform AI multi-agent system",
   "main": "./dist/index.js",
+  "module": "./dist/esm/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/index.js",
       "types": "./dist/index.d.ts"
     }
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && tsc -p tsconfig.esm.json",
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -20,18 +25,22 @@
   },
   "keywords": [
     "platform-ai",
-    "protocol",
+    "communication-protocol",
+    "agent-communication",
     "schemas",
-    "validation"
+    "typescript"
   ],
   "author": "Terra",
   "license": "TBD",
   "dependencies": {
-    "zod": "^3.22.4"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "typescript": "^5.3.0",
     "vitest": "^1.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

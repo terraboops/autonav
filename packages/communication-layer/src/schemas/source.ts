@@ -1,34 +1,51 @@
-import { z } from "zod";
+import { z } from 'zod';
 
 /**
- * Source schema - represents a cited source in a navigator response
+ * Source Schema
  *
- * All responses must cite sources from the knowledge base to prevent hallucinations.
+ * Represents a source citation in a navigator response.
+ * All responses must cite sources to prevent hallucination.
  */
 export const SourceSchema = z.object({
   /**
-   * Relative path to the file from the knowledge-base directory
-   * Example: "deployment/ssl-configuration.md"
+   * Relative or absolute path to the source file
    */
-  filePath: z.string().min(1, "File path cannot be empty"),
+  filePath: z.string().min(1),
 
   /**
-   * Relevant excerpt from the source file
-   * Should be a direct quote, not paraphrased
+   * Optional line number range [start, end] for precise citation
    */
-  excerpt: z.string().optional(),
+  lineNumbers: z.tuple([z.number().int().positive(), z.number().int().positive()]).optional(),
 
   /**
-   * Line number or section where the information was found
-   * Helps with source verification
+   * Excerpt from the source that supports the answer
    */
-  lineNumber: z.number().int().positive().optional(),
+  excerpt: z.string().min(1),
 
   /**
-   * Section heading within the document
-   * Example: "## SSL Configuration"
+   * Relevance score (0-1) indicating how well this source answers the question
    */
-  section: z.string().optional(),
+  relevanceScore: z.number().min(0).max(1),
 });
 
 export type Source = z.infer<typeof SourceSchema>;
+
+/**
+ * Helper to create a source citation
+ */
+export function createSource(params: {
+  filePath: string;
+  excerpt: string;
+  relevanceScore: number;
+  lineNumbers?: [number, number];
+}): Source {
+  return SourceSchema.parse(params);
+}
+
+/**
+ * Helper to validate line numbers are in correct order
+ */
+export function validateLineNumbers(lineNumbers?: [number, number]): boolean {
+  if (!lineNumbers) return true;
+  return lineNumbers[0] <= lineNumbers[1];
+}

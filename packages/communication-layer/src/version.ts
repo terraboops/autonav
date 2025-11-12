@@ -1,9 +1,12 @@
 /**
- * Current protocol version for Platform AI Communication Layer
+ * Communication Layer Protocol Version
  *
- * Version: 1.0.0
- * - Initial protocol release
- * - Defines NavigatorResponse, Source, NavigatorConfig schemas
- * - Includes basic validation and prompt templates
+ * This version follows semantic versioning and is included in all protocol messages.
+ * Breaking changes to schemas or validation rules require a major version bump.
  */
-export const PROTOCOL_VERSION = "1.0.0";
+export const COMMUNICATION_LAYER_VERSION = '0.1.0';
+
+/**
+ * Protocol version for versioned messages
+ */
+export const PROTOCOL_VERSION = '0.1.0';
