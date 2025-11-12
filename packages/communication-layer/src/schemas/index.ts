@@ -1,22 +1,9 @@
 /**
- * Communication Layer Schemas
- *
- * Core type definitions and validation schemas for Platform AI navigators.
+ * All schemas for the communication layer
  */
 
-export {
-  SourceSchema,
-  type Source,
-} from "./source.js";
-
-export {
-  NavigatorResponseSchema,
-  type NavigatorResponse,
-  createNavigatorResponse,
-} from "./navigator-response.js";
-
-export {
-  NavigatorConfigSchema,
-  type NavigatorConfig,
-  createNavigatorConfig,
-} from "./navigator-config.js";
+export * from './source.js';
+export * from './response.js';
+export * from './config.js';
+export * from './query.js';
+export * from './metrics.js';
