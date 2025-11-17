@@ -130,7 +130,7 @@ Use npm workspaces:
 {
   "workspaces": [
     "packages/*",
-    "examples/*"
+    "packs/*"
   ]
 }
 ```
