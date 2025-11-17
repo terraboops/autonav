@@ -17,7 +17,7 @@
     }
   },
   "scripts": {
-    "build": "tsc && chmod +x dist/cli/*.js && cp src/templates/*.template dist/templates/ && cp src/templates/.*.template dist/templates/ 2>/dev/null || true",
+    "build": "tsc && node scripts/post-build.mjs",
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
