@@ -10,6 +10,8 @@ import {
   validateResponse,
   type ValidationResult,
 } from "@platform-ai/communication-layer";
+import { createPluginManager, PluginManager, PluginConfigFileSchema } from "../plugins/index.js";
+import { sanitizeError } from "../plugins/utils/security.js";
 
 /**
  * Configuration options for Claude Adapter
@@ -87,19 +89,20 @@ export class ClaudeAdapter {
    *
    * Reads and validates config.json and CLAUDE.md (or custom instructions file).
    * Verifies that the knowledge base directory exists.
+   * If .claude/plugins.json exists, initializes configured plugins.
    *
    * @param navigatorPath - Path to the navigator directory
-   * @returns Loaded navigator with config, system prompt, and paths
+   * @returns Loaded navigator with config, system prompt, paths, and optional plugin manager
    * @throws {Error} If directory doesn't exist, config is invalid, or required files are missing
    *
    * @example
    * ```typescript
    * const adapter = new ClaudeAdapter();
-   * const navigator = adapter.loadNavigator('./my-navigator');
+   * const navigator = await adapter.loadNavigator('./my-navigator');
    * console.log(`Loaded: ${navigator.config.name}`);
    * ```
    */
-  loadNavigator(navigatorPath: string): LoadedNavigator {
+  async loadNavigator(navigatorPath: string): Promise<LoadedNavigator> {
     const configPath = path.join(navigatorPath, "config.json");
 
     // Validate directory exists
@@ -179,11 +182,39 @@ export class ClaudeAdapter {
       );
     }
 
+    // Load and initialize plugins if .claude/plugins.json exists
+    let pluginManager: PluginManager | undefined;
+    const pluginsConfigPath = path.join(navigatorPath, ".claude", "plugins.json");
+
+    if (fs.existsSync(pluginsConfigPath)) {
+      try {
+        const pluginsConfigContent = fs.readFileSync(pluginsConfigPath, "utf-8");
+        const pluginsConfig = PluginConfigFileSchema.parse(JSON.parse(pluginsConfigContent));
+
+        // Create plugin manager
+        pluginManager = createPluginManager(pluginsConfigPath);
+
+        // Actually initialize the plugins (CRITICAL FIX)
+        await pluginManager.loadPlugins(pluginsConfig);
+
+        console.log("✓ Plugins initialized successfully");
+      } catch (error) {
+        // Sanitize error to prevent credential leakage in logs
+        const safeMessage = sanitizeError(error instanceof Error ? error.message : String(error));
+
+        console.warn(`⚠️  Failed to load plugins: ${safeMessage}`);
+        console.warn("   Continuing without plugins...");
+        // Continue without plugins (fail-safe)
+        pluginManager = undefined;
+      }
+    }
+
     return {
       config,
       systemPrompt,
       navigatorPath,
       knowledgeBasePath,
+      pluginManager,
     };
   }
 
@@ -360,4 +391,5 @@ export interface LoadedNavigator {
   systemPrompt: string;
   navigatorPath: string;
   knowledgeBasePath: string;
+  pluginManager?: PluginManager;
 }

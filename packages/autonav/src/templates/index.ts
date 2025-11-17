@@ -14,6 +14,7 @@ export interface Templates {
   configJson: string;
   gitignore: string;
   readme: string;
+  pluginsJson: string;
 }
 
 /**
@@ -35,6 +36,10 @@ export function loadTemplates(): Templates {
     ),
     readme: fs.readFileSync(
       path.join(__dirname, "README.md.template"),
+      "utf-8"
+    ),
+    pluginsJson: fs.readFileSync(
+      path.join(__dirname, "plugins.json.template"),
       "utf-8"
     ),
   };
