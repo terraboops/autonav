@@ -1,31 +1,32 @@
 import { z } from 'zod';
 
 /**
- * Source Schema
+ * Source Citation Schema
  *
  * Represents a source citation in a navigator response.
  * All responses must cite sources to prevent hallucination.
+ *
+ * This schema is optimized for use with Structured Outputs,
+ * using descriptive field names that guide Claude's generation.
  */
 export const SourceSchema = z.object({
   /**
-   * Relative or absolute path to the source file
+   * Filename from knowledge base
+   * Should be a relative path from the knowledge base root
    */
-  filePath: z.string().min(1),
+  file: z.string().min(1).describe('Filename from knowledge base'),
 
   /**
-   * Optional line number range [start, end] for precise citation
+   * Specific section or heading within the file
+   * Helps pinpoint the exact location of the information
    */
-  lineNumbers: z.tuple([z.number().int().positive(), z.number().int().positive()]).optional(),
+  section: z.string().min(1).describe('Specific section or heading'),
 
   /**
-   * Excerpt from the source that supports the answer
+   * Why this source is relevant to answering the question
+   * A brief explanation of the connection
    */
-  excerpt: z.string().min(1),
-
-  /**
-   * Relevance score (0-1) indicating how well this source answers the question
-   */
-  relevanceScore: z.number().min(0).max(1),
+  relevance: z.string().min(1).describe('Why this source is relevant'),
 });
 
 export type Source = z.infer<typeof SourceSchema>;
@@ -34,18 +35,9 @@ export type Source = z.infer<typeof SourceSchema>;
  * Helper to create a source citation
  */
 export function createSource(params: {
-  filePath: string;
-  excerpt: string;
-  relevanceScore: number;
-  lineNumbers?: [number, number];
+  file: string;
+  section: string;
+  relevance: string;
 }): Source {
   return SourceSchema.parse(params);
-}
-
-/**
- * Helper to validate line numbers are in correct order
- */
-export function validateLineNumbers(lineNumbers?: [number, number]): boolean {
-  if (!lineNumbers) return true;
-  return lineNumbers[0] <= lineNumbers[1];
 }
