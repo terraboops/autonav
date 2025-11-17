@@ -43,17 +43,17 @@ async function postBuild() {
       console.log(`✓ Created directory: dist/templates`);
     }
 
-    // Copy template files
+    // Copy template files (including hidden files like .gitignore.template)
     const srcTemplatesDir = join(packageRoot, 'src', 'templates');
     if (existsSync(srcTemplatesDir)) {
-      const files = await readdir(srcTemplatesDir);
-      const templateFiles = files.filter(f => f.endsWith('.template'));
+      const files = await readdir(srcTemplatesDir, { withFileTypes: true });
+      const templateFiles = files.filter(f => f.isFile() && f.name.endsWith('.template'));
 
       for (const file of templateFiles) {
-        const srcPath = join(srcTemplatesDir, file);
-        const destPath = join(templatesDir, file);
+        const srcPath = join(srcTemplatesDir, file.name);
+        const destPath = join(templatesDir, file.name);
         await copyFile(srcPath, destPath);
-        console.log(`✓ Copied: src/templates/${file} -> dist/templates/${file}`);
+        console.log(`✓ Copied: src/templates/${file.name} -> dist/templates/${file.name}`);
       }
 
       // Also copy .gitignore.template (starts with dot, so not caught by filter above)
