@@ -360,6 +360,18 @@ spec:
 - [ ] **Rollback tested** - Rollback procedure verified in staging
 - [ ] **Health checks working** - Liveness and readiness probes validated
 
+### Security ⚠️
+
+- [ ] **Image scanned** - No critical/high vulnerabilities in container image
+- [ ] **Secrets not in code** - No hardcoded passwords, API keys, or tokens
+- [ ] **RBAC configured** - Service account with least privilege
+- [ ] **Network policies** - Ingress/egress rules defined
+- [ ] **Pod security standards** - SecurityContext configured (runAsNonRoot, readOnlyRootFilesystem)
+- [ ] **TLS certificates valid** - HTTPS endpoints have valid certificates
+- [ ] **Compliance verified** - Meets security/compliance requirements
+
+**⚠️ Security Note**: Never skip security checks, even for "urgent" deployments. A compromised service is worse than a delayed deployment.
+
 ### Access & Permissions
 
 - [ ] **Access verified** - Have kubectl access to prod cluster
@@ -894,6 +906,13 @@ curl <service-name>.<namespace>.svc.cluster.local
 ## Deployment Templates
 
 ### Basic Deployment Manifest
+
+**⚠️ Security Best Practices in This Template**:
+- `runAsNonRoot: true` - Never run containers as root
+- `runAsUser: 1000` - Use non-privileged user ID
+- `resources.limits` - Prevent resource exhaustion attacks
+- `secrets` via `secretRef` - Never hardcode credentials
+- Health probes configured - Detect compromised containers
 
 ```yaml
 apiVersion: apps/v1

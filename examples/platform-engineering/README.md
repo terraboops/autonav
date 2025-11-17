@@ -11,6 +11,10 @@
 
 This knowledge pack provides comprehensive guidance for cloud-native platform engineering, covering Kubernetes operations, deployment strategies, monitoring, incident response, and architecture patterns.
 
+**🌟 New to Platform Engineering?** Start with **[GETTING_STARTED.md](GETTING_STARTED.md)** for a guided path from first deployment to production.
+
+**📍 Know Your Persona?** Check **[USER_PERSONAS.md](USER_PERSONAS.md)** to find your recommended learning path.
+
 **What's included**:
 - 🚢 Deployment strategies (rolling, canary, blue-green)
 - 📊 Monitoring and observability (Prometheus, Grafana)
@@ -18,6 +22,8 @@ This knowledge pack provides comprehensive guidance for cloud-native platform en
 - 🚨 Incident response procedures
 - ⚙️ Configuration management and GitOps
 - 🏗️ Platform architecture patterns and decisions
+
+**Platform as Product**: This pack follows [CNCF Platform Maturity Model](https://tag-app-delivery.cncf.io/whitepapers/platform-maturity-model/) and platform engineering principles from Camille Fournier's work.
 
 ---
 
@@ -70,14 +76,41 @@ This knowledge pack provides comprehensive guidance for cloud-native platform en
 
 ### Supporting Files
 
+- **[GETTING_STARTED.md](GETTING_STARTED.md)**: 🌟 **Start here!** Your path from zero to production in one week
+- **[USER_PERSONAS.md](USER_PERSONAS.md)**: Find your persona and recommended learning path
 - **[system-configuration.md](system-configuration.md)**: Navigator grounding and response guidelines
 - **[test-questions.md](test-questions.md)**: Validation scenarios and test cases
 - **[CREATOR_NOTES.md](CREATOR_NOTES.md)**: Design decisions and lessons learned
+- **[PLATFORM_REVIEW.md](PLATFORM_REVIEW.md)**: Platform engineering review against CNCF/Fournier principles
 - **[metadata.json](metadata.json)**: Pack metadata and versioning
 
 ---
 
 ## Quick Start
+
+### 🌟 Golden Path: Your First Week
+
+**New to platform engineering?** Follow this path:
+
+1. **Day 1** (30 min): [GETTING_STARTED.md → First 30 Minutes](GETTING_STARTED.md#your-first-30-minutes-quick-wins)
+2. **Day 2-3** (3 hours): Complete structured deployment
+3. **Day 4-5** (4 hours): Set up monitoring and deploy to production
+4. **Day 6-7** (2 hours): Learn incident response
+
+**Result**: You'll have deployed your first service to production safely!
+
+### 📍 Choose Your Learning Path
+
+**👶 Junior Platform Engineer (< 1 year K8s)**:
+→ Follow [GETTING_STARTED.md](GETTING_STARTED.md) completely, then [kubernetes.md](knowledge/kubernetes.md)
+
+**🧑‍💻 Mid-Level Platform Engineer (1-3 years)**:
+→ Skim [GETTING_STARTED.md](GETTING_STARTED.md), focus on [deployment.md](knowledge/deployment.md) and [monitoring.md](knowledge/monitoring.md)
+
+**🎓 Senior SRE/Platform Engineer (3+ years)**:
+→ Jump to [architecture.md](knowledge/architecture.md) or use pack as reference
+
+See [USER_PERSONAS.md](USER_PERSONAS.md) for detailed learning paths.
 
 ### For Navigator Users
 
@@ -344,11 +377,60 @@ MIT License - see repository LICENSE file for details.
 
 ---
 
-## Support
+## Feedback & Support
 
-- **Issues**: [GitHub Issues](https://github.com/terraboops/platform-ai/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/terraboops/platform-ai/discussions)
-- **Email**: (Add if applicable)
+**📊 Platform as Product**: We treat this knowledge pack as a product and value your feedback!
+
+### 💬 Give Feedback
+
+**Was this pack helpful?**
+- ✅ **Yes** → Star the repo and share what worked well in [Discussions](https://github.com/terraboops/platform-ai/discussions)
+- ❌ **No** → Tell us why in [Issues](https://github.com/terraboops/platform-ai/issues) so we can improve
+- 🤔 **Partially** → Suggest specific improvements in [Discussions](https://github.com/terraboops/platform-ai/discussions)
+
+**Quick Feedback**:
+After using any guide, let us know:
+1. **What worked?** (Keep doing)
+2. **What didn't?** (Fix or clarify)
+3. **What's missing?** (Add in next version)
+
+### 🐛 Report Issues
+
+Found a problem?
+
+- **Incorrect procedure**: [Create an issue](https://github.com/terraboops/platform-ai/issues/new) with "❌ Incorrect" label
+- **Broken command**: [Create an issue](https://github.com/terraboops/platform-ai/issues/new) with "🐛 Bug" label
+- **Missing topic**: [Create an issue](https://github.com/terraboops/platform-ai/issues/new) with "✨ Enhancement" label
+- **Security concern**: Email maintainers privately (see SECURITY.md)
+
+### 💡 Get Help
+
+- **General questions**: [GitHub Discussions](https://github.com/terraboops/platform-ai/discussions)
+- **Troubleshooting**: Check [troubleshooting.md](knowledge/troubleshooting.md) first, then ask in Discussions
+- **Emergencies**: See [incident-response.md](knowledge/incident-response.md)
+
+### 📈 Success Metrics
+
+Help us measure and improve:
+
+**Please share** (anonymously if preferred):
+- Time to first deployment
+- Incidents prevented by following guides
+- Procedures that saved you hours
+- Documentation that confused you
+
+**Post in**: [GitHub Discussions → Success Stories](https://github.com/terraboops/platform-ai/discussions)
+
+### 🤝 Contributing
+
+Want to improve this pack?
+
+1. **Fix typos/errors**: PRs welcome, no issue needed
+2. **Add examples**: Share your production experiences
+3. **Improve procedures**: Make them clearer, safer, faster
+4. **Translate**: (Future) Help translate to other languages
+
+See [CONTRIBUTING.md](../../.github/CONTRIBUTING.md) for guidelines.
 
 ---
 
