@@ -1,0 +1,14 @@
+{
+  "slack": {
+    "enabled": false,
+    "workspace": "",
+    "channels": [],
+    "threadNotifications": true
+  },
+  "signal": {
+    "enabled": false,
+    "phoneNumber": "",
+    "checkInSchedule": "daily",
+    "notificationTypes": ["urgent"]
+  }
+}

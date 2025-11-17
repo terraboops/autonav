@@ -12,19 +12,22 @@ This navigator was created using `@platform-ai/autonav`.
 {{NAVIGATOR_NAME}}/
 ├── config.json          # Navigator configuration
 ├── CLAUDE.md           # System prompt and grounding rules
-├── knowledge-base/     # Add your documentation here
+├── knowledge/          # Add your documentation here
+├── .claude/
+│   └── plugins.json   # Plugin configuration
+├── .gitignore
 └── README.md          # This file
 ```
 
 ## Adding Documentation
 
-1. Add your markdown files, text files, or documentation to the `knowledge-base/` directory
+1. Add your markdown files, text files, or documentation to the `knowledge/` directory
 2. Organize files in subdirectories as needed
 3. The navigator will search all files in this directory when answering questions
 
 Example structure:
 ```
-knowledge-base/
+knowledge/
 ├── getting-started/
 │   └── quickstart.md
 ├── deployment/
@@ -94,9 +97,9 @@ Edit `config.json` to:
 
 ### Navigator can't find files
 
-- Ensure files are in the `knowledge-base/` directory
+- Ensure files are in the `knowledge/` directory
 - Check that file paths in responses match actual files
-- Verify the `knowledgeBasePath` in `config.json` is correct
+- Verify the `knowledgeBase` in `config.json` is correct
 
 ### Low confidence responses
 

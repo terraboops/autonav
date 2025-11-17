@@ -3,8 +3,13 @@
   "name": "{{NAVIGATOR_NAME}}",
   "description": "{{NAVIGATOR_DESCRIPTION}}",
   "created": "{{CREATED_AT}}",
-  "knowledgePack": null,
+  "knowledgePack": {
+    "name": "{{PACK_NAME}}",
+    "version": "{{PACK_VERSION}}",
+    "installedAt": "{{CREATED_AT}}"
+  },
   "knowledgeBase": "./knowledge",
+  "systemConfiguration": "./system-configuration.md",
   "plugins": {
     "configFile": "./.claude/plugins.json"
   }

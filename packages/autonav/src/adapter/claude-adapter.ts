@@ -6,8 +6,7 @@ import {
   NavigatorConfigSchema,
   NavigatorResponse,
   NavigatorResponseSchema,
-  createAnswerQuestionPrompt,
-  validateNavigatorResponse,
+  validateResponse,
   type ValidationResult,
 } from "@platform-ai/communication-layer";
 
@@ -59,12 +58,12 @@ export class ClaudeAdapter {
     // Load CLAUDE.md instructions
     const actualInstructionsPath = path.join(
       navigatorPath,
-      config.instructionsPath || "CLAUDE.md"
+      "CLAUDE.md"
     );
 
     if (!fs.existsSync(actualInstructionsPath)) {
       throw new Error(
-        `Instructions file not found: ${config.instructionsPath || "CLAUDE.md"}`
+        `Instructions file not found: CLAUDE.md`
       );
     }
 
@@ -100,8 +99,8 @@ export class ClaudeAdapter {
     navigator: LoadedNavigator,
     question: string
   ): Promise<NavigatorResponse> {
-    // Create the prompt
-    const prompt = createAnswerQuestionPrompt(question);
+    // Create the prompt  (simple version - full implementation would use prompt templates)
+    const prompt = question;
 
     try {
       // Call Claude API
@@ -136,7 +135,7 @@ export class ClaudeAdapter {
       if (validation.warnings.length > 0) {
         console.warn("⚠️  Validation warnings:");
         for (const warning of validation.warnings) {
-          console.warn(`  - [${warning.type}] ${warning.message}`);
+          console.warn(`  - ${warning}`);
         }
       }
 
@@ -144,7 +143,7 @@ export class ClaudeAdapter {
       if (!validation.valid) {
         console.error("❌ Validation failed:");
         for (const error of validation.errors) {
-          console.error(`  - [${error.type}] ${error.message}`);
+          console.error(`  - ${error.message}`);
         }
         throw new Error(
           "Response validation failed. See errors above for details."
@@ -212,7 +211,15 @@ export class ClaudeAdapter {
     response: NavigatorResponse,
     knowledgeBasePath: string
   ): ValidationResult {
-    return validateNavigatorResponse(response, knowledgeBasePath);
+    // Create a minimal config for validation
+    const tempConfig: NavigatorConfig = {
+      name: "temp",
+      domain: "temp",
+      communicationLayerVersion: "0.1.0",
+      knowledgeBasePath: knowledgeBasePath,
+      confidenceThreshold: 0.7,
+    };
+    return validateResponse(response, tempConfig, knowledgeBasePath);
   }
 }
 
