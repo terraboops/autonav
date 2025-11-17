@@ -11,6 +11,7 @@ import {
   type ValidationResult,
 } from "@platform-ai/communication-layer";
 import { createPluginManager, PluginManager, PluginConfigFileSchema } from "../plugins/index.js";
+import { sanitizeError } from "../plugins/utils/security.js";
 
 /**
  * Claude SDK Adapter
@@ -30,9 +31,9 @@ export class ClaudeAdapter {
   /**
    * Load a navigator from a directory
    *
-   * Reads and validates config.json and CLAUDE.md
+   * Reads and validates config.json, CLAUDE.md, and initializes plugins
    */
-  loadNavigator(navigatorPath: string): LoadedNavigator {
+  async loadNavigator(navigatorPath: string): Promise<LoadedNavigator> {
     const configPath = path.join(navigatorPath, "config.json");
 
     // Validate directory exists
@@ -83,28 +84,30 @@ export class ClaudeAdapter {
       );
     }
 
-    // Load plugins if .claude/plugins.json exists
+    // Load and initialize plugins if .claude/plugins.json exists
     let pluginManager: PluginManager | undefined;
     const pluginsConfigPath = path.join(navigatorPath, ".claude", "plugins.json");
 
     if (fs.existsSync(pluginsConfigPath)) {
       try {
         const pluginsConfigContent = fs.readFileSync(pluginsConfigPath, "utf-8");
-        // Validate the config file
-        PluginConfigFileSchema.parse(JSON.parse(pluginsConfigContent));
+        const pluginsConfig = PluginConfigFileSchema.parse(JSON.parse(pluginsConfigContent));
 
-        // Create and initialize plugin manager
+        // Create plugin manager
         pluginManager = createPluginManager(pluginsConfigPath);
 
-        // Load plugins (async, but we'll handle it synchronously for now)
-        // In a real implementation, you might want to make loadNavigator async
-        // For now, we'll just create the manager and defer loading to when it's first used
-        console.log("Plugin configuration found, plugins will be initialized on first use");
+        // Actually initialize the plugins (CRITICAL FIX)
+        await pluginManager.loadPlugins(pluginsConfig);
+
+        console.log("✓ Plugins initialized successfully");
       } catch (error) {
-        console.warn(
-          `Failed to load plugins: ${error instanceof Error ? error.message : String(error)}`
-        );
+        // Sanitize error to prevent credential leakage in logs
+        const safeMessage = sanitizeError(error instanceof Error ? error.message : String(error));
+
+        console.warn(`⚠️  Failed to load plugins: ${safeMessage}`);
+        console.warn("   Continuing without plugins...");
         // Continue without plugins (fail-safe)
+        pluginManager = undefined;
       }
     }
 

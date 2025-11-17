@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Plugin, PluginHealthStatus } from '../../types.js';
 import { WebClient, LogLevel } from '@slack/web-api';
+import { assertNoCredentialsInText } from '../../utils/security.js';
 
 // Configuration schema
 export const SlackConfigSchema = z.object({
@@ -25,13 +26,13 @@ export const SlackEventSchema = z.object({
 
 export type SlackEvent = z.infer<typeof SlackEventSchema>;
 
-// Action schema
+// Action schema with validation
 export const SlackActionSchema = z.object({
   type: z.enum(['send-message', 'add-reaction', 'update-message']),
-  channel: z.string(),
-  text: z.string().optional(),
+  channel: z.string().min(1).max(255),
+  text: z.string().max(40000).optional(), // Slack's limit is 40,000 characters
   threadTs: z.string().optional().describe('Thread timestamp for replies'),
-  reaction: z.string().optional().describe('Emoji for reactions'),
+  reaction: z.string().max(100).optional().describe('Emoji for reactions'),
   messageTs: z.string().optional().describe('Message timestamp for updates'),
 });
 
@@ -156,6 +157,9 @@ export class SlackPlugin implements Plugin<SlackConfig, SlackEvent, SlackAction>
           throw new Error('Message text required');
         }
 
+        // Security: Ensure no credentials in message text
+        assertNoCredentialsInText(action.text, 'message text');
+
         const result = await this.client.chat.postMessage({
           channel: action.channel,
           text: action.text,
@@ -168,6 +172,11 @@ export class SlackPlugin implements Plugin<SlackConfig, SlackEvent, SlackAction>
       case 'add-reaction': {
         if (!action.reaction || !action.messageTs) {
           throw new Error('Reaction and message timestamp required');
+        }
+
+        // Validate reaction emoji name (alphanumeric, hyphens, underscores only)
+        if (!/^[\w-]+$/.test(action.reaction)) {
+          throw new Error('Invalid reaction emoji name');
         }
 
         const result = await this.client.reactions.add({
@@ -183,6 +192,9 @@ export class SlackPlugin implements Plugin<SlackConfig, SlackEvent, SlackAction>
         if (!action.text || !action.messageTs) {
           throw new Error('Message text and timestamp required for update');
         }
+
+        // Security: Ensure no credentials in message text
+        assertNoCredentialsInText(action.text, 'message text');
 
         const result = await this.client.chat.update({
           channel: action.channel,

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Plugin, PluginHealthStatus } from '../../types.js';
 import { Octokit } from '@octokit/rest';
+import { assertNoCredentialsInText } from '../../utils/security.js';
 
 // Configuration schema
 export const GitHubConfigSchema = z.object({
@@ -30,7 +31,7 @@ export const GitHubEventSchema = z.object({
 
 export type GitHubEvent = z.infer<typeof GitHubEventSchema>;
 
-// Action schema
+// Action schema with validation
 export const GitHubActionSchema = z.object({
   type: z.enum([
     'create-issue',
@@ -41,14 +42,14 @@ export const GitHubActionSchema = z.object({
     'merge-pr',
     'add-label',
   ]),
-  issueNumber: z.number().optional(),
-  prNumber: z.number().optional(),
-  title: z.string().optional(),
-  body: z.string().optional(),
-  comment: z.string().optional(),
-  labels: z.array(z.string()).optional(),
-  head: z.string().optional(), // PR head branch
-  base: z.string().optional(), // PR base branch
+  issueNumber: z.number().int().positive().optional(),
+  prNumber: z.number().int().positive().optional(),
+  title: z.string().max(256).optional(), // GitHub's limit
+  body: z.string().max(65536).optional(), // GitHub's limit is 65,536 characters
+  comment: z.string().max(65536).optional(),
+  labels: z.array(z.string().max(50)).max(100).optional(), // Max 100 labels
+  head: z.string().max(255).optional(), // PR head branch
+  base: z.string().max(255).optional(), // PR base branch
 });
 
 export type GitHubAction = z.infer<typeof GitHubActionSchema>;
@@ -81,15 +82,14 @@ export class GitHubPlugin implements Plugin<GitHubConfig, GitHubEvent, GitHubAct
 
     // Verify authentication and repository access
     try {
-      const { data: user } = await this.octokit.users.getAuthenticated();
-      console.log(`Authenticated as GitHub user: ${user.login}`);
+      await this.octokit.users.getAuthenticated();
 
-      const { data: repo } = await this.octokit.repos.get({
+      await this.octokit.repos.get({
         owner: config.owner,
         repo: config.repo,
       });
 
-      console.log(`Watching repository: ${repo.full_name}`);
+      // Plugin initialized successfully (no need to log user data)
     } catch (error) {
       throw new Error(
         `GitHub initialization failed: ${error instanceof Error ? error.message : String(error)}`
@@ -213,6 +213,10 @@ export class GitHubPlugin implements Plugin<GitHubConfig, GitHubEvent, GitHubAct
           throw new Error('Title and body required for creating issue');
         }
 
+        // Security: Ensure no credentials in issue content
+        assertNoCredentialsInText(action.title, 'issue title');
+        assertNoCredentialsInText(action.body, 'issue body');
+
         const { data } = await this.octokit.issues.create({
           owner,
           repo,
@@ -228,6 +232,9 @@ export class GitHubPlugin implements Plugin<GitHubConfig, GitHubEvent, GitHubAct
         if (!action.issueNumber || !action.comment) {
           throw new Error('Issue number and comment required');
         }
+
+        // Security: Ensure no credentials in comment
+        assertNoCredentialsInText(action.comment, 'comment');
 
         const { data } = await this.octokit.issues.createComment({
           owner,
@@ -259,6 +266,10 @@ export class GitHubPlugin implements Plugin<GitHubConfig, GitHubEvent, GitHubAct
           throw new Error('Title, body, head, and base required for creating PR');
         }
 
+        // Security: Ensure no credentials in PR content
+        assertNoCredentialsInText(action.title, 'PR title');
+        assertNoCredentialsInText(action.body, 'PR body');
+
         const { data } = await this.octokit.pulls.create({
           owner,
           repo,
@@ -275,6 +286,9 @@ export class GitHubPlugin implements Plugin<GitHubConfig, GitHubEvent, GitHubAct
         if (!action.prNumber || !action.comment) {
           throw new Error('PR number and comment required');
         }
+
+        // Security: Ensure no credentials in comment
+        assertNoCredentialsInText(action.comment, 'comment');
 
         const { data } = await this.octokit.issues.createComment({
           owner,

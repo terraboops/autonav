@@ -33,10 +33,12 @@
   "license": "TBD",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",
-    "@platform-ai/communication-layer": "*",
     "@octokit/rest": "^20.0.2",
+    "@platform-ai/communication-layer": "*",
     "@slack/web-api": "^6.11.2",
+    "@types/micromatch": "^4.0.10",
     "chokidar": "^3.5.3",
+    "micromatch": "^4.0.8",
     "zod": "^3.22.4"
   },
   "devDependencies": {

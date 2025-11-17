@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import * as fs from 'fs/promises';
+import * as path from 'path';
 import { Plugin, PluginHealthStatus } from '../../types.js';
 import { watch, FSWatcher } from 'chokidar';
+import micromatch from 'micromatch';
 
 // Configuration schema
 export const FileWatcherConfigSchema = z.object({
@@ -35,10 +37,63 @@ export const FileWatcherActionSchema = z.object({
 export type FileWatcherAction = z.infer<typeof FileWatcherActionSchema>;
 
 /**
+ * Sensitive directories that should never be watched
+ */
+const FORBIDDEN_PATHS = [
+  '/etc',
+  '/sys',
+  '/proc',
+  '/dev',
+  '/root',
+  '/boot',
+  '/var/log',
+  '/usr/bin',
+  '/usr/sbin',
+  '/bin',
+  '/sbin',
+  process.env.HOME + '/.ssh',
+  process.env.HOME + '/.aws',
+  process.env.HOME + '/.config',
+  '/Windows',
+  '/System',
+  'C:\\Windows',
+  'C:\\System',
+];
+
+/**
+ * Validate that a path is safe to watch
+ * Prevents watching sensitive system directories
+ */
+function validateSafePath(watchPath: string): void {
+  const resolved = path.resolve(watchPath);
+
+  // Check if path starts with any forbidden path
+  for (const forbidden of FORBIDDEN_PATHS) {
+    if (forbidden && resolved.startsWith(forbidden)) {
+      throw new Error(
+        `Security: Cannot watch sensitive directory '${watchPath}'. ` +
+        `File watcher is restricted to project directories only.`
+      );
+    }
+  }
+
+  // Warn if watching root or very high-level directories
+  if (resolved === '/' || resolved === 'C:\\' || resolved.split(path.sep).length <= 2) {
+    throw new Error(
+      `Security: Cannot watch root or high-level directory '${watchPath}'. ` +
+      `Please specify a more specific directory within your project.`
+    );
+  }
+}
+
+/**
  * File System Watcher Plugin
  *
  * Monitors knowledge base files for changes and reports them as events.
  * Useful for keeping navigators aware of documentation updates.
+ *
+ * Security: Only watches directories within the project scope,
+ * prevents watching sensitive system directories.
  */
 export class FileWatcherPlugin implements Plugin<
   FileWatcherConfig,
@@ -59,8 +114,11 @@ export class FileWatcherPlugin implements Plugin<
   async initialize(config: FileWatcherConfig): Promise<void> {
     this.config = config;
 
-    // Validate paths exist
+    // Validate paths exist and are safe to watch
     for (const watchPath of config.paths) {
+      // Security: Validate path is not in sensitive directory
+      validateSafePath(watchPath);
+
       try {
         await fs.access(watchPath);
       } catch {
@@ -113,13 +171,8 @@ export class FileWatcherPlugin implements Plugin<
   private matchesPatterns(filePath: string): boolean {
     if (!this.config) return false;
 
-    // Simple pattern matching (can be enhanced with micromatch or minimatch)
-    return this.config.patterns.some(pattern => {
-      const regex = new RegExp(
-        '^' + pattern.replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*') + '$'
-      );
-      return regex.test(filePath);
-    });
+    // Use micromatch for efficient and accurate glob pattern matching
+    return micromatch.isMatch(filePath, this.config.patterns);
   }
 
   async listen(): Promise<FileWatcherEvent[]> {
