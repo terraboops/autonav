@@ -7,9 +7,10 @@ import {
   NavigatorResponse,
   NavigatorResponseSchema,
   createAnswerQuestionPrompt,
-  validateNavigatorResponse,
+  validateResponse,
   type ValidationResult,
 } from "@platform-ai/communication-layer";
+import { createPluginManager, PluginManager, PluginConfigFileSchema } from "../plugins/index.js";
 
 /**
  * Claude SDK Adapter
@@ -82,11 +83,37 @@ export class ClaudeAdapter {
       );
     }
 
+    // Load plugins if .claude/plugins.json exists
+    let pluginManager: PluginManager | undefined;
+    const pluginsConfigPath = path.join(navigatorPath, ".claude", "plugins.json");
+
+    if (fs.existsSync(pluginsConfigPath)) {
+      try {
+        const pluginsConfigContent = fs.readFileSync(pluginsConfigPath, "utf-8");
+        // Validate the config file
+        PluginConfigFileSchema.parse(JSON.parse(pluginsConfigContent));
+
+        // Create and initialize plugin manager
+        pluginManager = createPluginManager(pluginsConfigPath);
+
+        // Load plugins (async, but we'll handle it synchronously for now)
+        // In a real implementation, you might want to make loadNavigator async
+        // For now, we'll just create the manager and defer loading to when it's first used
+        console.log("Plugin configuration found, plugins will be initialized on first use");
+      } catch (error) {
+        console.warn(
+          `Failed to load plugins: ${error instanceof Error ? error.message : String(error)}`
+        );
+        // Continue without plugins (fail-safe)
+      }
+    }
+
     return {
       config,
       systemPrompt,
       navigatorPath,
       knowledgeBasePath,
+      pluginManager,
     };
   }
 
@@ -129,6 +156,7 @@ export class ClaudeAdapter {
       // Validate the response
       const validation = this.validate(
         navigatorResponse,
+        navigator.config,
         navigator.knowledgeBasePath
       );
 
@@ -136,7 +164,7 @@ export class ClaudeAdapter {
       if (validation.warnings.length > 0) {
         console.warn("⚠️  Validation warnings:");
         for (const warning of validation.warnings) {
-          console.warn(`  - [${warning.type}] ${warning.message}`);
+          console.warn(`  - ${warning}`);
         }
       }
 
@@ -144,7 +172,7 @@ export class ClaudeAdapter {
       if (!validation.valid) {
         console.error("❌ Validation failed:");
         for (const error of validation.errors) {
-          console.error(`  - [${error.type}] ${error.message}`);
+          console.error(`  - ${error.message}`);
         }
         throw new Error(
           "Response validation failed. See errors above for details."
@@ -210,9 +238,10 @@ export class ClaudeAdapter {
    */
   validate(
     response: NavigatorResponse,
-    knowledgeBasePath: string
+    config: NavigatorConfig,
+    knowledgeBasePath?: string
   ): ValidationResult {
-    return validateNavigatorResponse(response, knowledgeBasePath);
+    return validateResponse(response, config, knowledgeBasePath);
   }
 }
 
@@ -224,4 +253,5 @@ export interface LoadedNavigator {
   systemPrompt: string;
   navigatorPath: string;
   knowledgeBasePath: string;
+  pluginManager?: PluginManager;
 }

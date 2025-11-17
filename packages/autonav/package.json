@@ -16,7 +16,7 @@
     }
   },
   "scripts": {
-    "build": "tsc && chmod +x dist/cli/*.js && cp src/templates/*.template dist/templates/",
+    "build": "tsc && chmod +x dist/cli/*.js && cp src/templates/*.template dist/templates/ && cp src/templates/.gitignore.template dist/templates/",
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -34,6 +34,9 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",
     "@platform-ai/communication-layer": "*",
+    "@octokit/rest": "^20.0.2",
+    "@slack/web-api": "^6.11.2",
+    "chokidar": "^3.5.3",
     "zod": "^3.22.4"
   },
   "devDependencies": {
