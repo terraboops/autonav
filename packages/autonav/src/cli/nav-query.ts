@@ -82,8 +82,8 @@ async function main() {
     // Initialize adapter
     const adapter = new ClaudeAdapter();
 
-    // Load navigator
-    const navigator = adapter.loadNavigator(navigatorPath);
+    // Load navigator (async - initializes plugins if configured)
+    const navigator = await adapter.loadNavigator(navigatorPath);
     console.error(`✓ Loaded: ${navigator.config.name}`);
     console.error(`✓ Knowledge base: ${navigator.knowledgeBasePath}\n`);
 

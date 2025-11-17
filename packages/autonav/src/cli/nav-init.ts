@@ -86,6 +86,9 @@ async function main() {
     fs.mkdirSync(path.join(navigatorPath, "knowledge-base"), {
       recursive: true,
     });
+    fs.mkdirSync(path.join(navigatorPath, ".claude"), {
+      recursive: true,
+    });
 
     // Load templates
     const templates = loadTemplates();
@@ -126,6 +129,12 @@ async function main() {
       replaceTemplateVars(templates.readme, vars)
     );
     console.log("  ✓ README.md");
+
+    fs.writeFileSync(
+      path.join(navigatorPath, ".claude", "plugins.json"),
+      templates.pluginsJson
+    );
+    console.log("  ✓ .claude/plugins.json");
 
     // Create a sample file in knowledge-base
     const sampleContent = `# Welcome to ${titleCase(navigatorName)}
@@ -177,6 +186,7 @@ You can include:
     console.log("💡 Tips:");
     console.log("  - Edit CLAUDE.md to customize the navigator's behavior");
     console.log("  - Check config.json for configuration options");
+    console.log("  - Enable plugins in .claude/plugins.json (Slack, GitHub, file watcher)");
     console.log("  - See README.md for full usage instructions\n");
   } catch (error) {
     console.error(

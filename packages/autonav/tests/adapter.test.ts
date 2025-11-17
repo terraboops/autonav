@@ -95,8 +95,8 @@ describe('ClaudeAdapter', () => {
       adapter = new ClaudeAdapter({ apiKey: 'test-key' });
     });
 
-    it('should load a valid navigator', () => {
-      const navigator = adapter.loadNavigator(testNavigatorPath);
+    it('should load a valid navigator', async () => {
+      const navigator = await adapter.loadNavigator(testNavigatorPath);
 
       expect(navigator).toBeDefined();
       expect(navigator.config.name).toBe('test-navigator');
@@ -108,25 +108,25 @@ describe('ClaudeAdapter', () => {
       );
     });
 
-    it('should throw error if directory does not exist', () => {
-      expect(() =>
+    it('should throw error if directory does not exist', async () => {
+      await expect(
         adapter.loadNavigator('/nonexistent/path')
-      ).toThrow('Navigator directory not found');
+      ).rejects.toThrow('Navigator directory not found');
     });
 
-    it('should throw error if path is not a directory', () => {
+    it('should throw error if path is not a directory', async () => {
       const filePath = path.join(testNavigatorPath, 'config.json');
-      expect(() => adapter.loadNavigator(filePath)).toThrow(
+      await expect(adapter.loadNavigator(filePath)).rejects.toThrow(
         'Path is not a directory'
       );
     });
 
-    it('should throw error if config.json is missing', () => {
+    it('should throw error if config.json is missing', async () => {
       const invalidPath = path.join(__dirname, 'invalid-navigator');
       fs.mkdirSync(invalidPath, { recursive: true });
 
       try {
-        expect(() => adapter.loadNavigator(invalidPath)).toThrow(
+        await expect(adapter.loadNavigator(invalidPath)).rejects.toThrow(
           'config.json not found'
         );
       } finally {
@@ -134,7 +134,7 @@ describe('ClaudeAdapter', () => {
       }
     });
 
-    it('should throw error if config.json is invalid JSON', () => {
+    it('should throw error if config.json is invalid JSON', async () => {
       const invalidPath = path.join(__dirname, 'invalid-json-navigator');
       fs.mkdirSync(invalidPath, { recursive: true });
       fs.writeFileSync(
@@ -143,7 +143,7 @@ describe('ClaudeAdapter', () => {
       );
 
       try {
-        expect(() => adapter.loadNavigator(invalidPath)).toThrow(
+        await expect(adapter.loadNavigator(invalidPath)).rejects.toThrow(
           'Invalid config.json'
         );
       } finally {
@@ -151,7 +151,7 @@ describe('ClaudeAdapter', () => {
       }
     });
 
-    it('should throw error if CLAUDE.md is missing', () => {
+    it('should throw error if CLAUDE.md is missing', async () => {
       const invalidPath = path.join(__dirname, 'no-claude-md-navigator');
       fs.mkdirSync(invalidPath, { recursive: true });
       fs.mkdirSync(path.join(invalidPath, 'knowledge-base'), {
@@ -171,7 +171,7 @@ describe('ClaudeAdapter', () => {
       );
 
       try {
-        expect(() => adapter.loadNavigator(invalidPath)).toThrow(
+        await expect(adapter.loadNavigator(invalidPath)).rejects.toThrow(
           'Instructions file not found'
         );
       } finally {
@@ -179,7 +179,7 @@ describe('ClaudeAdapter', () => {
       }
     });
 
-    it('should throw error if knowledge base directory is missing', () => {
+    it('should throw error if knowledge base directory is missing', async () => {
       const invalidPath = path.join(__dirname, 'no-kb-navigator');
       fs.mkdirSync(invalidPath, { recursive: true });
 
@@ -201,7 +201,7 @@ describe('ClaudeAdapter', () => {
       );
 
       try {
-        expect(() => adapter.loadNavigator(invalidPath)).toThrow(
+        await expect(adapter.loadNavigator(invalidPath)).rejects.toThrow(
           'Knowledge base directory not found'
         );
       } finally {
@@ -209,7 +209,7 @@ describe('ClaudeAdapter', () => {
       }
     });
 
-    it('should support custom instructions path', () => {
+    it('should support custom instructions path', async () => {
       const customPath = path.join(__dirname, 'custom-instructions-navigator');
       fs.mkdirSync(customPath, { recursive: true });
       fs.mkdirSync(path.join(customPath, 'knowledge-base'), {
@@ -235,7 +235,7 @@ describe('ClaudeAdapter', () => {
       );
 
       try {
-        const navigator = adapter.loadNavigator(customPath);
+        const navigator = await adapter.loadNavigator(customPath);
         expect(navigator.systemPrompt).toBe('Custom prompt');
       } finally {
         fs.rmSync(customPath, { recursive: true, force: true });
@@ -331,9 +331,9 @@ Here's the answer:
     let adapter: ClaudeAdapter;
     let navigator: any;
 
-    beforeAll(() => {
+    beforeAll(async () => {
       adapter = new ClaudeAdapter({ apiKey: 'test-key' });
-      navigator = adapter.loadNavigator(testNavigatorPath);
+      navigator = await adapter.loadNavigator(testNavigatorPath);
     });
 
     it('should validate a response with existing sources', () => {
