@@ -39,7 +39,7 @@ tmp/
 temp/
 *.tmp
 
-# Package manager
-package-lock.json
+# Package manager lock files (keep package-lock.json for npm ci in CI/CD)
+# package-lock.json - DO NOT IGNORE (needed for npm ci)
 yarn.lock
 pnpm-lock.yaml
