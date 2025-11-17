@@ -159,12 +159,12 @@ export class ClaudeAdapter {
     // Validate knowledge base exists
     const knowledgeBasePath = path.join(
       navigatorPath,
-      config.knowledgeBasePath
+      config.knowledgeBase
     );
 
     if (!fs.existsSync(knowledgeBasePath)) {
       throw new Error(
-        `Knowledge base directory not found: ${config.knowledgeBasePath}\n` +
+        `Knowledge base directory not found: ${config.knowledgeBase}\n` +
         `Expected path: ${knowledgeBasePath}\n` +
         `Create the directory and add documentation files for the navigator to search.`
       );
@@ -174,7 +174,7 @@ export class ClaudeAdapter {
     const kbStats = fs.statSync(knowledgeBasePath);
     if (!kbStats.isDirectory()) {
       throw new Error(
-        `Knowledge base path is not a directory: ${config.knowledgeBasePath}\n` +
+        `Knowledge base path is not a directory: ${config.knowledgeBase}\n` +
         `The knowledge base must be a directory containing documentation files.`
       );
     }
@@ -234,8 +234,8 @@ export class ClaudeAdapter {
 
       // Extract text from response
       const textContent = response.content
-        .filter((block): block is Anthropic.TextBlock => block.type === "text")
-        .map((block) => block.text)
+        .filter((block: Anthropic.ContentBlock): block is Anthropic.TextBlock => block.type === "text")
+        .map((block: Anthropic.TextBlock) => block.text)
         .join("\n");
 
       // Parse the response
@@ -244,7 +244,6 @@ export class ClaudeAdapter {
       // Validate the response
       const validation = this.validate(
         navigatorResponse,
-        navigator.config,
         navigator.knowledgeBasePath
       );
 
@@ -333,22 +332,19 @@ export class ClaudeAdapter {
    * Runs comprehensive validation including:
    * - Source file existence checks
    * - Hallucination pattern detection
-   * - Confidence threshold validation
-   * - Context size validation
+   * - Confidence level validation
    *
    * @param response - Navigator response to validate
-   * @param config - Navigator configuration (for thresholds)
-   * @param knowledgeBasePath - Optional path to knowledge base (uses config.knowledgeBasePath if not provided)
+   * @param knowledgeBasePath - Path to knowledge base directory
    * @returns Validation result with errors and warnings
    *
    * @internal
    */
   validate(
     response: NavigatorResponse,
-    config: NavigatorConfig,
-    knowledgeBasePath?: string
+    knowledgeBasePath: string
   ): ValidationResult {
-    return validateResponse(response, config, knowledgeBasePath);
+    return validateResponse(response, knowledgeBasePath);
   }
 }
 

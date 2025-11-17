@@ -16,12 +16,17 @@ describe('ClaudeAdapter', () => {
 
     // Create test config.json
     const config = {
-      communicationLayerVersion: '0.1.0',
+      version: '1.0.0',
       name: 'test-navigator',
-      domain: 'testing',
       description: 'Test navigator',
-      knowledgeBasePath: 'knowledge-base',
+      created: new Date().toISOString(),
+      knowledgePack: null,
+      knowledgeBase: 'knowledge-base',
+      instructionsPath: 'CLAUDE.md',
       confidenceThreshold: 0.7,
+      plugins: {
+        configFile: '.claude/plugins.json',
+      },
     };
 
     fs.writeFileSync(
@@ -103,7 +108,7 @@ describe('ClaudeAdapter', () => {
       expect(navigator.config.domain).toBe('testing');
       expect(navigator.systemPrompt).toContain('Test Navigator');
       expect(navigator.navigatorPath).toBe(testNavigatorPath);
-      expect(navigator.knowledgeBasePath).toBe(
+      expect(navigator.knowledgeBase).toBe(
         path.join(testNavigatorPath, 'knowledge-base')
       );
     });
@@ -159,10 +164,10 @@ describe('ClaudeAdapter', () => {
       });
 
       const config = {
-        communicationLayerVersion: '0.1.0',
+        version: '0.1.0',
         name: 'test',
         domain: 'test',
-        knowledgeBasePath: 'knowledge-base',
+        knowledgeBase: 'knowledge-base',
       };
 
       fs.writeFileSync(
@@ -184,10 +189,10 @@ describe('ClaudeAdapter', () => {
       fs.mkdirSync(invalidPath, { recursive: true });
 
       const config = {
-        communicationLayerVersion: '0.1.0',
+        version: '0.1.0',
         name: 'test',
         domain: 'test',
-        knowledgeBasePath: 'knowledge-base',
+        knowledgeBase: 'knowledge-base',
       };
 
       fs.writeFileSync(
@@ -217,10 +222,10 @@ describe('ClaudeAdapter', () => {
       });
 
       const config = {
-        communicationLayerVersion: '0.1.0',
+        version: '0.1.0',
         name: 'test',
         domain: 'test',
-        knowledgeBasePath: 'knowledge-base',
+        knowledgeBase: 'knowledge-base',
         instructionsPath: 'custom-prompt.md',
       };
 
@@ -259,9 +264,9 @@ Here's the answer:
   "answer": "Test answer",
   "sources": [
     {
-      "filePath": "test.md",
-      "excerpt": "Test excerpt",
-      "relevanceScore": 0.9
+      "file": "test.md",
+      "section": "Test excerpt",
+      "relevance": 0.9
     }
   ],
   "confidence": 0.8,
@@ -281,9 +286,9 @@ Here's the answer:
         "answer": "Test answer",
         "sources": [
           {
-            "filePath": "test.md",
-            "excerpt": "Test excerpt",
-            "relevanceScore": 0.9
+            "file": "test.md",
+            "section": "Test excerpt",
+            "relevance": 0.9
           }
         ],
         "confidence": 0.8,
@@ -316,7 +321,7 @@ Here's the answer:
       const rawResponse = `\`\`\`json
       {
         "answer": "Test",
-        "sources": [{"filePath": "test.md", "excerpt": "Test", "relevanceScore": 0.9}],
+        "sources": [{"file": "test.md", "section": "Test", "relevance": 0.9}],
         "confidence": 0.8,
         "contextSize": 1000
       }
@@ -355,7 +360,7 @@ Here's the answer:
       const result = adapter.validate(
         response,
         navigator.config,
-        navigator.knowledgeBasePath
+        navigator.knowledgeBase
       );
 
       expect(result.valid).toBe(true);
@@ -381,7 +386,7 @@ Here's the answer:
       const result = adapter.validate(
         response,
         navigator.config,
-        navigator.knowledgeBasePath
+        navigator.knowledgeBase
       );
 
       expect(result.valid).toBe(false);
@@ -407,7 +412,7 @@ Here's the answer:
       const result = adapter.validate(
         response,
         navigator.config,
-        navigator.knowledgeBasePath
+        navigator.knowledgeBase
       );
 
       // Low confidence should trigger an error based on threshold
