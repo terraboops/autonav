@@ -38,8 +38,11 @@
     "@platform-ai/communication-layer": "*",
     "@slack/web-api": "^6.11.2",
     "@types/micromatch": "^4.0.10",
+    "chalk": "^4.1.2",
     "chokidar": "^3.5.3",
+    "commander": "^14.0.2",
     "micromatch": "^4.0.8",
+    "ora": "^5.4.1",
     "tar": "^6.2.0",
     "zod": "^3.22.4"
   },

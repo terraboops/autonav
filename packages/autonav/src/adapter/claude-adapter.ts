@@ -39,6 +39,17 @@ export interface ClaudeAdapterOptions {
 }
 
 /**
+ * Loaded navigator with all necessary context
+ */
+export interface LoadedNavigator {
+  config: NavigatorConfig;
+  systemPrompt: string;
+  navigatorPath: string;
+  knowledgeBasePath: string;
+  pluginManager?: PluginManager;
+}
+
+/**
  * Claude SDK Adapter
  *
  * Bridges Claude API to the Communication Layer protocol.
@@ -377,15 +388,4 @@ export class ClaudeAdapter {
   ): ValidationResult {
     return validateResponse(response, knowledgeBasePath);
   }
-}
-
-/**
- * Loaded navigator with all necessary context
- */
-export interface LoadedNavigator {
-  config: NavigatorConfig;
-  systemPrompt: string;
-  navigatorPath: string;
-  knowledgeBasePath: string;
-  pluginManager?: PluginManager;
 }

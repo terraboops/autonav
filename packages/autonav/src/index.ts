@@ -42,3 +42,6 @@ export {
   PluginConfigFileSchema,
   type PluginConfigFile,
 } from "./plugins/index.js";
+
+// Export query engine
+export * from "./query-engine/index.js";
