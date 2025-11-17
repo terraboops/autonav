@@ -7,7 +7,15 @@
  */
 
 // Export adapter
-export { ClaudeAdapter, type LoadedNavigator } from "./adapter/index.js";
+export {
+  ClaudeAdapter,
+  type ClaudeAdapterOptions,
+  type LoadedNavigator,
+} from "./adapter/index.js";
 
 // Export templates utilities (for programmatic use)
-export { loadTemplates, replaceTemplateVars, type Templates } from "./templates/index.js";
+export {
+  loadTemplates,
+  replaceTemplateVars,
+  type Templates,
+} from "./templates/index.js";
