@@ -1,0 +1,21 @@
+{
+  "name": "platform-engineering",
+  "version": "0.1.0",
+  "description": "Platform engineering knowledge pack covering Kubernetes operations, monitoring, incident response, and troubleshooting. Provides practical guidance for cloud-native platform teams.",
+  "author": "Terra",
+  "created": "2025-11-17",
+  "updated": "2025-11-17",
+  "autonav_version": ">=0.1.0",
+  "tags": [
+    "platform",
+    "kubernetes",
+    "monitoring",
+    "sre",
+    "devops",
+    "observability",
+    "incident-response",
+    "troubleshooting"
+  ],
+  "homepage": "https://github.com/terraboops/platform-ai",
+  "license": "MIT"
+}
