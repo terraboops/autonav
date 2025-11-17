@@ -14,36 +14,121 @@ import { createPluginManager, PluginManager, PluginConfigFileSchema } from "../p
 import { sanitizeError } from "../plugins/utils/security.js";
 
 /**
+ * Configuration options for Claude Adapter
+ */
+export interface ClaudeAdapterOptions {
+  /**
+   * Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
+   */
+  apiKey?: string;
+
+  /**
+   * Claude model to use (defaults to claude-sonnet-4-20250514)
+   */
+  model?: string;
+
+  /**
+   * Maximum tokens in response (defaults to 4096)
+   */
+  maxTokens?: number;
+
+  /**
+   * Request timeout in milliseconds (defaults to 60000ms = 1 minute)
+   */
+  timeout?: number;
+}
+
+/**
  * Claude SDK Adapter
  *
  * Bridges Claude API to the Communication Layer protocol.
  * Loads navigators, executes queries, and validates responses.
+ *
+ * @example
+ * ```typescript
+ * const adapter = new ClaudeAdapter({
+ *   model: 'claude-sonnet-4-20250514',
+ *   maxTokens: 8192
+ * });
+ *
+ * const navigator = adapter.loadNavigator('./my-navigator');
+ * const response = await adapter.query(navigator, 'How do I deploy?');
+ * ```
  */
 export class ClaudeAdapter {
   private client: Anthropic;
+  private readonly options: Required<ClaudeAdapterOptions>;
 
-  constructor(apiKey?: string) {
-    this.client = new Anthropic({
-      apiKey: apiKey || process.env.ANTHROPIC_API_KEY,
-    });
+  /**
+   * Create a new Claude Adapter
+   *
+   * @param options - Configuration options
+   * @throws {Error} If API key is not provided and ANTHROPIC_API_KEY env var is not set
+   */
+  constructor(options: ClaudeAdapterOptions = {}) {
+    const apiKey = options.apiKey || process.env.ANTHROPIC_API_KEY;
+
+    if (!apiKey) {
+      throw new Error(
+        'Anthropic API key is required. Provide it via options.apiKey or ANTHROPIC_API_KEY environment variable.'
+      );
+    }
+
+    this.client = new Anthropic({ apiKey });
+
+    this.options = {
+      apiKey,
+      model: options.model || "claude-sonnet-4-20250514",
+      maxTokens: options.maxTokens || 4096,
+      timeout: options.timeout || 60000,
+    };
   }
 
   /**
    * Load a navigator from a directory
    *
-   * Reads and validates config.json, CLAUDE.md, and initializes plugins
+   * Reads and validates config.json and CLAUDE.md (or custom instructions file).
+   * Verifies that the knowledge base directory exists.
+   * If .claude/plugins.json exists, initializes configured plugins.
+   *
+   * @param navigatorPath - Path to the navigator directory
+   * @returns Loaded navigator with config, system prompt, paths, and optional plugin manager
+   * @throws {Error} If directory doesn't exist, config is invalid, or required files are missing
+   *
+   * @example
+   * ```typescript
+   * const adapter = new ClaudeAdapter();
+   * const navigator = await adapter.loadNavigator('./my-navigator');
+   * console.log(`Loaded: ${navigator.config.name}`);
+   * ```
    */
   async loadNavigator(navigatorPath: string): Promise<LoadedNavigator> {
     const configPath = path.join(navigatorPath, "config.json");
 
     // Validate directory exists
     if (!fs.existsSync(navigatorPath)) {
-      throw new Error(`Navigator directory not found: ${navigatorPath}`);
+      throw new Error(
+        `Navigator directory not found: ${navigatorPath}\n` +
+        `Make sure the path is correct and the navigator exists.`
+      );
+    }
+
+    // Verify it's a directory
+    const pathStats = fs.statSync(navigatorPath);
+    if (!pathStats.isDirectory()) {
+      throw new Error(
+        `Path is not a directory: ${navigatorPath}\n` +
+        `Navigator path must point to a directory containing config.json`
+      );
     }
 
     // Load and validate config.json
     if (!fs.existsSync(configPath)) {
-      throw new Error(`config.json not found in ${navigatorPath}`);
+      throw new Error(
+        `config.json not found in ${navigatorPath}\n` +
+        `Expected file: ${configPath}\n` +
+        `Use 'nav-init' to create a new navigator with the required structure.`
+      );
     }
 
     const configContent = fs.readFileSync(configPath, "utf-8");
@@ -54,19 +139,21 @@ export class ClaudeAdapter {
       config = NavigatorConfigSchema.parse(configJson);
     } catch (error) {
       throw new Error(
-        `Invalid config.json: ${error instanceof Error ? error.message : String(error)}`
+        `Invalid config.json in ${navigatorPath}:\n` +
+        `${error instanceof Error ? error.message : String(error)}\n\n` +
+        `Config file must match the NavigatorConfig schema.`
       );
     }
 
-    // Load CLAUDE.md instructions
-    const actualInstructionsPath = path.join(
-      navigatorPath,
-      config.instructionsPath || "CLAUDE.md"
-    );
+    // Load instructions file (CLAUDE.md or custom)
+    const instructionsFile = config.instructionsPath || "CLAUDE.md";
+    const actualInstructionsPath = path.join(navigatorPath, instructionsFile);
 
     if (!fs.existsSync(actualInstructionsPath)) {
       throw new Error(
-        `Instructions file not found: ${config.instructionsPath || "CLAUDE.md"}`
+        `Instructions file not found: ${instructionsFile}\n` +
+        `Expected path: ${actualInstructionsPath}\n` +
+        `Create a ${instructionsFile} file with the navigator's system prompt.`
       );
     }
 
@@ -75,12 +162,23 @@ export class ClaudeAdapter {
     // Validate knowledge base exists
     const knowledgeBasePath = path.join(
       navigatorPath,
-      config.knowledgeBasePath || "knowledge-base"
+      config.knowledgeBasePath
     );
 
     if (!fs.existsSync(knowledgeBasePath)) {
       throw new Error(
-        `Knowledge base directory not found: ${config.knowledgeBasePath || "knowledge-base"}`
+        `Knowledge base directory not found: ${config.knowledgeBasePath}\n` +
+        `Expected path: ${knowledgeBasePath}\n` +
+        `Create the directory and add documentation files for the navigator to search.`
+      );
+    }
+
+    // Verify knowledge base is a directory
+    const kbStats = fs.statSync(knowledgeBasePath);
+    if (!kbStats.isDirectory()) {
+      throw new Error(
+        `Knowledge base path is not a directory: ${config.knowledgeBasePath}\n` +
+        `The knowledge base must be a directory containing documentation files.`
       );
     }
 
@@ -123,21 +221,39 @@ export class ClaudeAdapter {
   /**
    * Execute a query using Claude
    *
-   * Sends the question to Claude with the navigator's system prompt
-   * and parses the response into a NavigatorResponse.
+   * Sends the question to Claude with the navigator's system prompt,
+   * parses the response, and validates it against the knowledge base.
+   *
+   * @param navigator - Loaded navigator to query
+   * @param question - Question to ask
+   * @returns Validated navigator response with answer and sources
+   * @throws {Error} If API call fails, response parsing fails, or validation fails
+   *
+   * @example
+   * ```typescript
+   * const response = await adapter.query(navigator, 'How do I deploy?');
+   * console.log(response.answer);
+   * console.log(`Confidence: ${response.confidence}`);
+   * console.log(`Sources: ${response.sources.map(s => s.filePath).join(', ')}`);
+   * ```
    */
   async query(
     navigator: LoadedNavigator,
     question: string
   ): Promise<NavigatorResponse> {
+    // Validate inputs
+    if (!question || question.trim().length === 0) {
+      throw new Error('Question cannot be empty');
+    }
+
     // Create the prompt
     const prompt = createAnswerQuestionPrompt(question);
 
     try {
-      // Call Claude API
+      // Call Claude API with configured options
       const response = await this.client.messages.create({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 4096,
+        model: this.options.model,
+        max_tokens: this.options.maxTokens,
         system: navigator.systemPrompt,
         messages: [
           {
@@ -196,7 +312,15 @@ export class ClaudeAdapter {
   /**
    * Parse Claude's response into a NavigatorResponse
    *
-   * Extracts JSON from the response text and validates it against the schema.
+   * Extracts JSON from the response text (either from code blocks or raw JSON)
+   * and validates it against the NavigatorResponseSchema.
+   *
+   * @param rawResponse - Raw text response from Claude
+   * @param query - Original query (used to populate missing query field)
+   * @returns Parsed and validated NavigatorResponse
+   * @throws {Error} If JSON cannot be extracted or schema validation fails
+   *
+   * @internal
    */
   parseResponse(rawResponse: string, query: string): NavigatorResponse {
     // Try to extract JSON from code blocks
@@ -237,7 +361,18 @@ export class ClaudeAdapter {
   /**
    * Validate a NavigatorResponse
    *
-   * Runs hallucination detection and source verification.
+   * Runs comprehensive validation including:
+   * - Source file existence checks
+   * - Hallucination pattern detection
+   * - Confidence threshold validation
+   * - Context size validation
+   *
+   * @param response - Navigator response to validate
+   * @param config - Navigator configuration (for thresholds)
+   * @param knowledgeBasePath - Optional path to knowledge base (uses config.knowledgeBasePath if not provided)
+   * @returns Validation result with errors and warnings
+   *
+   * @internal
    */
   validate(
     response: NavigatorResponse,
