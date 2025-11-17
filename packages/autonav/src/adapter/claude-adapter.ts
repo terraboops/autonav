@@ -265,8 +265,8 @@ export class ClaudeAdapter {
 
       // Extract text from response
       const textContent = response.content
-        .filter((block): block is Anthropic.TextBlock => block.type === "text")
-        .map((block) => block.text)
+        .filter((block: Anthropic.ContentBlock): block is Anthropic.TextBlock => block.type === "text")
+        .map((block: Anthropic.TextBlock) => block.text)
         .join("\n");
 
       // Parse the response
