@@ -14,6 +14,11 @@ export const NavigatorResponseSchema = z.object({
   protocolVersion: z.string().default(PROTOCOL_VERSION),
 
   /**
+   * The original query/question (optional for backwards compatibility)
+   */
+  query: z.string().optional(),
+
+  /**
    * The answer to the user's question
    */
   answer: z.string().min(1),
