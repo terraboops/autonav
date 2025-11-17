@@ -5,12 +5,12 @@
   "description": "Multi-agent Platform AI system for knowledge management and support toil reduction",
   "workspaces": [
     "packages/*",
-    "examples/*"
+    "packs/*"
   ],
   "scripts": {
     "build": "npm run build -w @platform-ai/communication-layer && npm run build -w @platform-ai/autonav",
     "test": "npm test --workspaces --if-present",
-    "clean": "rm -rf packages/*/dist packages/*/build examples/*/dist",
+    "clean": "rm -rf packages/*/dist packages/*/build packs/*/dist",
     "typecheck": "npm run build && npm run typecheck --workspaces --if-present"
   },
   "keywords": [
