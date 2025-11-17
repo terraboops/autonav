@@ -82,8 +82,8 @@ async function main() {
     // Initialize adapter
     const adapter = new ClaudeAdapter();
 
-    // Load navigator
-    const navigator = adapter.loadNavigator(navigatorPath);
+    // Load navigator (async - initializes plugins if configured)
+    const navigator = await adapter.loadNavigator(navigatorPath);
     console.error(`✓ Loaded: ${navigator.config.name}`);
     console.error(`✓ Knowledge base: ${navigator.knowledgeBasePath}\n`);
 
@@ -100,18 +100,15 @@ async function main() {
     console.error(`\n✅ Query completed successfully!`);
     console.error(`   Sources cited: ${response.sources.length}`);
     console.error(
-      `   Confidence: ${response.confidence !== undefined ? (response.confidence * 100).toFixed(0) + "%" : "N/A"}\n`
+      `   Confidence: ${response.confidence} (${response.confidenceReason})\n`
     );
 
     // Show sources
     if (response.sources.length > 0) {
       console.error("📚 Sources:");
       for (const source of response.sources) {
-        let sourceLine = `   - ${source.filePath}`;
-        if (source.lineNumbers) {
-          sourceLine += ` (lines ${source.lineNumbers[0]}-${source.lineNumbers[1]})`;
-        }
-        console.error(sourceLine);
+        console.error(`   - ${source.file} (${source.section})`);
+        console.error(`     Relevance: ${source.relevance}`);
       }
       console.error("");
     }

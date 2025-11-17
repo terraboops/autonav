@@ -10,6 +10,8 @@ import {
   validateResponse,
   type ValidationResult,
 } from "@platform-ai/communication-layer";
+import { createPluginManager, PluginManager, PluginConfigFileSchema } from "../plugins/index.js";
+import { sanitizeError } from "../plugins/utils/security.js";
 
 /**
  * Configuration options for Claude Adapter
@@ -87,19 +89,20 @@ export class ClaudeAdapter {
    *
    * Reads and validates config.json and CLAUDE.md (or custom instructions file).
    * Verifies that the knowledge base directory exists.
+   * If .claude/plugins.json exists, initializes configured plugins.
    *
    * @param navigatorPath - Path to the navigator directory
-   * @returns Loaded navigator with config, system prompt, and paths
+   * @returns Loaded navigator with config, system prompt, paths, and optional plugin manager
    * @throws {Error} If directory doesn't exist, config is invalid, or required files are missing
    *
    * @example
    * ```typescript
    * const adapter = new ClaudeAdapter();
-   * const navigator = adapter.loadNavigator('./my-navigator');
+   * const navigator = await adapter.loadNavigator('./my-navigator');
    * console.log(`Loaded: ${navigator.config.name}`);
    * ```
    */
-  loadNavigator(navigatorPath: string): LoadedNavigator {
+  async loadNavigator(navigatorPath: string): Promise<LoadedNavigator> {
     const configPath = path.join(navigatorPath, "config.json");
 
     // Validate directory exists
@@ -159,12 +162,12 @@ export class ClaudeAdapter {
     // Validate knowledge base exists
     const knowledgeBasePath = path.join(
       navigatorPath,
-      config.knowledgeBasePath
+      config.knowledgeBase
     );
 
     if (!fs.existsSync(knowledgeBasePath)) {
       throw new Error(
-        `Knowledge base directory not found: ${config.knowledgeBasePath}\n` +
+        `Knowledge base directory not found: ${config.knowledgeBase}\n` +
         `Expected path: ${knowledgeBasePath}\n` +
         `Create the directory and add documentation files for the navigator to search.`
       );
@@ -174,9 +177,36 @@ export class ClaudeAdapter {
     const kbStats = fs.statSync(knowledgeBasePath);
     if (!kbStats.isDirectory()) {
       throw new Error(
-        `Knowledge base path is not a directory: ${config.knowledgeBasePath}\n` +
+        `Knowledge base path is not a directory: ${config.knowledgeBase}\n` +
         `The knowledge base must be a directory containing documentation files.`
       );
+    }
+
+    // Load and initialize plugins if .claude/plugins.json exists
+    let pluginManager: PluginManager | undefined;
+    const pluginsConfigPath = path.join(navigatorPath, ".claude", "plugins.json");
+
+    if (fs.existsSync(pluginsConfigPath)) {
+      try {
+        const pluginsConfigContent = fs.readFileSync(pluginsConfigPath, "utf-8");
+        const pluginsConfig = PluginConfigFileSchema.parse(JSON.parse(pluginsConfigContent));
+
+        // Create plugin manager
+        pluginManager = createPluginManager(pluginsConfigPath);
+
+        // Actually initialize the plugins (CRITICAL FIX)
+        await pluginManager.loadPlugins(pluginsConfig);
+
+        console.log("✓ Plugins initialized successfully");
+      } catch (error) {
+        // Sanitize error to prevent credential leakage in logs
+        const safeMessage = sanitizeError(error instanceof Error ? error.message : String(error));
+
+        console.warn(`⚠️  Failed to load plugins: ${safeMessage}`);
+        console.warn("   Continuing without plugins...");
+        // Continue without plugins (fail-safe)
+        pluginManager = undefined;
+      }
     }
 
     return {
@@ -184,6 +214,7 @@ export class ClaudeAdapter {
       systemPrompt,
       navigatorPath,
       knowledgeBasePath,
+      pluginManager,
     };
   }
 
@@ -234,8 +265,8 @@ export class ClaudeAdapter {
 
       // Extract text from response
       const textContent = response.content
-        .filter((block): block is Anthropic.TextBlock => block.type === "text")
-        .map((block) => block.text)
+        .filter((block: Anthropic.ContentBlock): block is Anthropic.TextBlock => block.type === "text")
+        .map((block: Anthropic.TextBlock) => block.text)
         .join("\n");
 
       // Parse the response
@@ -244,7 +275,6 @@ export class ClaudeAdapter {
       // Validate the response
       const validation = this.validate(
         navigatorResponse,
-        navigator.config,
         navigator.knowledgeBasePath
       );
 
@@ -333,22 +363,19 @@ export class ClaudeAdapter {
    * Runs comprehensive validation including:
    * - Source file existence checks
    * - Hallucination pattern detection
-   * - Confidence threshold validation
-   * - Context size validation
+   * - Confidence level validation
    *
    * @param response - Navigator response to validate
-   * @param config - Navigator configuration (for thresholds)
-   * @param knowledgeBasePath - Optional path to knowledge base (uses config.knowledgeBasePath if not provided)
+   * @param knowledgeBasePath - Path to knowledge base directory
    * @returns Validation result with errors and warnings
    *
    * @internal
    */
   validate(
     response: NavigatorResponse,
-    config: NavigatorConfig,
-    knowledgeBasePath?: string
+    knowledgeBasePath: string
   ): ValidationResult {
-    return validateResponse(response, config, knowledgeBasePath);
+    return validateResponse(response, knowledgeBasePath);
   }
 }
 
@@ -360,4 +387,5 @@ export interface LoadedNavigator {
   systemPrompt: string;
   navigatorPath: string;
   knowledgeBasePath: string;
+  pluginManager?: PluginManager;
 }

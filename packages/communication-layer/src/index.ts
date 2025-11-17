@@ -40,24 +40,39 @@ export {
   SourceSchema,
   type Source,
   createSource,
-  validateLineNumbers,
 } from './schemas/source.js';
 
 // Schemas - Response
 export {
   NavigatorResponseSchema,
+  ConfidenceLevelSchema,
   type NavigatorResponse,
+  type ConfidenceLevel,
   createNavigatorResponse,
-  meetsConfidenceThreshold,
+  confidenceToScore,
+  scoreToConfidence,
 } from './schemas/response.js';
 
 // Schemas - Config
 export {
   NavigatorConfigSchema,
+  KnowledgePackMetadataSchema,
   type NavigatorConfig,
+  type KnowledgePackMetadata,
   createNavigatorConfig,
-  isCompatibleVersion,
 } from './schemas/config.js';
+
+// Schemas - Plugin Config
+export {
+  PluginConfigSchema,
+  SlackPluginSchema,
+  SignalPluginSchema,
+  type PluginConfig,
+  type SlackPlugin,
+  type SignalPlugin,
+  createDefaultPluginConfig,
+  validatePluginConfig,
+} from './schemas/plugin-config.js';
 
 // Schemas - Query
 export {

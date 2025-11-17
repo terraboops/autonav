@@ -16,32 +16,9 @@ describe('Schema Validation', () => {
   describe('SourceSchema', () => {
     it('should validate valid source', () => {
       const source = {
-        filePath: 'docs/test.md',
-        excerpt: 'Test content',
-        relevanceScore: 0.8,
-      };
-
-      const result = SourceSchema.safeParse(source);
-      expect(result.success).toBe(true);
-    });
-
-    it('should reject invalid relevance score', () => {
-      const source = {
-        filePath: 'docs/test.md',
-        excerpt: 'Test content',
-        relevanceScore: 1.5, // Invalid: > 1
-      };
-
-      const result = SourceSchema.safeParse(source);
-      expect(result.success).toBe(false);
-    });
-
-    it('should accept optional line numbers', () => {
-      const source = {
-        filePath: 'docs/test.md',
-        excerpt: 'Test content',
-        relevanceScore: 0.8,
-        lineNumbers: [10, 20] as [number, number],
+        file: 'docs/test.md',
+        section: 'Test Section',
+        relevance: 'Contains information about the topic',
       };
 
       const result = SourceSchema.safeParse(source);
@@ -50,9 +27,31 @@ describe('Schema Validation', () => {
 
     it('should reject empty file path', () => {
       const source = {
-        filePath: '',
-        excerpt: 'Test content',
-        relevanceScore: 0.8,
+        file: '',
+        section: 'Test Section',
+        relevance: 'Contains information',
+      };
+
+      const result = SourceSchema.safeParse(source);
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject empty section', () => {
+      const source = {
+        file: 'docs/test.md',
+        section: '',
+        relevance: 'Contains information',
+      };
+
+      const result = SourceSchema.safeParse(source);
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject empty relevance', () => {
+      const source = {
+        file: 'docs/test.md',
+        section: 'Test Section',
+        relevance: '',
       };
 
       const result = SourceSchema.safeParse(source);
@@ -67,45 +66,68 @@ describe('Schema Validation', () => {
         answer: 'Test answer',
         sources: [
           {
-            filePath: 'docs/test.md',
-            excerpt: 'Test excerpt',
-            relevanceScore: 0.9,
+            file: 'docs/test.md',
+            section: 'Test Section',
+            relevance: 'Contains the answer to the question',
           },
         ],
-        confidence: 0.8,
-        contextSize: 1000,
+        confidence: 'high' as const,
+        confidenceReason: 'Direct answer found in documentation',
+        outOfDomain: false,
       };
 
       const result = NavigatorResponseSchema.safeParse(response);
       expect(result.success).toBe(true);
     });
 
-    it('should reject response without sources', () => {
+    it('should accept response with empty sources array', () => {
+      const response = {
+        protocolVersion: '0.1.0',
+        answer: "I don't have information about that",
+        sources: [],
+        confidence: 'low' as const,
+        confidenceReason: 'No relevant information found in knowledge base',
+        outOfDomain: true,
+      };
+
+      const result = NavigatorResponseSchema.safeParse(response);
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject invalid confidence level', () => {
       const response = {
         protocolVersion: '0.1.0',
         answer: 'Test answer',
-        sources: [],
-        confidence: 0.8,
-        contextSize: 1000,
+        sources: [
+          {
+            file: 'docs/test.md',
+            section: 'Test Section',
+            relevance: 'Contains information',
+          },
+        ],
+        confidence: 'invalid' as any,
+        confidenceReason: 'Test reason',
+        outOfDomain: false,
       };
 
       const result = NavigatorResponseSchema.safeParse(response);
       expect(result.success).toBe(false);
     });
 
-    it('should reject invalid confidence score', () => {
+    it('should reject short confidence reason', () => {
       const response = {
         protocolVersion: '0.1.0',
         answer: 'Test answer',
         sources: [
           {
-            filePath: 'docs/test.md',
-            excerpt: 'Test excerpt',
-            relevanceScore: 0.9,
+            file: 'docs/test.md',
+            section: 'Test Section',
+            relevance: 'Contains information',
           },
         ],
-        confidence: -0.5, // Invalid: < 0
-        contextSize: 1000,
+        confidence: 'high' as const,
+        confidenceReason: 'Short', // Too short (< 10 chars)
+        outOfDomain: false,
       };
 
       const result = NavigatorResponseSchema.safeParse(response);
@@ -118,18 +140,40 @@ describe('Schema Validation', () => {
         answer: 'Test answer',
         sources: [
           {
-            filePath: 'docs/test.md',
-            excerpt: 'Test excerpt',
-            relevanceScore: 0.9,
+            file: 'docs/test.md',
+            section: 'Test Section',
+            relevance: 'Contains information',
           },
         ],
-        confidence: 0.8,
-        contextSize: 1000,
+        confidence: 'high' as const,
+        confidenceReason: 'Direct answer found',
+        outOfDomain: false,
         metadata: {
           responseTimeMs: 450,
           navigatorName: 'test-nav',
-          domain: 'test',
+          filesSearched: 5,
         },
+      };
+
+      const result = NavigatorResponseSchema.safeParse(response);
+      expect(result.success).toBe(true);
+    });
+
+    it('should accept optional relatedTopics', () => {
+      const response = {
+        protocolVersion: '0.1.0',
+        answer: 'Test answer',
+        sources: [
+          {
+            file: 'docs/test.md',
+            section: 'Test Section',
+            relevance: 'Contains information',
+          },
+        ],
+        confidence: 'medium' as const,
+        confidenceReason: 'Answer requires synthesis',
+        outOfDomain: false,
+        relatedTopics: ['deployment', 'configuration', 'monitoring'],
       };
 
       const result = NavigatorResponseSchema.safeParse(response);
@@ -140,47 +184,75 @@ describe('Schema Validation', () => {
   describe('NavigatorConfigSchema', () => {
     it('should validate valid config', () => {
       const config = {
-        communicationLayerVersion: '0.1.0',
+        version: '1.0.0',
         name: 'test-navigator',
-        domain: 'test',
-        knowledgeBasePath: './knowledge',
+        description: 'Test navigator for validation',
+        created: new Date().toISOString(),
+        knowledgePack: null,
+        knowledgeBase: './knowledge',
         confidenceThreshold: 0.7,
+        plugins: {
+          configFile: '.claude/plugins.json',
+        },
       };
 
       const result = NavigatorConfigSchema.safeParse(config);
       expect(result.success).toBe(true);
     });
 
-    it('should use default confidence threshold', () => {
+    it('should validate config with knowledge pack', () => {
       const config = {
-        communicationLayerVersion: '0.1.0',
+        version: '1.0.0',
         name: 'test-navigator',
-        domain: 'test',
-        knowledgeBasePath: './knowledge',
+        created: new Date().toISOString(),
+        knowledgePack: {
+          name: 'aws-platform',
+          version: '1.2.0',
+          installedAt: new Date().toISOString(),
+        },
+        knowledgeBase: './knowledge',
+        plugins: {
+          configFile: '.claude/plugins.json',
+        },
       };
 
       const result = NavigatorConfigSchema.safeParse(config);
       expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.confidenceThreshold).toBe(0.7);
-      }
     });
 
     it('should accept optional fields', () => {
       const config = {
-        communicationLayerVersion: '0.1.0',
+        version: '1.0.0',
         name: 'test-navigator',
-        domain: 'test',
-        knowledgeBasePath: './knowledge',
-        confidenceThreshold: 0.8,
-        maxContextSize: 100000,
-        relatedDomains: ['aws', 'terraform'],
-        dependencies: ['other-navigator'],
         description: 'Test navigator',
+        created: new Date().toISOString(),
+        knowledgePack: null,
+        knowledgeBase: './knowledge',
+        instructionsPath: 'custom-prompt.md',
+        systemConfiguration: 'system-config.json',
+        confidenceThreshold: 0.8,
+        plugins: {
+          configFile: '.claude/plugins.json',
+        },
       };
 
       const result = NavigatorConfigSchema.safeParse(config);
       expect(result.success).toBe(true);
+    });
+
+    it('should reject config without required knowledgeBase', () => {
+      const config = {
+        version: '1.0.0',
+        name: 'test-navigator',
+        created: new Date().toISOString(),
+        knowledgePack: null,
+        plugins: {
+          configFile: '.claude/plugins.json',
+        },
+      };
+
+      const result = NavigatorConfigSchema.safeParse(config);
+      expect(result.success).toBe(false);
     });
   });
 
@@ -252,13 +324,14 @@ describe('Schema Validation', () => {
   describe('Helper Functions', () => {
     it('createSource should create valid source', () => {
       const source = createSource({
-        filePath: 'docs/test.md',
-        excerpt: 'Test content',
-        relevanceScore: 0.9,
+        file: 'docs/test.md',
+        section: 'Test Section',
+        relevance: 'Contains relevant information',
       });
 
-      expect(source.filePath).toBe('docs/test.md');
-      expect(source.relevanceScore).toBe(0.9);
+      expect(source.file).toBe('docs/test.md');
+      expect(source.section).toBe('Test Section');
+      expect(source.relevance).toBe('Contains relevant information');
     });
 
     it('createNavigatorResponse should create valid response', () => {
@@ -266,28 +339,33 @@ describe('Schema Validation', () => {
         answer: 'Test',
         sources: [
           {
-            filePath: 'test.md',
-            excerpt: 'content',
-            relevanceScore: 0.9,
+            file: 'test.md',
+            section: 'Test Section',
+            relevance: 'Contains the answer',
           },
         ],
-        confidence: 0.8,
-        contextSize: 1000,
+        confidence: 'high',
+        confidenceReason: 'Direct answer found in documentation',
+        outOfDomain: false,
       });
 
       expect(response.protocolVersion).toBe('0.1.0');
       expect(response.answer).toBe('Test');
+      expect(response.confidence).toBe('high');
+      expect(response.outOfDomain).toBe(false);
     });
 
     it('createNavigatorConfig should create valid config', () => {
       const config = createNavigatorConfig({
         name: 'test',
-        domain: 'test',
-        knowledgeBasePath: './knowledge',
+        knowledgeBase: './knowledge',
       });
 
-      expect(config.communicationLayerVersion).toBe('0.1.0');
-      expect(config.confidenceThreshold).toBe(0.7);
+      expect(config.version).toBe('1.0.0');
+      expect(config.name).toBe('test');
+      expect(config.knowledgeBase).toBe('./knowledge');
+      expect(config.knowledgePack).toBe(null);
+      expect(config.plugins.configFile).toBe('.claude/plugins.json');
     });
 
     it('createUserQuery should create valid query', () => {
