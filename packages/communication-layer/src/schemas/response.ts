@@ -28,6 +28,11 @@ export const NavigatorResponseSchema = z.object({
   protocolVersion: z.string().default(PROTOCOL_VERSION),
 
   /**
+   * The original query/question (optional for backwards compatibility)
+   */
+  query: z.string().optional(),
+
+  /**
    * Direct answer to the question
    * Must be grounded in sources from the knowledge base
    */
@@ -97,6 +102,7 @@ export function createNavigatorResponse(params: {
   confidence: ConfidenceLevel;
   confidenceReason: string;
   outOfDomain: boolean;
+  query?: string;
   relatedTopics?: string[];
   metadata?: NavigatorResponse['metadata'];
 }): NavigatorResponse {

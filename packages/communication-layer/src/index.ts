@@ -109,6 +109,15 @@ export {
   validateSource,
 } from './validation/index.js';
 
+// Prompts
+export {
+  GROUNDING_RULES,
+  createAnswerQuestionPrompt,
+  createConfidencePrompt,
+  createExtractSourcesPrompt,
+  createNavigatorSystemPrompt,
+} from './prompts/index.js';
+
 /**
  * Re-export Zod for convenience
  */
