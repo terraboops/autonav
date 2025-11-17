@@ -1,0 +1,32 @@
+{
+  "file-watcher": {
+    "enabled": false,
+    "config": {
+      "paths": [],
+      "patterns": ["**/*.md"],
+      "ignorePatterns": ["**/node_modules/**", "**/.git/**", "**/dist/**"],
+      "pollInterval": 1000
+    }
+  },
+  "slack": {
+    "enabled": false,
+    "config": {
+      "token": "",
+      "channels": [],
+      "threadNotifications": true,
+      "summaryFrequency": "daily"
+    }
+  },
+  "github": {
+    "enabled": false,
+    "config": {
+      "token": "",
+      "owner": "",
+      "repo": "",
+      "watchIssues": true,
+      "watchPullRequests": true,
+      "watchCommits": false,
+      "pollIntervalMinutes": 5
+    }
+  }
+}
