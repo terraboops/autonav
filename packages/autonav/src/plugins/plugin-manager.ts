@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Plugin, PluginError } from './types.js';
+import { sanitizeError, sanitizeConfigForLogging } from './utils/security.js';
 
 /**
  * Schema for .claude/plugins.json
@@ -79,6 +80,9 @@ export class PluginManager {
           config.config || {}
         );
 
+        // Log sanitized config (never log actual tokens)
+        console.log(`Plugin "${name}" initializing with config:`, sanitizeConfigForLogging(validatedConfig as Record<string, unknown>));
+
         // Initialize plugin
         await registration.plugin.initialize(validatedConfig);
 
@@ -88,9 +92,12 @@ export class PluginManager {
 
         console.log(`Plugin "${name}" initialized successfully`);
       } catch (error) {
+        // Sanitize error message to prevent credential leakage
+        const safeMessage = sanitizeError(error instanceof Error ? error.message : String(error));
+
         const pluginError = new PluginError(
           name,
-          `Failed to load: ${error instanceof Error ? error.message : String(error)}`,
+          `Failed to load: ${safeMessage}`,
           error instanceof Error ? error : undefined
         );
 
@@ -126,28 +133,52 @@ export class PluginManager {
   /**
    * Listen to all enabled plugins and gather events.
    * Errors from individual plugins don't fail the entire listen operation.
+   * Plugins are queried in parallel for better performance.
    */
   async listenAll(): Promise<Map<string, unknown[]>> {
     const events = new Map<string, unknown[]>();
 
-    for (const registration of this.plugins.values()) {
-      if (!registration.enabled || !registration.initialized) {
-        continue;
-      }
+    // Get all enabled plugins
+    const enabledPlugins = Array.from(this.plugins.values()).filter(
+      (reg) => reg.enabled && reg.initialized
+    );
 
-      try {
-        const pluginEvents = await registration.plugin.listen();
-        if (pluginEvents.length > 0) {
-          events.set(registration.plugin.name, pluginEvents);
+    // Listen to all plugins in parallel
+    const results = await Promise.allSettled(
+      enabledPlugins.map(async (registration) => {
+        try {
+          const pluginEvents = await registration.plugin.listen();
+          return {
+            name: registration.plugin.name,
+            events: pluginEvents,
+            registration,
+          };
+        } catch (error) {
+          // Sanitize error to prevent credential leakage
+          const safeMessage = sanitizeError(
+            error instanceof Error ? error.message : String(error)
+          );
+
+          registration.lastError = new PluginError(
+            registration.plugin.name,
+            `Listen failed: ${safeMessage}`,
+            error instanceof Error ? error : undefined
+          );
+          console.error(registration.lastError.message);
+
+          return {
+            name: registration.plugin.name,
+            events: [],
+            registration,
+          };
         }
-      } catch (error) {
-        registration.lastError = new PluginError(
-          registration.plugin.name,
-          `Listen failed: ${error instanceof Error ? error.message : String(error)}`,
-          error instanceof Error ? error : undefined
-        );
-        console.error(registration.lastError.message);
-        // Continue listening to other plugins
+      })
+    );
+
+    // Collect results
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value.events.length > 0) {
+        events.set(result.value.name, result.value.events);
       }
     }
 
@@ -196,9 +227,12 @@ export class PluginManager {
 
       console.log(`Plugin "${name}" configuration updated`);
     } catch (error) {
+      // Sanitize error to prevent credential leakage
+      const safeMessage = sanitizeError(error instanceof Error ? error.message : String(error));
+
       throw new PluginError(
         name,
-        `Config update failed: ${error instanceof Error ? error.message : String(error)}`,
+        `Config update failed: ${safeMessage}`,
         error instanceof Error ? error : undefined
       );
     }
