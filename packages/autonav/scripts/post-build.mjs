@@ -1,0 +1,67 @@
+#!/usr/bin/env node
+
+/**
+ * Post-build script for autonav package
+ * Makes CLI scripts executable and copies template files
+ * Cross-platform compatible (works on Windows, Linux, macOS)
+ */
+
+import { chmod, copyFile, mkdir, readdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageRoot = dirname(__dirname);
+
+async function postBuild() {
+  try {
+    console.log('Running post-build tasks...');
+
+    // Make CLI scripts executable (Unix-like systems only)
+    if (process.platform !== 'win32') {
+      const cliDir = join(packageRoot, 'dist', 'cli');
+      if (existsSync(cliDir)) {
+        const files = await readdir(cliDir);
+        const jsFiles = files.filter(f => f.endsWith('.js'));
+
+        for (const file of jsFiles) {
+          const filePath = join(cliDir, file);
+          await chmod(filePath, 0o755);
+          console.log(`✓ Made executable: dist/cli/${file}`);
+        }
+      }
+    } else {
+      console.log('⊘ Skipping chmod (Windows)');
+    }
+
+    // Create templates directory if it doesn't exist
+    const templatesDir = join(packageRoot, 'dist', 'templates');
+    if (!existsSync(templatesDir)) {
+      await mkdir(templatesDir, { recursive: true });
+      console.log(`✓ Created directory: dist/templates`);
+    }
+
+    // Copy template files
+    const srcTemplatesDir = join(packageRoot, 'src', 'templates');
+    if (existsSync(srcTemplatesDir)) {
+      const files = await readdir(srcTemplatesDir);
+      const templateFiles = files.filter(f => f.endsWith('.template'));
+
+      for (const file of templateFiles) {
+        const srcPath = join(srcTemplatesDir, file);
+        const destPath = join(templatesDir, file);
+        await copyFile(srcPath, destPath);
+        console.log(`✓ Copied: src/templates/${file} -> dist/templates/${file}`);
+      }
+    }
+
+    console.log('✅ Post-build completed successfully');
+  } catch (error) {
+    console.error('❌ Post-build failed:', error);
+    process.exit(1);
+  }
+}
+
+postBuild();
