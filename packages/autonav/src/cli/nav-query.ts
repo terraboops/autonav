@@ -107,10 +107,11 @@ async function main() {
     if (response.sources.length > 0) {
       console.error("📚 Sources:");
       for (const source of response.sources) {
-        console.error(`   - ${source.filePath}`);
+        let sourceLine = `   - ${source.filePath}`;
         if (source.lineNumbers) {
-          console.error(`     (lines ${source.lineNumbers[0]}-${source.lineNumbers[1]})`);
+          sourceLine += ` (lines ${source.lineNumbers[0]}-${source.lineNumbers[1]})`;
         }
+        console.error(sourceLine);
       }
       console.error("");
     }
