@@ -1,6 +1,5 @@
 import chalk from "chalk";
-import { NavigatorResponse } from "@platform-ai/communication-layer";
-import { getConfidenceLevel, type ConfidenceLevel } from "./response-validator.js";
+import { NavigatorResponse, type ConfidenceLevel } from "@platform-ai/communication-layer";
 
 /**
  * Output format mode
@@ -71,10 +70,10 @@ function formatCompact(response: NavigatorResponse): string {
   // Answer
   lines.push(response.answer);
 
-  // Sources in brackets
+  // Sources in brackets (using file field)
   if (response.sources.length > 0) {
     const sourceCitations = response.sources
-      .map((source) => source.filePath)
+      .map((source) => source.file)
       .join(", ");
 
     lines.push(`[${sourceCitations}]`);
@@ -102,42 +101,42 @@ function formatPretty(
   if (response.sources.length > 0) {
     lines.push(chalk.bold.cyan("Sources:"));
     for (const source of response.sources) {
-      const filePath = chalk.white(source.filePath);
-      const lineInfo = source.lineNumbers
-        ? chalk.dim(` (lines ${source.lineNumbers[0]}-${source.lineNumbers[1]})`)
-        : "";
+      const filePath = chalk.white(source.file);
+      const sectionInfo = chalk.dim(` (${source.section})`);
 
-      lines.push(`${chalk.green("✓")} ${filePath}${lineInfo}`);
+      lines.push(`${chalk.green("✓")} ${filePath}${sectionInfo}`);
 
-      // Show excerpt if available
-      if (source.excerpt) {
-        const excerptPreview = source.excerpt.length > 80
-          ? source.excerpt.substring(0, 77) + "..."
-          : source.excerpt;
-        lines.push(chalk.dim(`  "${excerptPreview}"`));
-      }
-
-      // Show relevance score if available
-      if (source.relevanceScore !== undefined) {
-        const scorePercent = (source.relevanceScore * 100).toFixed(0);
-        lines.push(chalk.dim(`  Relevance: ${scorePercent}%`));
+      // Show relevance
+      if (source.relevance) {
+        lines.push(chalk.dim(`  Relevance: ${source.relevance}`));
       }
     }
     lines.push("");
   }
 
-  // Confidence section
-  const confidenceLevel = getConfidenceLevel(response.confidence);
-  if (confidenceLevel || response.confidence !== undefined) {
-    const confidenceColor = getConfidenceColor(confidenceLevel);
-    const confidenceText = confidenceLevel || "unknown";
-    const confidenceScore = response.confidence !== undefined
-      ? ` (${(response.confidence * 100).toFixed(0)}%)`
-      : "";
+  // Confidence section (using enum value directly)
+  const confidenceColor = getConfidenceColor(response.confidence);
 
-    lines.push(
-      `${chalk.bold("Confidence:")} ${confidenceColor(confidenceText)}${confidenceScore}`
-    );
+  lines.push(
+    `${chalk.bold("Confidence:")} ${confidenceColor(response.confidence)}`
+  );
+  if (response.confidenceReason) {
+    lines.push(chalk.dim(`  Reason: ${response.confidenceReason}`));
+  }
+  lines.push("");
+
+  // Out of domain warning
+  if (response.outOfDomain) {
+    lines.push(chalk.yellow("⚠ This question is outside the navigator's domain"));
+    lines.push("");
+  }
+
+  // Related topics
+  if (response.relatedTopics && response.relatedTopics.length > 0) {
+    lines.push(chalk.bold.cyan("Related Topics:"));
+    for (const topic of response.relatedTopics) {
+      lines.push(`  ${chalk.dim("•")} ${topic}`);
+    }
     lines.push("");
   }
 
@@ -145,12 +144,13 @@ function formatPretty(
   if (verbose) {
     lines.push(chalk.bold.dim("Debug Information:"));
     lines.push(chalk.dim(`Protocol Version: ${response.protocolVersion}`));
-    lines.push(chalk.dim(`Context Size: ${response.contextSize}`));
     if (response.metadata) {
       lines.push(chalk.dim(`Navigator: ${response.metadata.navigatorName || "N/A"}`));
-      lines.push(chalk.dim(`Domain: ${response.metadata.domain || "N/A"}`));
       if (response.metadata.responseTimeMs) {
         lines.push(chalk.dim(`Response Time: ${response.metadata.responseTimeMs}ms`));
+      }
+      if (response.metadata.filesSearched !== undefined) {
+        lines.push(chalk.dim(`Files Searched: ${response.metadata.filesSearched}`));
       }
     }
     lines.push("");
@@ -163,7 +163,7 @@ function formatPretty(
  * Get color function for confidence level
  */
 function getConfidenceColor(
-  level?: ConfidenceLevel
+  level: ConfidenceLevel
 ): typeof chalk.green {
   switch (level) {
     case "high":

@@ -3,12 +3,8 @@ import {
   checkSourcesExist,
   detectHallucinations,
   type ValidationResult,
+  type ConfidenceLevel,
 } from "@platform-ai/communication-layer";
-
-/**
- * Confidence levels for response validation
- */
-export type ConfidenceLevel = "high" | "medium" | "low";
 
 /**
  * Response validation options
@@ -64,7 +60,6 @@ export function validateResponse(
   options: ResponseValidationOptions
 ): ExtendedValidationResult {
   // Run base validation (source existence, hallucination detection)
-  // Note: We're running these separately since we don't have a full config
   const sourceCheck = checkSourcesExist(response, options.knowledgeBasePath);
   const hallucinationCheck = detectHallucinations(response);
 
@@ -75,8 +70,8 @@ export function validateResponse(
     warnings: [...sourceCheck.warnings, ...hallucinationCheck.warnings],
   };
 
-  // Check confidence level
-  const confidenceLevel = getConfidenceLevel(response.confidence);
+  // Check confidence level (now using enum)
+  const confidenceLevel = response.confidence;
   const confidenceMet = checkConfidenceMeetsMinimum(
     confidenceLevel,
     options.minimumConfidence
@@ -95,7 +90,7 @@ export function validateResponse(
     extendedResult.valid = false;
     extendedResult.errors.push(
       new Error(
-        `Response confidence (${confidenceLevel || "unknown"}) is below required minimum (${options.minimumConfidence})`
+        `Response confidence (${confidenceLevel}) is below required minimum (${options.minimumConfidence})`
       )
     );
   }
@@ -118,44 +113,15 @@ export function validateResponse(
 }
 
 /**
- * Get confidence level from numeric score
- *
- * Maps:
- * - >= 0.8: high
- * - >= 0.5: medium
- * - < 0.5: low
- */
-export function getConfidenceLevel(
-  confidence?: number
-): ConfidenceLevel | undefined {
-  if (confidence === undefined) {
-    return undefined;
-  }
-
-  if (confidence >= 0.8) {
-    return "high";
-  } else if (confidence >= 0.5) {
-    return "medium";
-  } else {
-    return "low";
-  }
-}
-
-/**
  * Check if confidence level meets minimum requirement
  */
 function checkConfidenceMeetsMinimum(
-  actual?: ConfidenceLevel,
+  actual: ConfidenceLevel,
   minimum?: ConfidenceLevel
 ): boolean {
   // If no minimum required, always pass
   if (!minimum) {
     return true;
-  }
-
-  // If no actual confidence, fail
-  if (!actual) {
-    return false;
   }
 
   const levels: Record<ConfidenceLevel, number> = {
@@ -213,3 +179,6 @@ export function formatConfidenceInfo(
 
   return lines.join("\n");
 }
+
+// Re-export ConfidenceLevel for convenience
+export type { ConfidenceLevel };
