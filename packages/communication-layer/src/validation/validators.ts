@@ -33,27 +33,19 @@ export function checkSourcesExist(
   const warnings: ValidationWarning[] = [];
 
   for (const source of response.sources) {
-    const fullPath = path.join(knowledgeBasePath, source.filePath);
+    const fullPath = path.join(knowledgeBasePath, source.file);
 
     if (!fs.existsSync(fullPath)) {
       errors.push({
         type: "missing_source",
-        message: `Source file does not exist: ${source.filePath}`,
+        message: `Source file does not exist: ${source.file}`,
         source,
       });
     } else if (!fs.statSync(fullPath).isFile()) {
       errors.push({
         type: "invalid_path",
-        message: `Source path is not a file: ${source.filePath}`,
+        message: `Source path is not a file: ${source.file}`,
         source,
-      });
-    }
-
-    // Warn if excerpt is missing (good practice to include it)
-    if (!source.excerpt) {
-      warnings.push({
-        type: "missing_excerpt",
-        message: `Source ${source.filePath} is missing an excerpt`,
       });
     }
   }
@@ -105,7 +97,7 @@ export function detectHallucinations(
     .map((m) => m[1])
     .filter((path): path is string => path !== undefined);
 
-  const citedPaths = new Set(response.sources.map((s) => s.filePath));
+  const citedPaths = new Set(response.sources.map((s: { file: string }) => s.file));
 
   for (const path of mentionedPaths) {
     if (!citedPaths.has(path)) {
@@ -137,10 +129,10 @@ export function detectHallucinations(
   }
 
   // Pattern 5: Low confidence should trigger warning
-  if (response.confidence !== undefined && response.confidence < 0.5) {
+  if (response.confidence === 'low') {
     warnings.push({
       type: "low_confidence",
-      message: `Low confidence score: ${response.confidence}. Consider manual review.`,
+      message: `Low confidence level. Reason: ${response.confidenceReason}. Consider manual review.`,
     });
   }
 
