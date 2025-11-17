@@ -2,6 +2,10 @@
 
 **Status**: 🚧 Early MVP Phase - Active Development
 
+[![CI](https://github.com/terraboops/platform-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/terraboops/platform-ai/actions/workflows/ci.yml)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)](https://www.typescriptlang.org/)
+[![License](https://img.shields.io/badge/license-TBD-lightgrey.svg)](LICENSE)
+
 Multi-agent Platform AI system that multiplies the potential of platform engineers by capturing, organizing, and surfacing organizational knowledge at scale.
 
 ---
