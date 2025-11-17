@@ -34,6 +34,12 @@ export const NavigatorConfigSchema = z.object({
   knowledgeBasePath: z.string().min(1),
 
   /**
+   * Path to the instructions file (CLAUDE.md or custom prompt file)
+   * Defaults to "CLAUDE.md" if not specified
+   */
+  instructionsPath: z.string().optional(),
+
+  /**
    * Minimum confidence threshold for responses (0-1)
    * Responses below this threshold trigger LowConfidenceError
    */
@@ -69,6 +75,7 @@ export function createNavigatorConfig(params: {
   name: string;
   domain: string;
   knowledgeBasePath: string;
+  instructionsPath?: string;
   confidenceThreshold?: number;
   description?: string;
   maxContextSize?: number;
