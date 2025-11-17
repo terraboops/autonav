@@ -335,12 +335,20 @@ This is your knowledge base directory. Add your documentation files here.
       console.log("✓ Navigator ready at ./" + navigatorName);
 
       console.log("\nNext steps:");
-      console.log(`  cd ${navigatorName}`);
+      console.log(`  1. cd ${navigatorName}`);
       if (!packMetadata) {
-        console.log("  # Add knowledge files to knowledge/ directory");
-        console.log("  # Edit CLAUDE.md to customize behavior");
+        console.log("  2. Add your documentation to knowledge/ directory");
+        console.log("  3. Edit CLAUDE.md to customize behavior");
       }
-      console.log(`  autonav query ${navigatorName} "test question"\n`);
+      console.log(
+        `  ${packMetadata ? "2" : "4"}. Query your navigator: autonav query ${navigatorName} "test question"\n`
+      );
+
+      console.log("💡 Tips:");
+      console.log("  - Edit CLAUDE.md to customize the navigator's behavior");
+      console.log("  - Check config.json for configuration options");
+      console.log("  - Enable plugins in .claude/plugins.json (Slack, GitHub, file watcher)");
+      console.log("  - See README.md for full usage instructions\n");
     } else {
       // Minimal output for quiet mode
       console.log(`✓ Created navigator: ${navigatorName}`);

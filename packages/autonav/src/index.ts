@@ -19,3 +19,26 @@ export {
   replaceTemplateVars,
   type Templates,
 } from "./templates/index.js";
+
+// Export plugin system
+export {
+  // Core plugin types
+  type Plugin,
+  type PluginHealthStatus,
+  PluginError,
+  PluginInitializationError,
+  PluginListenError,
+  PluginActionError,
+  PluginConfigurationError,
+  // Plugin manager
+  PluginManager,
+  type PluginsConfig,
+  createPluginManager,
+  // Plugin implementations
+  FileWatcherPlugin,
+  SlackPlugin,
+  GitHubPlugin,
+  // Configuration schema
+  PluginConfigFileSchema,
+  type PluginConfigFile,
+} from "./plugins/index.js";

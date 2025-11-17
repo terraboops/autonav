@@ -34,9 +34,14 @@
   "license": "TBD",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",
+    "@octokit/rest": "^20.0.2",
     "@platform-ai/communication-layer": "*",
-    "zod": "^3.22.4",
-    "tar": "^6.2.0"
+    "@slack/web-api": "^6.11.2",
+    "@types/micromatch": "^4.0.10",
+    "chokidar": "^3.5.3",
+    "micromatch": "^4.0.8",
+    "tar": "^6.2.0",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
