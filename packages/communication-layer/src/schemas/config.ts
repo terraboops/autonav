@@ -66,10 +66,22 @@ export const NavigatorConfigSchema = z.object({
   knowledgeBase: z.string().describe('Knowledge base path'),
 
   /**
+   * Path to the instructions file (CLAUDE.md or custom prompt file)
+   * Defaults to "CLAUDE.md" if not specified
+   */
+  instructionsPath: z.string().optional(),
+
+  /**
    * Optional path to system configuration file
    * Used for domain-specific instructions from knowledge packs
    */
   systemConfiguration: z.string().optional().describe('System configuration file path'),
+
+  /**
+   * Minimum confidence threshold for responses (0-1)
+   * Responses below this threshold may trigger warnings
+   */
+  confidenceThreshold: z.number().min(0).max(1).optional(),
 
   /**
    * Plugin configuration settings
@@ -93,7 +105,9 @@ export function createNavigatorConfig(params: {
   description?: string;
   knowledgeBase: string;
   knowledgePack?: KnowledgePackMetadata | null;
+  instructionsPath?: string;
   systemConfiguration?: string;
+  confidenceThreshold?: number;
   pluginConfigFile?: string;
 }): NavigatorConfig {
   const now = new Date().toISOString();
@@ -105,7 +119,9 @@ export function createNavigatorConfig(params: {
     created: now,
     knowledgePack: params.knowledgePack ?? null,
     knowledgeBase: params.knowledgeBase,
+    instructionsPath: params.instructionsPath,
     systemConfiguration: params.systemConfiguration,
+    confidenceThreshold: params.confidenceThreshold,
     plugins: {
       configFile: params.pluginConfigFile ?? '.claude/plugins.json',
     },

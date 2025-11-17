@@ -8,10 +8,10 @@
     "examples/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build -w @platform-ai/communication-layer && npm run build -w @platform-ai/autonav",
     "test": "npm test --workspaces --if-present",
     "clean": "rm -rf packages/*/dist packages/*/build examples/*/dist",
-    "typecheck": "tsc --noEmit --workspaces"
+    "typecheck": "npm run build && npm run typecheck --workspaces --if-present"
   },
   "keywords": [
     "platform-engineering",
