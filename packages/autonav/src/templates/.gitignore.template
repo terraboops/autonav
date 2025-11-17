@@ -5,6 +5,9 @@ node_modules/
 .env
 .env.local
 
+# Plugin credentials (NEVER commit these!)
+.claude/plugins.json
+
 # OS files
 .DS_Store
 Thumbs.db

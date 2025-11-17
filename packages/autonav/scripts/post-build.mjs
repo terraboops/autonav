@@ -55,6 +55,15 @@ async function postBuild() {
         await copyFile(srcPath, destPath);
         console.log(`✓ Copied: src/templates/${file.name} -> dist/templates/${file.name}`);
       }
+
+      // Also copy .gitignore.template (starts with dot, so not caught by filter above)
+      const gitignoreTemplate = '.gitignore.template';
+      const gitignoreSrc = join(srcTemplatesDir, gitignoreTemplate);
+      if (existsSync(gitignoreSrc)) {
+        const gitignoreDest = join(templatesDir, gitignoreTemplate);
+        await copyFile(gitignoreSrc, gitignoreDest);
+        console.log(`✓ Copied: src/templates/${gitignoreTemplate} -> dist/templates/${gitignoreTemplate}`);
+      }
     }
 
     console.log('✅ Post-build completed successfully');
