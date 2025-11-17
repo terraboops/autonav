@@ -64,7 +64,7 @@ platform-ai/
 │   ├── claude-sdk-adapter/     # Execution engine
 │   ├── navigator-framework/    # Navigator toolkit + CLI
 │   └── watcher-framework/      # Watcher toolkit (Phase 2)
-├── examples/
+├── packs/
 │   └── platform-navigator/     # Example navigator with sample docs
 ├── docs/
 │   ├── VERSIONING_STRATEGY.md  # Version upgrade process

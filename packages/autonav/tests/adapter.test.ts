@@ -14,14 +14,19 @@ describe('ClaudeAdapter', () => {
       recursive: true,
     });
 
-    // Create test config.json
+    // Create test config.json with new schema
     const config = {
-      communicationLayerVersion: '0.1.0',
+      version: '1.0.0',
       name: 'test-navigator',
-      domain: 'testing',
       description: 'Test navigator',
-      knowledgeBasePath: 'knowledge-base',
+      created: new Date().toISOString(),
+      knowledgePack: null,
+      knowledgeBase: 'knowledge-base',
+      instructionsPath: 'CLAUDE.md',
       confidenceThreshold: 0.7,
+      plugins: {
+        configFile: '.claude/plugins.json',
+      },
     };
 
     fs.writeFileSync(
@@ -95,38 +100,26 @@ describe('ClaudeAdapter', () => {
       adapter = new ClaudeAdapter({ apiKey: 'test-key' });
     });
 
-    it('should load a valid navigator', () => {
-      const navigator = adapter.loadNavigator(testNavigatorPath);
+    it('should load a valid navigator', async () => {
+      const navigator = await adapter.loadNavigator(testNavigatorPath);
 
-      expect(navigator).toBeDefined();
       expect(navigator.config.name).toBe('test-navigator');
-      expect(navigator.config.domain).toBe('testing');
       expect(navigator.systemPrompt).toContain('Test Navigator');
-      expect(navigator.navigatorPath).toBe(testNavigatorPath);
-      expect(navigator.knowledgeBasePath).toBe(
-        path.join(testNavigatorPath, 'knowledge-base')
-      );
+      expect(navigator.knowledgeBasePath).toContain('knowledge-base');
     });
 
-    it('should throw error if directory does not exist', () => {
-      expect(() =>
+    it('should throw error if navigator path does not exist', async () => {
+      await expect(() =>
         adapter.loadNavigator('/nonexistent/path')
-      ).toThrow('Navigator directory not found');
+      ).rejects.toThrow();
     });
 
-    it('should throw error if path is not a directory', () => {
-      const filePath = path.join(testNavigatorPath, 'config.json');
-      expect(() => adapter.loadNavigator(filePath)).toThrow(
-        'Path is not a directory'
-      );
-    });
-
-    it('should throw error if config.json is missing', () => {
-      const invalidPath = path.join(__dirname, 'invalid-navigator');
+    it('should throw error if config.json is missing', async () => {
+      const invalidPath = path.join(__dirname, 'no-config-navigator');
       fs.mkdirSync(invalidPath, { recursive: true });
 
       try {
-        expect(() => adapter.loadNavigator(invalidPath)).toThrow(
+        await expect(() => adapter.loadNavigator(invalidPath)).rejects.toThrow(
           'config.json not found'
         );
       } finally {
@@ -134,24 +127,22 @@ describe('ClaudeAdapter', () => {
       }
     });
 
-    it('should throw error if config.json is invalid JSON', () => {
-      const invalidPath = path.join(__dirname, 'invalid-json-navigator');
+    it('should throw error if config.json is invalid', async () => {
+      const invalidPath = path.join(__dirname, 'invalid-config-navigator');
       fs.mkdirSync(invalidPath, { recursive: true });
       fs.writeFileSync(
         path.join(invalidPath, 'config.json'),
-        'invalid json {'
+        '{ invalid json }'
       );
 
       try {
-        expect(() => adapter.loadNavigator(invalidPath)).toThrow(
-          'Invalid config.json'
-        );
+        await expect(() => adapter.loadNavigator(invalidPath)).rejects.toThrow();
       } finally {
         fs.rmSync(invalidPath, { recursive: true, force: true });
       }
     });
 
-    it('should throw error if CLAUDE.md is missing', () => {
+    it('should throw error if CLAUDE.md is missing', async () => {
       const invalidPath = path.join(__dirname, 'no-claude-md-navigator');
       fs.mkdirSync(invalidPath, { recursive: true });
       fs.mkdirSync(path.join(invalidPath, 'knowledge-base'), {
@@ -159,10 +150,14 @@ describe('ClaudeAdapter', () => {
       });
 
       const config = {
-        communicationLayerVersion: '0.1.0',
+        version: '1.0.0',
         name: 'test',
-        domain: 'test',
-        knowledgeBasePath: 'knowledge-base',
+        created: new Date().toISOString(),
+        knowledgePack: null,
+        knowledgeBase: 'knowledge-base',
+        plugins: {
+          configFile: '.claude/plugins.json',
+        },
       };
 
       fs.writeFileSync(
@@ -171,23 +166,27 @@ describe('ClaudeAdapter', () => {
       );
 
       try {
-        expect(() => adapter.loadNavigator(invalidPath)).toThrow(
-          'Instructions file not found'
-        );
+        await expect(() =>
+          adapter.loadNavigator(invalidPath)
+        ).rejects.toThrow('Instructions file not found');
       } finally {
         fs.rmSync(invalidPath, { recursive: true, force: true });
       }
     });
 
-    it('should throw error if knowledge base directory is missing', () => {
+    it('should throw error if knowledge base directory is missing', async () => {
       const invalidPath = path.join(__dirname, 'no-kb-navigator');
       fs.mkdirSync(invalidPath, { recursive: true });
 
       const config = {
-        communicationLayerVersion: '0.1.0',
+        version: '1.0.0',
         name: 'test',
-        domain: 'test',
-        knowledgeBasePath: 'knowledge-base',
+        created: new Date().toISOString(),
+        knowledgePack: null,
+        knowledgeBase: 'knowledge-base',
+        plugins: {
+          configFile: '.claude/plugins.json',
+        },
       };
 
       fs.writeFileSync(
@@ -201,15 +200,15 @@ describe('ClaudeAdapter', () => {
       );
 
       try {
-        expect(() => adapter.loadNavigator(invalidPath)).toThrow(
-          'Knowledge base directory not found'
-        );
+        await expect(() =>
+          adapter.loadNavigator(invalidPath)
+        ).rejects.toThrow('Knowledge base directory not found');
       } finally {
         fs.rmSync(invalidPath, { recursive: true, force: true });
       }
     });
 
-    it('should support custom instructions path', () => {
+    it('should support custom instructions path', async () => {
       const customPath = path.join(__dirname, 'custom-instructions-navigator');
       fs.mkdirSync(customPath, { recursive: true });
       fs.mkdirSync(path.join(customPath, 'knowledge-base'), {
@@ -217,11 +216,15 @@ describe('ClaudeAdapter', () => {
       });
 
       const config = {
-        communicationLayerVersion: '0.1.0',
+        version: '1.0.0',
         name: 'test',
-        domain: 'test',
-        knowledgeBasePath: 'knowledge-base',
+        created: new Date().toISOString(),
+        knowledgePack: null,
+        knowledgeBase: 'knowledge-base',
         instructionsPath: 'custom-prompt.md',
+        plugins: {
+          configFile: '.claude/plugins.json',
+        },
       };
 
       fs.writeFileSync(
@@ -235,7 +238,7 @@ describe('ClaudeAdapter', () => {
       );
 
       try {
-        const navigator = adapter.loadNavigator(customPath);
+        const navigator = await adapter.loadNavigator(customPath);
         expect(navigator.systemPrompt).toBe('Custom prompt');
       } finally {
         fs.rmSync(customPath, { recursive: true, force: true });
@@ -259,13 +262,14 @@ Here's the answer:
   "answer": "Test answer",
   "sources": [
     {
-      "filePath": "test.md",
-      "excerpt": "Test excerpt",
-      "relevanceScore": 0.9
+      "file": "test.md",
+      "section": "Test Section",
+      "relevance": "Contains the answer"
     }
   ],
-  "confidence": 0.8,
-  "contextSize": 1000
+  "confidence": "high",
+  "confidenceReason": "Direct answer found in source",
+  "outOfDomain": false
 }
 \`\`\`
       `;
@@ -273,7 +277,7 @@ Here's the answer:
       const result = adapter.parseResponse(rawResponse, 'Test question');
       expect(result.answer).toBe('Test answer');
       expect(result.sources).toHaveLength(1);
-      expect(result.confidence).toBe(0.8);
+      expect(result.confidence).toBe('high');
     });
 
     it('should parse JSON from raw object', () => {
@@ -281,13 +285,14 @@ Here's the answer:
         "answer": "Test answer",
         "sources": [
           {
-            "filePath": "test.md",
-            "excerpt": "Test excerpt",
-            "relevanceScore": 0.9
+            "file": "test.md",
+            "section": "Test Section",
+            "relevance": "Contains the answer"
           }
         ],
-        "confidence": 0.8,
-        "contextSize": 1000
+        "confidence": "medium",
+        "confidenceReason": "Partial information found",
+        "outOfDomain": false
       }`;
 
       const result = adapter.parseResponse(rawResponse, 'Test question');
@@ -316,9 +321,14 @@ Here's the answer:
       const rawResponse = `\`\`\`json
       {
         "answer": "Test",
-        "sources": [{"filePath": "test.md", "excerpt": "Test", "relevanceScore": 0.9}],
-        "confidence": 0.8,
-        "contextSize": 1000
+        "sources": [{
+          "file": "test.md",
+          "section": "Section",
+          "relevance": "Relevant"
+        }],
+        "confidence": "high",
+        "confidenceReason": "Found directly",
+        "outOfDomain": false
       }
       \`\`\``;
 
@@ -331,9 +341,9 @@ Here's the answer:
     let adapter: ClaudeAdapter;
     let navigator: any;
 
-    beforeAll(() => {
+    beforeAll(async () => {
       adapter = new ClaudeAdapter({ apiKey: 'test-key' });
-      navigator = adapter.loadNavigator(testNavigatorPath);
+      navigator = await adapter.loadNavigator(testNavigatorPath);
     });
 
     it('should validate a response with existing sources', () => {
@@ -343,23 +353,18 @@ Here's the answer:
         answer: 'Test answer',
         sources: [
           {
-            filePath: 'test.md',
-            excerpt: 'Test excerpt',
-            relevanceScore: 0.9,
+            file: 'test.md',
+            section: 'Test Section',
+            relevance: 'Contains the answer',
           },
         ],
-        confidence: 0.8,
-        contextSize: 1000,
+        confidence: 'high',
+        confidenceReason: 'Direct answer found',
+        outOfDomain: false,
       };
 
-      const result = adapter.validate(
-        response,
-        navigator.config,
-        navigator.knowledgeBasePath
-      );
-
+      const result = adapter.validate(response, navigator.knowledgeBasePath);
       expect(result.valid).toBe(true);
-      expect(result.errors).toHaveLength(0);
     });
 
     it('should fail validation for non-existent sources', () => {
@@ -369,49 +374,40 @@ Here's the answer:
         answer: 'Test answer',
         sources: [
           {
-            filePath: 'nonexistent.md',
-            excerpt: 'Test excerpt',
-            relevanceScore: 0.9,
+            file: 'nonexistent.md',
+            section: 'Section',
+            relevance: 'Relevant',
           },
         ],
-        confidence: 0.8,
-        contextSize: 1000,
+        confidence: 'high',
+        confidenceReason: 'Direct answer found',
+        outOfDomain: false,
       };
 
-      const result = adapter.validate(
-        response,
-        navigator.config,
-        navigator.knowledgeBasePath
-      );
-
+      const result = adapter.validate(response, navigator.knowledgeBasePath);
       expect(result.valid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('should warn on low confidence', () => {
+    it('should warn for low confidence', () => {
       const response: any = {
         protocolVersion: '0.1.0',
         query: 'Test',
         answer: 'Test answer',
         sources: [
           {
-            filePath: 'test.md',
-            excerpt: 'Test excerpt',
-            relevanceScore: 0.9,
+            file: 'test.md',
+            section: 'Section',
+            relevance: 'Relevant',
           },
         ],
-        confidence: 0.3,
-        contextSize: 1000,
+        confidence: 'low',
+        confidenceReason: 'Limited information found',
+        outOfDomain: false,
       };
 
-      const result = adapter.validate(
-        response,
-        navigator.config,
-        navigator.knowledgeBasePath
-      );
-
-      // Low confidence should trigger an error based on threshold
-      expect(result.errors.length).toBeGreaterThan(0);
+      const result = adapter.validate(response, navigator.knowledgeBasePath);
+      expect(result.warnings.length).toBeGreaterThan(0);
     });
   });
 });

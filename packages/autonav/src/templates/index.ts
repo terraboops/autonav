@@ -11,9 +11,13 @@ const __dirname = path.dirname(__filename);
  */
 export interface Templates {
   claudeMd: string;
+  claudeMdPack: string;
   configJson: string;
+  configJsonPack: string;
+  pluginsJson: string;
   gitignore: string;
   readme: string;
+  systemConfiguration: string;
 }
 
 /**
@@ -25,8 +29,20 @@ export function loadTemplates(): Templates {
       path.join(__dirname, "CLAUDE.md.template"),
       "utf-8"
     ),
+    claudeMdPack: fs.readFileSync(
+      path.join(__dirname, "CLAUDE-pack.md.template"),
+      "utf-8"
+    ),
     configJson: fs.readFileSync(
       path.join(__dirname, "config.json.template"),
+      "utf-8"
+    ),
+    configJsonPack: fs.readFileSync(
+      path.join(__dirname, "config-pack.json.template"),
+      "utf-8"
+    ),
+    pluginsJson: fs.readFileSync(
+      path.join(__dirname, "plugins.json.template"),
       "utf-8"
     ),
     gitignore: fs.readFileSync(
@@ -35,6 +51,10 @@ export function loadTemplates(): Templates {
     ),
     readme: fs.readFileSync(
       path.join(__dirname, "README.md.template"),
+      "utf-8"
+    ),
+    systemConfiguration: fs.readFileSync(
+      path.join(__dirname, "system-configuration.md.template"),
       "utf-8"
     ),
   };

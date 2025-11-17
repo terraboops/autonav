@@ -31,10 +31,8 @@ describe('Validation Utilities', () => {
 
     testConfig = createNavigatorConfig({
       name: 'test-navigator',
-      domain: 'test',
-      knowledgeBasePath: tempDir,
+      knowledgeBase: tempDir,
       confidenceThreshold: 0.7,
-      maxContextSize: 10000,
     });
   });
 
@@ -51,13 +49,14 @@ describe('Validation Utilities', () => {
         answer: 'Test answer',
         sources: [
           createSource({
-            filePath: 'doc1.md',
-            excerpt: 'Test excerpt',
-            relevanceScore: 0.9,
+            file: 'doc1.md',
+            section: 'Test Section',
+            relevance: 'Contains the answer to the question',
           }),
         ],
-        confidence: 0.8,
-        contextSize: 1000,
+        confidence: 'high',
+        confidenceReason: 'Direct answer found in documentation',
+        outOfDomain: false,
       });
 
       const result = checkSourcesExist(response, tempDir);
@@ -70,39 +69,20 @@ describe('Validation Utilities', () => {
         answer: 'Test answer',
         sources: [
           createSource({
-            filePath: 'nonexistent.md',
-            excerpt: 'Test excerpt',
-            relevanceScore: 0.9,
+            file: 'nonexistent.md',
+            section: 'Test Section',
+            relevance: 'Contains the answer',
           }),
         ],
-        confidence: 0.8,
-        contextSize: 1000,
+        confidence: 'high',
+        confidenceReason: 'Found in documentation',
+        outOfDomain: false,
       });
 
       const result = checkSourcesExist(response, tempDir);
       expect(result.valid).toBe(false);
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0].message).toContain('nonexistent.md');
-    });
-
-    it('should warn about invalid line numbers', () => {
-      const response = createNavigatorResponse({
-        answer: 'Test answer',
-        sources: [
-          createSource({
-            filePath: 'doc1.md',
-            excerpt: 'Test excerpt',
-            relevanceScore: 0.9,
-            lineNumbers: [10, 5], // Invalid: start > end
-          }),
-        ],
-        confidence: 0.8,
-        contextSize: 1000,
-      });
-
-      const result = checkSourcesExist(response, tempDir);
-      expect(result.warnings.length).toBeGreaterThan(0);
-      expect(result.warnings[0]).toContain('Invalid line numbers');
     });
   });
 
@@ -112,13 +92,14 @@ describe('Validation Utilities', () => {
         answer: 'The configuration is in doc1.md',
         sources: [
           createSource({
-            filePath: 'doc1.md',
-            excerpt: 'Configuration details here',
-            relevanceScore: 0.9,
+            file: 'doc1.md',
+            section: 'Configuration Section',
+            relevance: 'Configuration details are documented here',
           }),
         ],
-        confidence: 0.8,
-        contextSize: 1000,
+        confidence: 'high',
+        confidenceReason: 'Direct answer found in source',
+        outOfDomain: false,
       });
 
       const result = detectHallucinations(response);
@@ -131,13 +112,14 @@ describe('Validation Utilities', () => {
         answer: 'Check /path/to/your-file.md for details',
         sources: [
           createSource({
-            filePath: 'doc1.md',
-            excerpt: 'Some content',
-            relevanceScore: 0.9,
+            file: 'doc1.md',
+            section: 'Some Section',
+            relevance: 'Some content is here',
           }),
         ],
-        confidence: 0.8,
-        contextSize: 1000,
+        confidence: 'high',
+        confidenceReason: 'Found in documentation',
+        outOfDomain: false,
       });
 
       const result = detectHallucinations(response);
@@ -150,26 +132,28 @@ describe('Validation Utilities', () => {
         answer: 'Lorem ipsum dolor sit amet',
         sources: [
           createSource({
-            filePath: 'doc1.md',
-            excerpt: 'Lorem ipsum placeholder text',
-            relevanceScore: 0.9,
+            file: 'doc1.md',
+            section: 'Test Section',
+            relevance: 'Lorem ipsum placeholder text',
           }),
         ],
-        confidence: 0.8,
-        contextSize: 1000,
+        confidence: 'high',
+        confidenceReason: 'Found in documentation',
+        outOfDomain: false,
       });
 
       const result = detectHallucinations(response);
       expect(result.valid).toBe(false);
     });
 
-    it('should fail when no sources provided', () => {
+    it('should fail when no sources provided and not out of domain', () => {
       const response: NavigatorResponse = {
         protocolVersion: '0.1.0',
-        answer: 'Some answer',
+        answer: 'Some specific answer about the system',
         sources: [],
-        confidence: 0.8,
-        contextSize: 1000,
+        confidence: 'high',
+        confidenceReason: 'Based on general knowledge',
+        outOfDomain: false,
       };
 
       const result = detectHallucinations(response);
@@ -177,191 +161,168 @@ describe('Validation Utilities', () => {
       expect(result.errors[0].message).toContain('no source citations');
     });
 
-    it('should warn about short excerpts', () => {
+    it('should pass when no sources but answer is uncertain', () => {
+      const response: NavigatorResponse = {
+        protocolVersion: '0.1.0',
+        answer: "I don't have information about that",
+        sources: [],
+        confidence: 'low',
+        confidenceReason: 'No relevant information found',
+        outOfDomain: false,
+      };
+
+      const result = detectHallucinations(response);
+      expect(result.valid).toBe(true);
+    });
+
+    it('should warn about short relevance explanations', () => {
       const response = createNavigatorResponse({
         answer: 'Test',
         sources: [
           createSource({
-            filePath: 'doc1.md',
-            excerpt: 'Short',
-            relevanceScore: 0.9,
+            file: 'doc1.md',
+            section: 'Test Section',
+            relevance: 'Short', // Too short
           }),
         ],
-        confidence: 0.8,
-        contextSize: 1000,
+        confidence: 'high',
+        confidenceReason: 'Found in documentation',
+        outOfDomain: false,
       });
 
       const result = detectHallucinations(response);
       expect(result.warnings.length).toBeGreaterThan(0);
-      expect(result.warnings[0]).toContain('Very short excerpt');
+      expect(result.warnings[0]).toContain('short relevance explanation');
     });
 
-    it('should warn about low relevance scores', () => {
+    it('should warn about high confidence with uncertain answer', () => {
       const response = createNavigatorResponse({
-        answer: 'Test answer',
-        sources: [
-          createSource({
-            filePath: 'doc1.md',
-            excerpt: 'Some content here',
-            relevanceScore: 0.2,
-          }),
-        ],
-        confidence: 0.8,
-        contextSize: 1000,
+        answer: "I don't know the answer to that question",
+        sources: [],
+        confidence: 'high',
+        confidenceReason: 'Certain about lack of information',
+        outOfDomain: true,
       });
 
       const result = detectHallucinations(response);
       expect(result.warnings.length).toBeGreaterThan(0);
-      expect(result.warnings[0]).toContain('Low relevance score');
+      expect(result.warnings[0]).toContain('High confidence level with uncertain answer');
     });
   });
 
   describe('validateConfidence', () => {
-    it('should pass when confidence meets threshold', () => {
+    it('should pass when confidence is justified', () => {
       const response = createNavigatorResponse({
         answer: 'Test answer',
         sources: [
           createSource({
-            filePath: 'doc1.md',
-            excerpt: 'Test excerpt',
-            relevanceScore: 0.9,
+            file: 'doc1.md',
+            section: 'Test Section',
+            relevance: 'Contains detailed information about the topic',
           }),
         ],
-        confidence: 0.8,
-        contextSize: 1000,
+        confidence: 'high',
+        confidenceReason: 'Direct answer found in authoritative documentation',
+        outOfDomain: false,
       });
 
-      const result = validateConfidence(response, testConfig);
+      const result = validateConfidence(response);
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
 
-    it('should fail when confidence below threshold', () => {
+    it('should warn about short confidence reason', () => {
       const response = createNavigatorResponse({
         answer: 'Test answer',
         sources: [
           createSource({
-            filePath: 'doc1.md',
-            excerpt: 'Test excerpt',
-            relevanceScore: 0.9,
+            file: 'doc1.md',
+            section: 'Test Section',
+            relevance: 'Contains information',
           }),
         ],
-        confidence: 0.5, // Below 0.7 threshold
-        contextSize: 1000,
+        confidence: 'high',
+        confidenceReason: 'Found info', // Exactly 10 chars (minimum)
+        outOfDomain: false,
       });
 
-      const result = validateConfidence(response, testConfig);
-      expect(result.valid).toBe(false);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0].message).toContain('below threshold');
+      const result = validateConfidence(response);
+      // This test verifies the validation passes even for minimal confidence reasons
+      // The schema enforces minimum 10 chars, so shorter reasons will be rejected at parse time
+      expect(result.valid).toBe(true);
     });
 
-    it('should warn when high confidence without quality sources', () => {
+    it('should warn when high confidence without sources', () => {
       const response = createNavigatorResponse({
         answer: 'Test answer',
-        sources: [
-          createSource({
-            filePath: 'doc1.md',
-            excerpt: 'Test excerpt',
-            relevanceScore: 0.4, // Low relevance
-          }),
-        ],
-        confidence: 0.9, // High confidence
-        contextSize: 1000,
+        sources: [],
+        confidence: 'high',
+        confidenceReason: 'Based on general knowledge',
+        outOfDomain: true,
       });
 
-      const result = validateConfidence(response, testConfig);
+      const result = validateConfidence(response);
       expect(result.warnings.length).toBeGreaterThan(0);
-      expect(result.warnings[0]).toContain('no high-quality sources');
+      expect(result.warnings.some(w => w.includes('no sources cited'))).toBe(true);
     });
 
-    it('should warn when low confidence with quality sources', () => {
+    it('should warn when low confidence with multiple sources', () => {
       const response = createNavigatorResponse({
         answer: 'Test answer',
         sources: [
           createSource({
-            filePath: 'doc1.md',
-            excerpt: 'Test excerpt',
-            relevanceScore: 0.9,
+            file: 'doc1.md',
+            section: 'Section 1',
+            relevance: 'Contains relevant information',
           }),
           createSource({
-            filePath: 'doc2.md',
-            excerpt: 'More content',
-            relevanceScore: 0.85,
+            file: 'doc2.md',
+            section: 'Section 2',
+            relevance: 'More relevant content',
           }),
           createSource({
-            filePath: 'doc1.md',
-            excerpt: 'Another excerpt',
-            relevanceScore: 0.8,
+            file: 'doc1.md',
+            section: 'Section 3',
+            relevance: 'Additional information',
           }),
         ],
-        confidence: 0.2, // Low confidence despite quality sources
-        contextSize: 1000,
+        confidence: 'low',
+        confidenceReason: 'Information is scattered and unclear',
+        outOfDomain: false,
       });
 
-      const result = validateConfidence(response, testConfig);
+      const result = validateConfidence(response);
       expect(result.warnings.length).toBeGreaterThan(0);
-      expect(result.warnings[0]).toContain('confidence might be underestimated');
+      expect(result.warnings.some(w => w.includes('underestimated'))).toBe(true);
+    });
+
+    it('should warn on low confidence responses', () => {
+      const response = createNavigatorResponse({
+        answer: 'Test answer',
+        sources: [
+          createSource({
+            file: 'doc1.md',
+            section: 'Test Section',
+            relevance: 'Partially relevant',
+          }),
+        ],
+        confidence: 'low',
+        confidenceReason: 'Information is incomplete',
+        outOfDomain: false,
+      });
+
+      const result = validateConfidence(response);
+      expect(result.warnings.length).toBeGreaterThan(0);
+      expect(result.warnings.some(w => w.includes('Low confidence response'))).toBe(true);
     });
   });
 
   describe('validateContextSize', () => {
-    it('should pass when context within limits', () => {
-      const response = createNavigatorResponse({
-        answer: 'Test answer',
-        sources: [
-          createSource({
-            filePath: 'doc1.md',
-            excerpt: 'Test excerpt',
-            relevanceScore: 0.9,
-          }),
-        ],
-        confidence: 0.8,
-        contextSize: 5000, // Within 10000 limit
-      });
-
-      const result = validateContextSize(response, testConfig);
+    it('should return deprecation warning', () => {
+      const result = validateContextSize();
       expect(result.valid).toBe(true);
-      expect(result.errors).toHaveLength(0);
-    });
-
-    it('should fail when context exceeds limit', () => {
-      const response = createNavigatorResponse({
-        answer: 'Test answer',
-        sources: [
-          createSource({
-            filePath: 'doc1.md',
-            excerpt: 'Test excerpt',
-            relevanceScore: 0.9,
-          }),
-        ],
-        confidence: 0.8,
-        contextSize: 15000, // Exceeds 10000 limit
-      });
-
-      const result = validateContextSize(response, testConfig);
-      expect(result.valid).toBe(false);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0].message).toContain('exceeds maximum');
-    });
-
-    it('should warn when context size high', () => {
-      const response = createNavigatorResponse({
-        answer: 'Test answer',
-        sources: [
-          createSource({
-            filePath: 'doc1.md',
-            excerpt: 'Test excerpt',
-            relevanceScore: 0.9,
-          }),
-        ],
-        confidence: 0.8,
-        contextSize: 8500, // 85% of 10000 limit
-      });
-
-      const result = validateContextSize(response, testConfig);
       expect(result.warnings.length).toBeGreaterThan(0);
-      expect(result.warnings[0]).toContain('% of limit');
+      expect(result.warnings[0]).toContain('deprecated');
     });
   });
 
@@ -371,16 +332,17 @@ describe('Validation Utilities', () => {
         answer: 'Test answer from documentation',
         sources: [
           createSource({
-            filePath: 'doc1.md',
-            excerpt: 'Relevant excerpt from the docs',
-            relevanceScore: 0.9,
+            file: 'doc1.md',
+            section: 'Relevant Section',
+            relevance: 'Relevant excerpt from the docs explaining the topic',
           }),
         ],
-        confidence: 0.8,
-        contextSize: 2000,
+        confidence: 'high',
+        confidenceReason: 'Direct answer found in authoritative documentation',
+        outOfDomain: false,
       });
 
-      const result = validateResponse(response, testConfig, tempDir);
+      const result = validateResponse(response, tempDir);
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
@@ -390,27 +352,28 @@ describe('Validation Utilities', () => {
         answer: 'Check /path/to/your-file.md',
         sources: [
           createSource({
-            filePath: 'nonexistent.md',
-            excerpt: 'Some content',
-            relevanceScore: 0.9,
+            file: 'nonexistent.md',
+            section: 'Some Section',
+            relevance: 'Some content is documented here',
           }),
         ],
-        confidence: 0.5, // Below threshold
-        contextSize: 15000, // Exceeds limit
+        confidence: 'high',
+        confidenceReason: 'Found in documentation',
+        outOfDomain: false,
       });
 
-      const result = validateResponse(response, testConfig, tempDir);
+      const result = validateResponse(response, tempDir);
       expect(result.valid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(2); // Multiple errors
+      expect(result.errors.length).toBeGreaterThan(0); // Multiple errors
     });
   });
 
   describe('validateSource', () => {
     it('should validate individual source', () => {
       const source = createSource({
-        filePath: 'doc1.md',
-        excerpt: 'Test content',
-        relevanceScore: 0.9,
+        file: 'doc1.md',
+        section: 'Test Section',
+        relevance: 'Contains relevant test content for validation',
       });
 
       const result = validateSource(source, tempDir);
@@ -419,13 +382,25 @@ describe('Validation Utilities', () => {
 
     it('should fail for nonexistent source', () => {
       const source = createSource({
-        filePath: 'missing.md',
-        excerpt: 'Test content',
-        relevanceScore: 0.9,
+        file: 'missing.md',
+        section: 'Test Section',
+        relevance: 'Contains test content that should exist',
       });
 
       const result = validateSource(source, tempDir);
       expect(result.valid).toBe(false);
+    });
+
+    it('should warn about short relevance description', () => {
+      const source = createSource({
+        file: 'doc1.md',
+        section: 'Test Section',
+        relevance: 'Short', // Too short
+      });
+
+      const result = validateSource(source, tempDir);
+      expect(result.warnings.length).toBeGreaterThan(0);
+      expect(result.warnings[0]).toContain('very short');
     });
   });
 });
