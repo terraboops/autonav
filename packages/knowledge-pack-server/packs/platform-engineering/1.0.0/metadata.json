@@ -1,0 +1,15 @@
+{
+  "$schema": "https://platform-ai.dev/schemas/knowledge-pack-metadata/1.0.0",
+  "name": "platform-engineering",
+  "version": "1.0.0",
+  "description": "Platform engineering knowledge pack with deployment, monitoring, and troubleshooting guides for Kubernetes and AWS",
+  "author": "Terra",
+  "homepage": "https://github.com/terraboops/platform-ai",
+  "repository": "https://github.com/terraboops/platform-ai",
+  "license": "MIT",
+  "created": "2025-11-17T00:00:00Z",
+  "updated": "2025-11-17T00:00:00Z",
+  "autonav_version": ">=0.1.0",
+  "tags": ["platform", "kubernetes", "monitoring", "devops", "aws"],
+  "keywords": ["deployment", "observability", "troubleshooting", "k8s", "prometheus", "grafana"]
+}
