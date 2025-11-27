@@ -1,0 +1,36 @@
+{
+  "name": "autonav",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LLM-agnostic context management system for autonomous navigators",
+  "workspaces": [
+    "packages/*",
+    "packs/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @autonav/communication-layer && npm run build -w @autonav/core",
+    "test": "npm test --workspaces --if-present",
+    "clean": "rm -rf packages/*/dist packages/*/build packs/*/dist",
+    "typecheck": "npm run build && npm run typecheck --workspaces --if-present"
+  },
+  "keywords": [
+    "autonav",
+    "navigator",
+    "knowledge-management",
+    "claude",
+    "agent-sdk",
+    "ai"
+  ],
+  "author": "Terra",
+  "license": "TBD",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "tsx": "^4.7.0",
+    "vitest": "^1.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

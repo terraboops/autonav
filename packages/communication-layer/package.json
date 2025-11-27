@@ -1,0 +1,55 @@
+{
+  "name": "@autonav/communication-layer",
+  "version": "0.1.0",
+  "description": "Communication protocol and schemas for Autonav multi-agent system",
+  "main": "./dist/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/esm/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc && tsc -p tsconfig.esm.json && echo '{\"type\":\"module\"}' > dist/esm/package.json",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "autonav",
+    "communication-protocol",
+    "agent-communication",
+    "schemas",
+    "typescript"
+  ],
+  "author": "Terra",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/terraboops/platform-ai.git",
+    "directory": "packages/communication-layer"
+  },
+  "homepage": "https://github.com/terraboops/platform-ai#readme",
+  "bugs": {
+    "url": "https://github.com/terraboops/platform-ai/issues"
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

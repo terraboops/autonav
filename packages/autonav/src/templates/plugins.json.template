@@ -1,0 +1,33 @@
+{
+  "_SECURITY_NOTICE": "WARNING: This file stores credentials in PLAIN TEXT. NEVER commit this file to version control. Use environment variables instead: SLACK_TOKEN, GITHUB_TOKEN. Add .claude/plugins.json to your .gitignore file. For production use, consider using a secrets management system.",
+  "file-watcher": {
+    "enabled": false,
+    "config": {
+      "paths": [],
+      "patterns": ["**/*.md"],
+      "ignorePatterns": ["**/node_modules/**", "**/.git/**", "**/dist/**"],
+      "pollInterval": 1000
+    }
+  },
+  "slack": {
+    "enabled": false,
+    "config": {
+      "token": "RECOMMENDED: Use process.env.SLACK_TOKEN instead of hardcoding here",
+      "channels": [],
+      "threadNotifications": true,
+      "summaryFrequency": "daily"
+    }
+  },
+  "github": {
+    "enabled": false,
+    "config": {
+      "token": "RECOMMENDED: Use process.env.GITHUB_TOKEN instead of hardcoding here",
+      "owner": "",
+      "repo": "",
+      "watchIssues": true,
+      "watchPullRequests": true,
+      "watchCommits": false,
+      "pollIntervalMinutes": 5
+    }
+  }
+}
