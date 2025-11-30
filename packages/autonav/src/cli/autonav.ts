@@ -12,13 +12,26 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import * as path from "node:path";
+import * as fs from "node:fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Read version from package.json
+function getVersion(): string {
+  try {
+    const packageJsonPath = path.join(__dirname, "..", "..", "package.json");
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+    return packageJson.version || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 function printUsage() {
+  const version = getVersion();
   console.log(`
-autonav - Autonav CLI
+autonav v${version} - Autonomous Navigator CLI
 
 Usage:
   autonav <command> [options]
@@ -30,10 +43,12 @@ Commands:
 
 Options:
   --help, -h      Show help
+  --version, -v   Show version
 
 Examples:
   autonav init my-navigator
   autonav init platform-nav --pack platform-engineering
+  autonav init my-nav --from ./existing-repo
   autonav query ./my-navigator "How do I deploy?"
   autonav chat ./my-navigator
 
@@ -46,6 +61,11 @@ For command-specific help:
 
 function main() {
   const args = process.argv.slice(2);
+
+  if (args.includes("--version") || args.includes("-v")) {
+    console.log(`autonav v${getVersion()}`);
+    process.exit(0);
+  }
 
   if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
     printUsage();
