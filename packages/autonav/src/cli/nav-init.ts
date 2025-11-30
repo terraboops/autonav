@@ -6,6 +6,10 @@ import { loadTemplates, replaceTemplateVars } from "../templates/index.js";
 import { validateNavigatorName } from "../validation/index.js";
 import { installPack } from "../pack-installer/index.js";
 import { runInterviewTUI, isInteractiveTerminal, type NavigatorConfig, type PackContext } from "../interview/index.js";
+import { scanRepository } from "../repo-scanner/index.js";
+import { analyzeRepository, type AnalysisResult } from "../repo-analyzer/index.js";
+import { confirmAnalysis, promptExistingClaudeMd, type ExistingClaudeMdAction } from "../confirmation/index.js";
+import { createNavigatorSkill } from "../skill-generator/index.js";
 
 /**
  * autonav init CLI command
@@ -20,6 +24,8 @@ interface InitOptions {
   pack?: string;
   server?: string;
   packFile?: string;
+  from?: string;
+  inPlace?: boolean;
   force?: boolean;
   quiet?: boolean;
   quick?: boolean;
@@ -39,13 +45,23 @@ Options:
   --pack <name|url>   Install knowledge pack by name, URL, or GitHub path
   --server <url>      Custom pack server URL (default: configured server)
   --pack-file <path>  Install pack from local file (for development)
-  --force             Overwrite existing directory
+  --from, -f <path>   Import existing repository as knowledge base
+                      Scans repo, analyzes with Claude, confirms with user
+  --in-place          With --from: add config files directly to source repo
+                      If CLAUDE.md exists, prompts: integrate/overwrite/skip
+  --force             Overwrite existing files without prompting
   --quiet             Minimal output
   --quick             Skip interactive interview, use defaults
 
 Examples:
   # Create basic navigator
   autonav init my-navigator
+
+  # Import existing repository as knowledge base
+  autonav init my-nav --from /path/to/existing/repo
+
+  # Import in-place (add files to existing repo)
+  autonav init my-nav --from /path/to/repo --in-place
 
   # Create navigator with knowledge pack from server
   autonav init platform-nav --pack platform-engineering
@@ -81,6 +97,17 @@ The command will create:
 With --pack option, it will also install:
   ├── system-configuration.md        # Pack-specific configuration
   └── knowledge/                     # Pre-populated knowledge files
+
+With --from option:
+  - Scans repository structure and documentation
+  - Analyzes content with Claude to infer purpose/scope/audience
+  - Confirms analysis with user (Y/n/edit)
+  - Creates navigator with knowledge base pointing to source
+
+With --from --in-place and existing CLAUDE.md:
+  - [i] Integrate: Append autonav section to existing file
+  - [o] Overwrite: Replace with full autonav template
+  - [s] Skip: Keep existing CLAUDE.md unchanged (default)
 `);
 }
 
@@ -109,6 +136,10 @@ function parseArgs(args: string[]): {
       options.server = args[++i];
     } else if (arg === "--pack-file" && i + 1 < args.length) {
       options.packFile = args[++i];
+    } else if ((arg === "--from" || arg === "-f") && i + 1 < args.length) {
+      options.from = args[++i];
+    } else if (arg === "--in-place") {
+      options.inPlace = true;
     } else if (arg === "--force") {
       options.force = true;
     } else if (arg === "--quiet") {
@@ -121,6 +152,305 @@ function parseArgs(args: string[]): {
   }
 
   return { navigatorName, options };
+}
+
+/**
+ * Handle import mode (--from flag)
+ * Scans an existing repository and creates a navigator that uses it as knowledge base
+ */
+async function handleImportMode(
+  navigatorName: string,
+  options: InitOptions
+): Promise<void> {
+  const sourcePath = path.resolve(options.from!);
+
+  // Validate source path
+  if (!fs.existsSync(sourcePath)) {
+    console.error(`❌ Error: Source path does not exist: ${sourcePath}\n`);
+    process.exit(1);
+  }
+  if (!fs.statSync(sourcePath).isDirectory()) {
+    console.error(`❌ Error: Source path is not a directory: ${sourcePath}\n`);
+    process.exit(1);
+  }
+
+  // Determine output path
+  const navigatorPath = options.inPlace
+    ? sourcePath
+    : path.resolve(process.cwd(), navigatorName);
+
+  // Check for existing CLAUDE.md in source repo (only relevant for in-place mode)
+  const existingClaudeMdPath = path.join(sourcePath, "CLAUDE.md");
+  const hasExistingClaudeMd = fs.existsSync(existingClaudeMdPath);
+  let claudeMdAction: ExistingClaudeMdAction = "overwrite"; // Default for new navigators
+
+  // Only prompt about existing CLAUDE.md in in-place mode
+  // In non-in-place mode, we always create a fresh navigator directory with its own CLAUDE.md
+  if (options.inPlace && hasExistingClaudeMd && !options.force) {
+    claudeMdAction = await promptExistingClaudeMd();
+  }
+
+  // Check for existing navigator directory (non-in-place mode)
+  if (!options.inPlace) {
+    // Check if navigator directory already exists
+    if (fs.existsSync(navigatorPath)) {
+      if (!options.force) {
+        console.error(`❌ Error: Directory already exists: ${navigatorPath}`);
+        console.error("Use --force to overwrite\n");
+        process.exit(1);
+      }
+      if (!options.quiet) {
+        console.log(`⚠️  Removing existing directory: ${navigatorPath}`);
+      }
+      fs.rmSync(navigatorPath, { recursive: true, force: true });
+    }
+  }
+
+  try {
+    if (!options.quiet) {
+      console.log(`\nImporting repository: ${sourcePath}`);
+      console.log("Scanning repository...");
+    }
+
+    // Phase 1: Scan repository
+    const scanResult = await scanRepository(sourcePath);
+
+    if (!options.quiet) {
+      console.log(`✓ Scanned ${scanResult.stats.scannedFiles}/${scanResult.stats.totalFiles} files (${scanResult.stats.strategy} strategy)`);
+      if (scanResult.warnings.length > 0) {
+        for (const warning of scanResult.warnings) {
+          console.log(`⚠️  ${warning}`);
+        }
+      }
+      console.log("Analyzing repository...");
+    }
+
+    // Phase 2: Analyze with Claude
+    const analysis = await analyzeRepository(scanResult);
+
+    if (!options.quiet) {
+      console.log("✓ Analysis complete");
+    }
+
+    // Phase 3: Confirm with user
+    const confirmation = await confirmAnalysis(analysis, scanResult.stats);
+
+    if (confirmation.action === "abort") {
+      console.log("\n❌ Import cancelled.\n");
+      process.exit(0);
+    }
+
+    let finalAnalysis: AnalysisResult;
+
+    if (confirmation.action === "edit") {
+      // Fall back to interview with pre-filled context
+      if (!isInteractiveTerminal()) {
+        console.error("❌ Error: Cannot edit in non-interactive terminal\n");
+        process.exit(1);
+      }
+
+      console.log("\nStarting interview to customize configuration...\n");
+      const interviewConfig = await runInterviewTUI(navigatorName);
+
+      // Convert interview config to analysis result format
+      finalAnalysis = {
+        purpose: interviewConfig.purpose || analysis.purpose,
+        scope: interviewConfig.scope || analysis.scope,
+        audience: interviewConfig.audience || analysis.audience,
+        suggestedKnowledgePaths: analysis.suggestedKnowledgePaths,
+        confidence: 1.0, // User confirmed
+      };
+    } else {
+      finalAnalysis = confirmation.analysis;
+    }
+
+    // Phase 4: Generate navigator files
+    if (!options.inPlace) {
+      fs.mkdirSync(navigatorPath, { recursive: true });
+      fs.mkdirSync(path.join(navigatorPath, ".claude"), { recursive: true });
+    } else {
+      // Ensure .claude directory exists for in-place
+      fs.mkdirSync(path.join(navigatorPath, ".claude"), { recursive: true });
+    }
+
+    // Load templates
+    const templates = loadTemplates();
+
+    // Prepare template variables
+    const now = new Date().toISOString();
+    const knowledgePathsList = finalAnalysis.suggestedKnowledgePaths
+      .map((p) => `- ${p}`)
+      .join("\n");
+
+    // Build navigator context section for imported repos
+    const navigatorContext = `
+## About This Navigator
+
+**Purpose**: ${finalAnalysis.purpose}
+
+**Scope**: ${finalAnalysis.scope}
+
+**Audience**: ${finalAnalysis.audience}
+
+`;
+
+    // Build knowledge paths section
+    const knowledgePathsSection = knowledgePathsList
+      ? `\nFocus on these paths for documentation:\n${knowledgePathsList}\n\n`
+      : "\n";
+
+    const vars: Record<string, string> = {
+      NAVIGATOR_NAME: navigatorName,
+      NAVIGATOR_DESCRIPTION: finalAnalysis.purpose,
+      NAVIGATOR_CONTEXT: navigatorContext,
+      KNOWLEDGE_BASE_PATH: options.inPlace ? "." : sourcePath,
+      KNOWLEDGE_PATHS_SECTION: knowledgePathsSection,
+      DOMAIN_SCOPE: finalAnalysis.scope,
+      DATE: now.split("T")[0] || now.substring(0, 10),
+      CREATED_AT: now,
+      UPDATED_AT: now,
+    };
+
+    // Write CLAUDE.md based on user's choice for existing files
+    const claudeMdPath = path.join(navigatorPath, "CLAUDE.md");
+
+    if (claudeMdAction === "skip") {
+      if (!options.quiet) {
+        console.log("⏭️  Skipped CLAUDE.md (keeping existing)");
+      }
+    } else if (claudeMdAction === "integrate" && hasExistingClaudeMd) {
+      // Read existing CLAUDE.md and append autonav section
+      const existingContent = fs.readFileSync(existingClaudeMdPath, "utf-8");
+      const autonav_section = `
+
+---
+
+## Autonav Integration
+
+This repository has been configured as an Autonav knowledge base.
+
+**Purpose**: ${finalAnalysis.purpose}
+
+**Scope**: ${finalAnalysis.scope}
+
+**Audience**: ${finalAnalysis.audience}
+
+**Knowledge paths**:
+${knowledgePathsList || "- (see repository structure)"}
+
+### Autonav Grounding Rules
+
+When answering questions about this repository:
+- Always cite specific files and sections
+- Use exact headings and references
+- If you don't know something, say so explicitly
+- Never make up information not in the knowledge base
+
+See \`config.json\` for navigator configuration.
+`;
+      fs.writeFileSync(claudeMdPath, existingContent + autonav_section);
+      if (!options.quiet) {
+        console.log("✓ Integrated autonav section into existing CLAUDE.md");
+      }
+    } else {
+      // Overwrite with full autonav template
+      fs.writeFileSync(
+        claudeMdPath,
+        replaceTemplateVars(templates.claudeMd, vars)
+      );
+      if (!options.quiet) {
+        console.log("✓ Created CLAUDE.md");
+      }
+    }
+
+    // Write config.json with knowledgeBase path
+    const configContent = JSON.stringify(
+      {
+        version: "0.1.0",
+        name: navigatorName,
+        description: finalAnalysis.purpose,
+        created: now,
+        knowledgeBase: options.inPlace ? "." : sourcePath,
+        importedFrom: {
+          path: sourcePath,
+          analyzedAt: now,
+          confidence: finalAnalysis.confidence,
+        },
+        plugins: {
+          configFile: "./.claude/plugins.json",
+        },
+      },
+      null,
+      2
+    );
+    fs.writeFileSync(path.join(navigatorPath, "config.json"), configContent);
+    if (!options.quiet) {
+      console.log("✓ Created config.json");
+    }
+
+    // Write plugins.json
+    const pluginsPath = path.join(navigatorPath, ".claude", "plugins.json");
+    if (!fs.existsSync(pluginsPath)) {
+      fs.writeFileSync(pluginsPath, templates.pluginsJson);
+      if (!options.quiet) {
+        console.log("✓ Configured plugins.json");
+      }
+    }
+
+    // Write .gitignore if not in-place (don't override existing)
+    if (!options.inPlace) {
+      fs.writeFileSync(
+        path.join(navigatorPath, ".gitignore"),
+        templates.gitignore
+      );
+
+      // Write README.md
+      fs.writeFileSync(
+        path.join(navigatorPath, "README.md"),
+        replaceTemplateVars(templates.readme, vars)
+      );
+    }
+
+    // Create global "ask-<navname>" skill for inter-navigator communication
+    await createNavigatorSkill(
+      {
+        navigatorName,
+        navigatorPath,
+        description: finalAnalysis.purpose,
+        scope: finalAnalysis.scope,
+        audience: finalAnalysis.audience,
+      },
+      { force: options.force, quiet: options.quiet }
+    );
+
+    if (!options.quiet) {
+      console.log("✓ Navigator ready at " + (options.inPlace ? sourcePath : `./${navigatorName}`));
+
+      console.log("\nNext steps:");
+      if (options.inPlace) {
+        console.log("  1. Review CLAUDE.md and customize as needed");
+        console.log("  2. Use Claude Code: claude");
+        console.log(`  3. Or query directly: autonav query . "your question"\n`);
+      } else {
+        console.log(`  1. cd ${navigatorName}`);
+        console.log("  2. Review CLAUDE.md and customize as needed");
+        console.log("  3. Use Claude Code: claude");
+        console.log(`  4. Or query directly: autonav query ${navigatorName} "your question"\n`);
+      }
+
+      console.log("💡 Tips:");
+      console.log(`  - Knowledge base path: ${options.inPlace ? "." : sourcePath}`);
+      console.log("  - Edit CLAUDE.md to customize the navigator's behavior");
+      console.log("  - Enable plugins in .claude/plugins.json\n");
+    } else {
+      console.log(`✓ Created navigator: ${navigatorName}`);
+    }
+  } catch (error) {
+    console.error(
+      `\n❌ Error importing repository: ${error instanceof Error ? error.message : String(error)}\n`
+    );
+    process.exit(1);
+  }
 }
 
 async function main() {
@@ -146,6 +476,18 @@ async function main() {
   if (!validation.valid) {
     console.error(`❌ Error: ${validation.error}\n`);
     process.exit(1);
+  }
+
+  // Validate mutual exclusivity of --from and --pack
+  if (options.from && (options.pack || options.packFile)) {
+    console.error("❌ Error: Cannot use --from with --pack or --pack-file\n");
+    process.exit(1);
+  }
+
+  // Handle import mode (--from)
+  if (options.from) {
+    await handleImportMode(navigatorName, options);
+    return;
   }
 
   const navigatorPath = path.resolve(process.cwd(), navigatorName);
@@ -290,9 +632,14 @@ async function main() {
     // Prepare template variables
     const now = new Date().toISOString();
     const description = interviewConfig?.purpose || `Knowledge navigator for ${titleCase(navigatorName)}`;
+    const scope = interviewConfig?.scope || "[Define what this navigator knows about and what it doesn't]";
     const vars: Record<string, string> = {
       NAVIGATOR_NAME: navigatorName,
       NAVIGATOR_DESCRIPTION: description,
+      NAVIGATOR_CONTEXT: "", // Empty for non-import navigators
+      KNOWLEDGE_BASE_PATH: "./knowledge",
+      KNOWLEDGE_PATHS_SECTION: "\n",
+      DOMAIN_SCOPE: scope,
       DATE: now.split("T")[0] || now.substring(0, 10), // YYYY-MM-DD
       CREATED_AT: now,
       UPDATED_AT: now,
@@ -406,6 +753,18 @@ This is your knowledge base directory. Add your documentation files here.
         starterReadme
       );
     }
+
+    // Create global "ask-<navname>" skill for inter-navigator communication
+    await createNavigatorSkill(
+      {
+        navigatorName,
+        navigatorPath,
+        description,
+        scope: interviewConfig?.scope,
+        audience: interviewConfig?.audience,
+      },
+      { force: options.force, quiet: options.quiet }
+    );
 
     if (!options.quiet) {
       console.log("✓ Navigator ready at ./" + navigatorName);

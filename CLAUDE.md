@@ -1,6 +1,6 @@
 # Autonav - Development Guide
 
-**Project Status**: 🚀 Phase 1 Complete - Implementing Self-Configuration (Phase 2A)
+**Project Status**: 🚀 Phase 1 Complete - Ready for End-to-End Testing (Phase 2A)
 
 You are helping build Autonav, an LLM-agnostic context management system built on Claude Code SDK. This is a framework for creating autonomous navigators ("navs") powered by curated knowledge packs.
 
@@ -184,19 +184,24 @@ Knowledge packs enable community-driven knowledge sharing without package coordi
 **Why Unified?**
 From voice conversation: "In almost every situation beyond the most obvious, you're gonna want both input and output in the same piece. Like, if I'm building something that integrates with Slack, I'm not just going to want to have input from Slack or have a Slack integration that only does output. Because ultimately I'm gonna have to stitch those two things together somewhere."
 
-**Implementation Phases**:
+**Implementation Status**:
 
-**Phase 1 (Hard-coded, Minimal)**:
-- Slack plugin (stub) - Listen to channels + send messages
-- Signal plugin (stub) - Receive messages + send check-ins
+**Phase 1 (COMPLETE)**:
+- Slack plugin (FULL) - WebClient integration, channel monitoring, message sending
+- GitHub plugin (FULL) - Octokit integration, issues/PRs monitoring, create/update
+- FileWatcher plugin - Chokidar-based file system watching
 - Configuration in `.claude/plugins.json`
-- Self-configuration capability enabled
+- Self-configuration tools: `update_plugin_config`, `get_plugin_config`
 - Built into Autonav framework
 
-**Phase 2 (Full Implementations)**:
-- GitHub plugin - Monitor issues/PRs + create PRs + comment
+**Phase 2A (IN PROGRESS)**:
+- Signal plugin - NOT YET IMPLEMENTED
+- End-to-end self-configuration testing
+- Email plugin - deferred
+
+**Phase 2 (Future)**:
 - Email plugin - Read questions + send answers
-- Slack/Signal full implementations with all features
+- Additional plugin features as needed
 
 **Phase 3 (Advanced Integrations)**:
 - Incident Response plugin - Monitor alerts + post runbooks + create summaries
@@ -384,44 +389,46 @@ Any directory with these files becomes an autonomous navigator:
 
 ## Development Priorities
 
-### Phase 1: Core Framework (Current)
+### Phase 1: Core Framework ✅ COMPLETE
 
-**Build**:
-1. Autonav CLI
-   - `autonav init <name>` - Scaffold new navigator
+**Built**:
+1. ✅ Autonav CLI
+   - `autonav init <name>` - Scaffold new navigator (with interactive interview)
    - `autonav init <name> --pack <pack-name>` - Initialize with knowledge pack
    - `autonav query <navigator> <question>` - Query a navigator
+   - `autonav chat <navigator>` - Interactive multi-turn mode
 
-2. Communication Layer (embedded directory)
+2. ✅ Communication Layer (embedded directory)
    - Repository structure templates
-   - Initial claude.md template
-   - Command definitions
-   - Skill mappings
-   - Inter-navigator protocol (future-proofed)
+   - Claude.md template with grounding rules
+   - Schema definitions (Zod)
+   - Validation functions (sources, hallucinations)
+   - SELF_CONFIG_RULES for self-configuration
 
-3. Plugin System (hard-coded)
-   - Slack integration (stub)
-   - Signal integration (stub)
-   - Configuration in `.claude/` directory
-   - Self-configuration support
+3. ✅ Plugin System
+   - Slack plugin (FULL) - WebClient integration
+   - GitHub plugin (FULL) - Octokit integration
+   - FileWatcher plugin - Chokidar-based
+   - Configuration in `.claude/plugins.json`
+   - Self-configuration tools implemented
 
-4. Knowledge Pack Protocol
-   - HTTP-based distribution design
-   - Download and installation
-   - system-configuration.md specification
+4. ✅ Knowledge Pack Protocol
+   - HTTP-based distribution working
+   - GitHub installation (full URL, shorthand, SSH)
+   - Local file installation
    - Example pack: platform-engineering
 
-5. Structured Outputs Integration
-   - Explore capabilities
-   - Implement schema-based validation
-   - Simplify communication layer validation
+5. ✅ Structured Outputs Integration
+   - `submit_answer` tool enforces response schema
+   - Zod validation at tool invocation time
+   - Fallback to text parsing for backward compatibility
 
-**Success Criteria**:
-- Can initialize new nav with `autonav init`
-- Can install knowledge pack with `--pack` flag
-- Example navigator answers questions accurately
-- Navs can self-configure (update own plugin config)
-- Knowledge pack downloads via HTTP
+### Phase 2A: Enable Daily Use (Current)
+
+**Focus**:
+1. End-to-end self-configuration testing
+2. Signal plugin implementation
+3. Verify tool wiring in Claude agent loop
 
 **Timeline**: Iterative, not hackathon-style (personal project pace)
 
@@ -649,18 +656,20 @@ See: https://docs.claude.com/en/docs/build-with-claude/structured-outputs
 
 ---
 
-## Success Metrics (Phase 1)
+## Success Metrics (Phase 1) ✅ ACHIEVED
 
 Track these during development:
-- [ ] Autonav CLI commands work (init, query)
-- [ ] Knowledge pack installation works
-- [ ] Example navigator answers questions correctly
-- [ ] Navs can self-configure (update plugin config)
-- [ ] Structured Outputs integration functional
-- [ ] Communication layer templates work
-- [ ] Documentation reflects actual architecture
+- [x] Autonav CLI commands work (init, query, chat)
+- [x] Knowledge pack installation works (HTTP, GitHub, local)
+- [x] Example navigator answers questions correctly
+- [x] Self-configuration tools exist (update_plugin_config, get_plugin_config)
+- [x] Structured Outputs via submit_answer tool
+- [x] Communication layer templates work
+- [x] Plugins implemented: Slack, GitHub, FileWatcher
+- [ ] End-to-end self-config testing (Phase 2A)
+- [ ] Signal plugin (Phase 2A)
 
-**Demo Readiness**: Can you use this for your own personal projects and find it valuable?
+**Demo Readiness**: Core framework works. Self-config needs real-world validation.
 
 ---
 
@@ -709,16 +718,18 @@ Based on architectural pivot, these may be outdated:
 
 ## Next Steps
 
-1. ✅ Document correct architecture (this file, README.md, PROJECT_STATUS.md)
-2. ⏸️ Rewrite MVP_ARCHITECTURE.md
-3. ⏸️ Update BACKLOG.md with knowledge packs and new priorities
-4. ⏸️ Audit existing code - does it match new vision?
-5. ⏸️ Design knowledge pack HTTP protocol
-6. ⏸️ Explore Structured Outputs capabilities
-7. ⏸️ Build example knowledge pack (platform-engineering)
+1. ✅ Document correct architecture
+2. ✅ Knowledge pack HTTP protocol implemented
+3. ✅ Structured Outputs via tool use
+4. ✅ Example knowledge pack (platform-engineering)
+5. ✅ Self-configuration tools implemented
+6. ⏸️ End-to-end self-config testing in real conversations
+7. ⏸️ Signal plugin implementation
+8. ⏸️ Create additional knowledge packs (personal-assistant, kubernetes)
 
 ---
 
 **You've got this!** Build something that makes working with LLMs better. Follow your interest. Ship value when it feels right.
 
 **Remember**: This is a personal project first. The vision is ambitious, but the execution is iterative and dopamine-driven.
+- Always update the flag documentation when making flag changes
