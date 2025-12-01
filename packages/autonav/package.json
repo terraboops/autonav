@@ -1,6 +1,6 @@
 {
   "name": "@autonav/core",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "CLI tools and Claude SDK Adapter for Autonav navigators",
   "type": "module",
   "main": "./dist/index.js",
