@@ -62,12 +62,15 @@ For command-specific help:
 function main() {
   const args = process.argv.slice(2);
 
-  if (args.includes("--version") || args.includes("-v")) {
+  // Show version only if --version/-v is first arg (before any command)
+  if (args[0] === "--version" || args[0] === "-v") {
     console.log(`autonav v${getVersion()}`);
     process.exit(0);
   }
 
-  if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
+  // Show main help only if no command or --help/-h is first arg
+  // (subcommands handle their own --help)
+  if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
     printUsage();
     process.exit(0);
   }
