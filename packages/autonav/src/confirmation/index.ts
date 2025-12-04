@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import * as readline from "node:readline";
 import type { AnalysisResult } from "../repo-analyzer/index.js";
 import type { ScanStats } from "../repo-scanner/index.js";
@@ -142,4 +144,69 @@ export async function promptExistingClaudeMd(): Promise<ExistingClaudeMdAction> 
 
   // Default to skip
   return "skip";
+}
+
+/**
+ * Files that autonav creates during import
+ */
+const AUTONAV_FILES = [
+  "config.json",
+  "CLAUDE.md",
+  ".claude/plugins.json",
+  ".gitignore",
+  "README.md",
+];
+
+/**
+ * Check for file conflicts before import
+ *
+ * @param navigatorPath - Path where navigator will be created
+ * @param inPlace - Whether this is an in-place import
+ * @returns Whether to continue with the import
+ */
+export async function checkFileConflicts(
+  navigatorPath: string,
+  inPlace: boolean
+): Promise<{ hasConflicts: boolean; shouldContinue: boolean }> {
+  const existingFiles: string[] = [];
+
+  for (const file of AUTONAV_FILES) {
+    const filePath = path.join(navigatorPath, file);
+    if (fs.existsSync(filePath)) {
+      existingFiles.push(file);
+    }
+  }
+
+  if (existingFiles.length === 0) {
+    return { hasConflicts: false, shouldContinue: true };
+  }
+
+  // Found conflicts - prompt user
+  console.log(
+    `\n⚠️  The following files already exist in ${inPlace ? "source repository" : "target directory"}:\n`
+  );
+  for (const file of existingFiles) {
+    console.log(`  - ${file}`);
+  }
+  console.log();
+
+  // Non-interactive: abort
+  if (!process.stdin.isTTY) {
+    console.log("Non-interactive mode: aborting to avoid overwriting files.\n");
+    console.log("Use --force to overwrite, or remove conflicting files manually.\n");
+    return { hasConflicts: true, shouldContinue: false };
+  }
+
+  console.log("How would you like to proceed?");
+  console.log("  [c] Continue - Overwrite existing files");
+  console.log("  [a] Abort - Cancel import (default)\n");
+
+  const answer = await prompt("Your choice? [c/A] ");
+  const normalized = answer.trim().toLowerCase();
+
+  if (normalized === "c" || normalized === "continue") {
+    return { hasConflicts: true, shouldContinue: true };
+  }
+
+  return { hasConflicts: true, shouldContinue: false };
 }

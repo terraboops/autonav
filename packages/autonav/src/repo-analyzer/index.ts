@@ -115,6 +115,38 @@ function parseAnalysisResponse(response: string): AnalysisResult | null {
 }
 
 /**
+ * Validate and sanitize an analysis result
+ * Ensures no empty/invalid values that would break config.json
+ */
+export function validateAnalysisResult(
+  result: AnalysisResult,
+  fallbackName: string
+): AnalysisResult {
+  const sanitize = (value: string, fallback: string): string => {
+    const cleaned = value?.trim();
+    return cleaned && cleaned.length > 0 ? cleaned : fallback;
+  };
+
+  return {
+    purpose: sanitize(result.purpose, `Knowledge navigator for ${fallbackName}`),
+    scope: sanitize(result.scope, "This repository's code and documentation"),
+    audience: sanitize(
+      result.audience,
+      "Developers working with this codebase"
+    ),
+    suggestedKnowledgePaths: Array.isArray(result.suggestedKnowledgePaths)
+      ? result.suggestedKnowledgePaths.filter(
+          (p) => typeof p === "string" && p.length > 0
+        )
+      : [],
+    confidence:
+      typeof result.confidence === "number" && !isNaN(result.confidence)
+        ? Math.max(0, Math.min(1, result.confidence))
+        : 0.3,
+  };
+}
+
+/**
  * Analyze a scanned repository using Claude
  */
 export async function analyzeRepository(
@@ -145,9 +177,11 @@ export async function analyzeRepository(
 
     const result = parseAnalysisResponse(responseText);
 
+    const fallbackName = scanResult.projectMetadata.name || "project";
+
     if (!result) {
       // Return a default with low confidence if parsing failed
-      return {
+      const fallback = {
         purpose: scanResult.projectMetadata.description || "A software project",
         scope: "This repository's code and documentation",
         audience: "Developers working with this codebase",
@@ -157,13 +191,17 @@ export async function analyzeRepository(
           .slice(0, 5),
         confidence: 0.3,
       };
+      return validateAnalysisResult(fallback, fallbackName);
     }
 
-    return result;
+    return validateAnalysisResult(result, fallbackName);
   } catch (error) {
     // Return a fallback on error
-    return {
-      purpose: scanResult.projectMetadata.description || scanResult.projectMetadata.name || "A software project",
+    const fallback = {
+      purpose:
+        scanResult.projectMetadata.description ||
+        scanResult.projectMetadata.name ||
+        "A software project",
       scope: "This repository's code and documentation",
       audience: "Developers working with this codebase",
       suggestedKnowledgePaths: scanResult.files
@@ -172,5 +210,9 @@ export async function analyzeRepository(
         .slice(0, 5),
       confidence: 0.2,
     };
+    return validateAnalysisResult(
+      fallback,
+      scanResult.projectMetadata.name || "project"
+    );
   }
 }

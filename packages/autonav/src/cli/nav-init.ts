@@ -2,13 +2,19 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as os from "node:os";
 import { loadTemplates, replaceTemplateVars } from "../templates/index.js";
 import { validateNavigatorName } from "../validation/index.js";
 import { installPack } from "../pack-installer/index.js";
 import { runInterviewTUI, isInteractiveTerminal, type NavigatorConfig, type PackContext } from "../interview/index.js";
 import { scanRepository } from "../repo-scanner/index.js";
 import { analyzeRepository, type AnalysisResult } from "../repo-analyzer/index.js";
-import { confirmAnalysis, promptExistingClaudeMd, type ExistingClaudeMdAction } from "../confirmation/index.js";
+import {
+  confirmAnalysis,
+  promptExistingClaudeMd,
+  checkFileConflicts,
+  type ExistingClaudeMdAction,
+} from "../confirmation/index.js";
 import { createNavigatorSkill } from "../skill-generator/index.js";
 
 /**
@@ -62,6 +68,9 @@ Examples:
 
   # Import in-place (add files to existing repo)
   autonav init my-nav --from /path/to/repo --in-place
+
+  # Import repository in-place (no navigator name)
+  autonav init --from /path/to/repo
 
   # Create navigator with knowledge pack from server
   autonav init platform-nav --pack platform-engineering
@@ -151,6 +160,11 @@ function parseArgs(args: string[]): {
     }
   }
 
+  // Infer in-place mode if --from present but no name
+  if (options.from && !navigatorName) {
+    options.inPlace = true;
+  }
+
   return { navigatorName, options };
 }
 
@@ -179,6 +193,18 @@ async function handleImportMode(
     ? sourcePath
     : path.resolve(process.cwd(), navigatorName);
 
+  // Pre-scan conflict detection
+  if (!options.force) {
+    const { shouldContinue } = await checkFileConflicts(
+      navigatorPath,
+      options.inPlace || false
+    );
+    if (!shouldContinue) {
+      console.log("\n❌ Import cancelled.\n");
+      process.exit(0);
+    }
+  }
+
   // Check for existing CLAUDE.md in source repo (only relevant for in-place mode)
   const existingClaudeMdPath = path.join(sourcePath, "CLAUDE.md");
   const hasExistingClaudeMd = fs.existsSync(existingClaudeMdPath);
@@ -191,19 +217,12 @@ async function handleImportMode(
   }
 
   // Check for existing navigator directory (non-in-place mode)
-  if (!options.inPlace) {
-    // Check if navigator directory already exists
-    if (fs.existsSync(navigatorPath)) {
-      if (!options.force) {
-        console.error(`❌ Error: Directory already exists: ${navigatorPath}`);
-        console.error("Use --force to overwrite\n");
-        process.exit(1);
-      }
-      if (!options.quiet) {
-        console.log(`⚠️  Removing existing directory: ${navigatorPath}`);
-      }
-      fs.rmSync(navigatorPath, { recursive: true, force: true });
+  // If we got this far, user confirmed they want to overwrite
+  if (!options.inPlace && fs.existsSync(navigatorPath)) {
+    if (!options.quiet) {
+      console.log(`⚠️  Removing existing directory: ${navigatorPath}`);
     }
+    fs.rmSync(navigatorPath, { recursive: true, force: true });
   }
 
   try {
@@ -250,7 +269,9 @@ async function handleImportMode(
       }
 
       console.log("\nStarting interview to customize configuration...\n");
-      const interviewConfig = await runInterviewTUI(navigatorName);
+      const interviewConfig = await runInterviewTUI(navigatorName, {
+        analysisContext: analysis,
+      });
 
       // Convert interview config to analysis result format
       finalAnalysis = {
@@ -264,6 +285,12 @@ async function handleImportMode(
       finalAnalysis = confirmation.analysis;
     }
 
+    // Final validation before file generation
+    const { validateAnalysisResult } = await import(
+      "../repo-analyzer/index.js"
+    );
+    finalAnalysis = validateAnalysisResult(finalAnalysis, navigatorName);
+
     // Phase 4: Generate navigator files
     if (!options.inPlace) {
       fs.mkdirSync(navigatorPath, { recursive: true });
@@ -271,6 +298,25 @@ async function handleImportMode(
     } else {
       // Ensure .claude directory exists for in-place
       fs.mkdirSync(path.join(navigatorPath, ".claude"), { recursive: true });
+    }
+
+    // Create symlink to source repository as 'knowledge' directory
+    if (!options.inPlace) {
+      const knowledgeSymlink = path.join(navigatorPath, "knowledge");
+      const symlinkType = os.platform() === "win32" ? "junction" : "dir";
+
+      try {
+        fs.symlinkSync(sourcePath, knowledgeSymlink, symlinkType);
+        if (!options.quiet) {
+          console.log(`✓ Created knowledge symlink → ${sourcePath}`);
+        }
+      } catch (error) {
+        // Fallback: warn but continue (symlink creation may fail due to permissions)
+        console.warn(
+          `⚠️  Could not create symlink: ${error instanceof Error ? error.message : String(error)}`
+        );
+        console.warn(`   Knowledge base will reference: ${sourcePath}`);
+      }
     }
 
     // Load templates
@@ -465,6 +511,29 @@ async function main() {
   // Parse arguments
   const { navigatorName, options } = parseArgs(args);
 
+  // Validate mutual exclusivity of --from and --pack
+  if (options.from && (options.pack || options.packFile)) {
+    console.error("❌ Error: Cannot use --from with --pack or --pack-file\n");
+    process.exit(1);
+  }
+
+  // Handle --from without name (in-place mode)
+  if (options.from && !navigatorName) {
+    const sourcePath = path.resolve(options.from);
+    const inferredName = path.basename(sourcePath);
+
+    if (!options.quiet) {
+      console.log(`\n⚠️  No navigator name specified with --from flag.`);
+      console.log(
+        `   Assuming --in-place mode: files will be added to source repository.`
+      );
+      console.log(`   Navigator name: ${inferredName}\n`);
+    }
+
+    await handleImportMode(inferredName, options);
+    return;
+  }
+
   // Validate navigator name
   if (!navigatorName) {
     console.error("❌ Error: Navigator name is required\n");
@@ -475,12 +544,6 @@ async function main() {
   const validation = validateNavigatorName(navigatorName);
   if (!validation.valid) {
     console.error(`❌ Error: ${validation.error}\n`);
-    process.exit(1);
-  }
-
-  // Validate mutual exclusivity of --from and --pack
-  if (options.from && (options.pack || options.packFile)) {
-    console.error("❌ Error: Cannot use --from with --pack or --pack-file\n");
     process.exit(1);
   }
 

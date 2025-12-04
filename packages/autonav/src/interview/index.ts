@@ -9,6 +9,7 @@ import React from "react";
 import { render } from "ink";
 import { InterviewApp } from "./App.js";
 import type { NavigatorConfig, PackContext } from "./prompts.js";
+import type { AnalysisResult } from "../repo-analyzer/index.js";
 
 export type { NavigatorConfig, PackContext } from "./prompts.js";
 export { getInterviewSystemPrompt } from "./prompts.js";
@@ -19,6 +20,8 @@ export { getInterviewSystemPrompt } from "./prompts.js";
 export interface InterviewOptions {
   /** Optional pack context to customize the interview */
   packContext?: PackContext;
+  /** Optional analysis context from repository scan */
+  analysisContext?: AnalysisResult;
 }
 
 /**
@@ -64,6 +67,7 @@ export function runInterviewTUI(
       React.createElement(InterviewApp, {
         name,
         packContext: options?.packContext,
+        analysisContext: options?.analysisContext,
         onComplete: handleComplete,
       })
     );

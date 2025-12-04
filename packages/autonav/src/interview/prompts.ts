@@ -2,6 +2,8 @@
  * Interview prompts and tool definitions for interactive nav init
  */
 
+import type { AnalysisResult } from "../repo-analyzer/index.js";
+
 /**
  * Context for pack-based interviews
  */
@@ -63,22 +65,25 @@ The claudeMd field should be a complete, personalized CLAUDE.md file based on wh
 IMPORTANT: Only output the JSON configuration when you have gathered enough information. Before that, just ask questions conversationally.`;
 
 /**
- * Get the interview system prompt, optionally customized for a pack
+ * Get the interview system prompt, optionally customized for a pack or analysis
  */
-export function getInterviewSystemPrompt(packContext?: PackContext): string {
-  if (!packContext) {
-    return BASE_INTERVIEW_PROMPT;
-  }
+export function getInterviewSystemPrompt(
+  packContext?: PackContext,
+  analysisContext?: AnalysisResult
+): string {
+  let prompt = BASE_INTERVIEW_PROMPT;
 
-  let packSection = `
+  // Add pack context section if provided
+  if (packContext) {
+    let packSection = `
 ## Knowledge Pack Context
 
 This navigator is being created with the **${packContext.packName}** knowledge pack (v${packContext.packVersion}).
 The pack provides pre-built knowledge and configuration for a specific domain.
 `;
 
-  if (packContext.initGuide) {
-    packSection += `
+    if (packContext.initGuide) {
+      packSection += `
 ## Pack Interview Guide (from INIT.md)
 
 The pack author has provided the following guidance for this interview:
@@ -89,17 +94,45 @@ ${packContext.initGuide}
 
 Use this guidance to inform your questions and the navigator configuration. The pack's INIT.md takes precedence over the default topics - focus on what the pack author wants to capture during setup.
 `;
-  } else {
-    packSection += `
+    } else {
+      packSection += `
 Since this pack provides domain knowledge, you can focus more on:
 - How the user will use this specific domain knowledge
 - Their experience level with the domain
 - Specific customizations or preferences
 - How autonomous the navigator should be with the pack's knowledge
 `;
+    }
+
+    prompt += packSection;
   }
 
-  return BASE_INTERVIEW_PROMPT + packSection;
+  // Add analysis context section if provided
+  if (analysisContext) {
+    const analysisSection = `
+
+## Analysis Context
+
+This navigator is being created from an existing repository that has been analyzed:
+
+- **Purpose**: ${analysisContext.purpose}
+- **Scope**: ${analysisContext.scope}
+- **Audience**: ${analysisContext.audience}
+- **Confidence**: ${(analysisContext.confidence * 100).toFixed(0)}%
+
+Your role is to help the user refine this analysis. Ask clarifying questions to:
+1. Confirm if the inferred purpose is accurate
+2. Adjust the scope if needed
+3. Refine audience and communication style
+4. Explore knowledge organization preferences
+
+Start by presenting the analysis summary and asking if they'd like to refine any aspect.
+`;
+
+    prompt += analysisSection;
+  }
+
+  return prompt;
 }
 
 /**

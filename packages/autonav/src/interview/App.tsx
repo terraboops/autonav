@@ -14,6 +14,7 @@ import {
   type NavigatorConfig,
   type PackContext,
 } from "./prompts.js";
+import type { AnalysisResult } from "../repo-analyzer/index.js";
 
 // Check if debug mode is enabled
 const DEBUG = process.env.AUTONAV_DEBUG === "1" || process.env.DEBUG === "1";
@@ -35,12 +36,18 @@ interface Message {
 interface InterviewAppProps {
   name: string;
   packContext?: PackContext;
+  analysisContext?: AnalysisResult;
   onComplete: (config: NavigatorConfig) => void;
 }
 
-export function InterviewApp({ name, packContext, onComplete }: InterviewAppProps) {
-  // Get the system prompt, customized for pack if provided
-  const systemPrompt = getInterviewSystemPrompt(packContext);
+export function InterviewApp({
+  name,
+  packContext,
+  analysisContext,
+  onComplete,
+}: InterviewAppProps) {
+  // Get the system prompt, customized for pack or analysis if provided
+  const systemPrompt = getInterviewSystemPrompt(packContext, analysisContext);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -110,8 +117,20 @@ export function InterviewApp({ name, packContext, onComplete }: InterviewAppProp
       try {
         debugLog("Creating query with model:", INTERVIEW_MODEL);
 
-        // Create initial prompt
-        const initialMessage = `I want to create a navigator called "${name}".`;
+        // Build initial message with analysis context if available
+        let initialMessage = `I want to create a navigator called "${name}".`;
+
+        if (analysisContext) {
+          initialMessage += `\n\nI've already analyzed the repository and found:\n`;
+          initialMessage += `- Purpose: ${analysisContext.purpose}\n`;
+          initialMessage += `- Scope: ${analysisContext.scope}\n`;
+          initialMessage += `- Audience: ${analysisContext.audience}\n`;
+          if (analysisContext.suggestedKnowledgePaths.length > 0) {
+            initialMessage += `- Knowledge paths: ${analysisContext.suggestedKnowledgePaths.join(", ")}\n`;
+          }
+          initialMessage += `\nI'd like to refine these details before creating the navigator.`;
+        }
+
         debugLog("Initial message:", initialMessage);
 
         // Create query with system prompt
