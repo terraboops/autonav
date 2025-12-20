@@ -16,6 +16,51 @@ import { sanitizeError } from "../plugins/utils/security.js";
 import { createSelfConfigMcpServer, createResponseMcpServer, SUBMIT_ANSWER_TOOL } from "../tools/index.js";
 
 /**
+ * Optional LangSmith integration for tracing Claude Agent SDK calls
+ */
+let langsmithTraceable: any = null;
+let langsmithInitialized = false;
+
+/**
+ * Lazily initialize LangSmith tracing if enabled via environment variables
+ */
+async function initializeLangSmith(): Promise<boolean> {
+  if (langsmithInitialized) {
+    return !!langsmithTraceable;
+  }
+
+  langsmithInitialized = true;
+
+  // Check if LangSmith tracing is enabled via environment variable
+  const tracingEnabled = process.env.LANGSMITH_TRACING === "true";
+  const hasApiKey = !!process.env.LANGSMITH_API_KEY;
+
+  if (!tracingEnabled || !hasApiKey) {
+    return false;
+  }
+
+  try {
+    // Dynamically import langsmith (optional peer dependency)
+    // Using dynamic import with string to avoid TypeScript compile-time resolution
+    const moduleName = "langsmith/traceable";
+    const langsmith = await import(moduleName);
+    langsmithTraceable = langsmith.traceable;
+
+    console.log("✅ LangSmith tracing enabled");
+    if (process.env.LANGSMITH_PROJECT) {
+      console.log(`   Project: ${process.env.LANGSMITH_PROJECT}`);
+    }
+
+    return true;
+  } catch (error) {
+    // langsmith not installed or import failed - continue without tracing
+    console.warn("⚠️  LangSmith tracing requested but langsmith package not found.");
+    console.warn("   Install with: npm install langsmith");
+    return false;
+  }
+}
+
+/**
  * Configuration options for Claude Adapter
  */
 export interface ClaudeAdapterOptions {
@@ -244,6 +289,40 @@ export class ClaudeAdapter {
    * ```
    */
   async query(
+    navigator: LoadedNavigator,
+    question: string,
+    options: QueryOptions = {}
+  ): Promise<NavigatorResponse> {
+    // Initialize LangSmith if needed
+    const tracingEnabled = await initializeLangSmith();
+
+    // Wrap the query execution with LangSmith tracing if enabled
+    if (tracingEnabled && langsmithTraceable) {
+      const tracedQuery = langsmithTraceable(
+        this.executeQuery.bind(this),
+        {
+          name: "autonav_query",
+          run_type: "chain",
+          metadata: {
+            navigator: navigator.config.name,
+            model: this.options.model,
+          },
+        }
+      );
+      return tracedQuery(navigator, question, options);
+    }
+
+    // Execute query without tracing
+    return this.executeQuery(navigator, question, options);
+  }
+
+  /**
+   * Internal method to execute the query
+   * Separated to allow for LangSmith tracing wrapper
+   *
+   * @internal
+   */
+  private async executeQuery(
     navigator: LoadedNavigator,
     question: string,
     options: QueryOptions = {}
