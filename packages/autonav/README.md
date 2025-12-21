@@ -93,7 +93,40 @@ my-docs/
 
 ## Environment
 
+### Required
+
 `ANTHROPIC_API_KEY` - Required for queries.
+
+### Optional - LangSmith Tracing
+
+Autonav supports optional [LangSmith](https://www.langchain.com/langsmith) tracing to monitor and debug Claude Agent SDK calls.
+
+To enable LangSmith tracing:
+
+1. Install the langsmith package:
+   ```bash
+   npm install langsmith
+   ```
+
+2. Set environment variables:
+   ```bash
+   export LANGSMITH_TRACING="true"
+   export LANGSMITH_API_KEY="your-api-key"
+   export LANGSMITH_PROJECT="your-project-name"  # Optional
+   ```
+
+3. Run autonav commands as normal:
+   ```bash
+   autonav query my-docs "How do I deploy?"
+   ```
+
+All queries will be traced to your LangSmith project, capturing:
+- Full conversation history
+- Tool calls and responses
+- Model parameters
+- Response validation
+
+**Note:** LangSmith is completely optional. Autonav works normally without it.
 
 ## FAQ
 
