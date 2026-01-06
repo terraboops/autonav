@@ -132,30 +132,27 @@ Use this skill to:
 
 ## How to Use
 
-Navigate to the navigator directory and use Claude Code with write permissions:
+Simply use \`autonav update\` to send an update message:
 
 \`\`\`bash
-cd "${navPath}"
-claude -p --permission-mode acceptEdits "your update message"
+autonav update "${navPath}" "your update message"
 \`\`\`
 
 **Example updates:**
 
 Report progress:
 \`\`\`bash
-cd "${navPath}"
-claude -p --permission-mode acceptEdits "I've completed feature X. Please document this in the knowledge base."
+autonav update "${navPath}" "I completed feature X. Please document this in the knowledge base."
 \`\`\`
 
 Log an issue:
 \`\`\`bash
-cd "${navPath}"
-claude -p --permission-mode acceptEdits "Encountered error Y during deployment. Please add this to troubleshooting docs."
+autonav update "${navPath}" "Encountered error Y during deployment. Add this to troubleshooting docs."
 \`\`\`
 
 ## Important
 
-- This skill grants **write permissions** to the navigator
+- This command grants **write permissions** to the navigator
 - Changes are made directly to files in the knowledge base
 - Always review edits before committing to version control
 `;
