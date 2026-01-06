@@ -64,159 +64,37 @@ export function generateSkillContent(config: SkillConfig): string {
 
   return `---
 name: ${skillName}
-description: Consult with ${config.navigatorName} navigator for questions about ${config.description}. Use when user asks to "ask ${config.navigatorName}" or needs information from this knowledge base.
+description: Query ${config.navigatorName} navigator about ${config.description}. Use when user asks to "ask ${config.navigatorName}" or needs information from this knowledge base.
 ---
 
-# Ask ${config.navigatorName} Skill
+# Ask ${config.navigatorName}
 
-## Purpose
-Facilitate conversations with the **${config.navigatorName}** navigator located at \`${navPath}\`.
+Query the **${config.navigatorName}** navigator for information.
+
+**Navigator Location**: \`${navPath}\`
 
 ${config.description}
 
 ${config.scope ? `**Scope**: ${config.scope}\n` : ""}
 ${config.audience ? `**Audience**: ${config.audience}\n` : ""}
 
-## When to Use This Skill
+## How to Use
 
-Use this skill when the user:
-- Asks to "ask ${config.navigatorName.toLowerCase()}" or "query ${config.navigatorName.toLowerCase()}"
-- Needs information from the ${config.navigatorName} knowledge base
-- Wants to consult this navigator's domain expertise
+Simply use \`autonav query\` to ask questions:
 
-## Communication Protocol
-
-This navigator uses the Autonav communication layer for structured interactions.
-
-### Query Format (NavigatorQuery)
-\`\`\`json
-{
-  "protocolVersion": "1.0.0",
-  "fromNavigator": "<your-navigator-name>",
-  "toNavigator": "${config.navigatorName}",
-  "question": "<the question>",
-  "context": "<optional context>",
-  "reason": "needs_specialist"
-}
-\`\`\`
-
-### Response Format (NavigatorResponse)
-\`\`\`json
-{
-  "protocolVersion": "1.0.0",
-  "query": "<original question>",
-  "answer": "<grounded answer with citations>",
-  "sources": [
-    {
-      "filePath": "path/to/file.md",
-      "excerpt": "exact quote",
-      "section": "section heading"
-    }
-  ],
-  "confidence": 0.85
-}
-\`\`\`
-
-## Technical Implementation
-
-### Starting a New Conversation
-
-1. Generate a session UUID:
-\`\`\`bash
-UUID=$(python -c "import uuid; print(uuid.uuid4())")
-\`\`\`
-
-2. Start conversation:
-\`\`\`bash
-cd "${navPath}" && claude -p --session-id "$UUID" "$message"
-\`\`\`
-
-### Continuing a Conversation
-
-\`\`\`bash
-cd "${navPath}" && claude --resume "$UUID" -p "$message"
-\`\`\`
-
-### Using autonav query (Simpler)
-
-For one-off queries without maintaining session state:
 \`\`\`bash
 autonav query "${navPath}" "your question here"
 \`\`\`
 
-## Conversation Template
+The navigator will provide grounded answers with sources from its knowledge base.
 
-When starting a conversation, provide:
-1. **Context** - What you're working on
-2. **Question** - Specific question for this navigator
-3. **Expected format** - If you need structured output
+## What This Navigator Knows
 
-Example:
-\`\`\`
-Hi ${config.navigatorName}! I'm working on [context].
-
-Question: [your specific question]
-
-Please provide sources for your answer.
-\`\`\`
-
-## Example Workflow
-
-### Quick Query
-\`\`\`bash
-autonav query "${navPath}" "How do I configure X?"
-\`\`\`
-
-### Interactive Session
-\`\`\`bash
-# Generate UUID
-UUID=$(python -c "import uuid; print(uuid.uuid4())")
-
-# Start conversation
-cd "${navPath}" && claude -p --session-id "$UUID" \\
-  "I need help understanding the architecture. Can you explain the main components?"
-
-# Follow up
-cd "${navPath}" && claude --resume "$UUID" -p \\
-  "Thanks! How do those components interact?"
-\`\`\`
-
-### With Write Access (for self-configuration)
-\`\`\`bash
-cd "${navPath}" && claude --resume "$UUID" -p --permission-mode acceptEdits \\
-  "Please update the configuration to enable feature X"
-\`\`\`
-
-## Best Practices
-
-1. **Provide Context** - Give enough information for grounded answers
-2. **Be Specific** - Focused questions get better answers
-3. **Request Sources** - Ask for citations to verify grounding
-4. **Check Confidence** - Low confidence answers may need human review
-5. **Use Structured Queries** - For programmatic access, use the NavigatorQuery format
-
-## Grounding Rules
-
-This navigator follows strict grounding rules:
+This navigator specializes in ${config.scope || 'its configured domain'} and follows strict grounding rules:
 - Always cites sources from the knowledge base
 - Never invents information
 - Acknowledges uncertainty with confidence scores
 - Only references files that actually exist
-
-## Tool Usage
-
-- Use \`Bash\` tool to communicate with the navigator
-- Always \`cd\` to the navigator directory first
-- Use \`-p\` flag for prompt mode
-- Store UUIDs for multi-turn conversations
-- Add \`--permission-mode acceptEdits\` only when edits are needed and confirmed
-
-## Important Notes
-
-- Navigator location: \`${navPath}\`
-- Each conversation needs a unique UUID for session tracking
-- Use \`autonav query\` for simple one-off questions
-- Use \`claude -p --session-id\` for multi-turn conversations
 `;
 }
 
@@ -229,123 +107,57 @@ export function generateUpdateSkillContent(config: SkillConfig): string {
 
   return `---
 name: ${skillName}
-description: Update ${config.navigatorName} navigator by editing its documents and knowledge base. Use when user asks to "update ${config.navigatorName}" or when reporting implementation progress, issues, or changes.
+description: Update ${config.navigatorName} navigator's documentation and knowledge base. Use when reporting implementation progress, documenting issues, or updating knowledge about ${config.description}.
 ---
 
-# Update ${config.navigatorName} Skill
+# Update ${config.navigatorName}
 
-## Purpose
-Enable write access to the **${config.navigatorName}** navigator at \`${navPath}\` for updating documentation, reporting progress, and managing knowledge base content.
+Update the **${config.navigatorName}** navigator's documentation and knowledge base.
+
+**Navigator Location**: \`${navPath}\`
 
 ${config.description}
 
 ${config.scope ? `**Scope**: ${config.scope}\n` : ""}
 ${config.audience ? `**Audience**: ${config.audience}\n` : ""}
 
-## When to Use This Skill
+## When to Use
 
-Use this skill when you need to:
-- Report implementation progress or issues to ${config.navigatorName}
-- Update documentation in the knowledge base
-- Add new knowledge files or sections
-- Modify existing content
-- Create implementation logs or status reports
-- Track work progress across sessions
+Use this skill to:
+- Report implementation progress or issues
+- Update documentation after making changes
+- Add new knowledge or learnings
+- Document troubleshooting steps
+- Create status reports or logs
 
-## Write Permission Mode
+## How to Use
 
-This skill **ALWAYS** uses write permissions. The navigator can edit files in its knowledge base.
-
-### Starting a Conversation with Write Access
-
-1. Generate a session UUID:
-\`\`\`bash
-UUID=$(python -c "import uuid; print(uuid.uuid4())")
-\`\`\`
-
-2. Start conversation with write permissions:
-\`\`\`bash
-cd "${navPath}" && claude -p --session-id "$UUID" --permission-mode acceptEdits "$message"
-\`\`\`
-
-### Continuing a Conversation
+Navigate to the navigator directory and use Claude Code with write permissions:
 
 \`\`\`bash
-cd "${navPath}" && claude --resume "$UUID" -p --permission-mode acceptEdits "$message"
+cd "${navPath}"
+claude -p --permission-mode acceptEdits "your update message"
 \`\`\`
 
-## Conversation Template
+**Example updates:**
 
-When updating the navigator, provide:
-1. **What changed** - What implementation work was done
-2. **Where to update** - Which documents should be updated
-3. **Status/Progress** - Current status or issues encountered
-
-Example:
-\`\`\`
-Hi ${config.navigatorName}! I've completed work on [feature/fix].
-
-Changes made:
-- [list of changes]
-
-Issues encountered:
-- [any problems or blockers]
-
-Please update the following documents:
-- [document 1]: Add section about [topic]
-- [document 2]: Update status to [status]
-\`\`\`
-
-## Common Use Cases
-
-### Reporting Implementation Progress
+Report progress:
 \`\`\`bash
-UUID=$(python -c "import uuid; print(uuid.uuid4())")
-cd "${navPath}" && claude -p --session-id "$UUID" --permission-mode acceptEdits \\
-  "I've implemented feature X. Please update the documentation to reflect these changes: [details]"
+cd "${navPath}"
+claude -p --permission-mode acceptEdits "I've completed feature X. Please document this in the knowledge base."
 \`\`\`
 
-### Logging Issues
+Log an issue:
 \`\`\`bash
-cd "${navPath}" && claude -p --permission-mode acceptEdits \\
-  "Encountered an error while deploying: [error details]. Please document this in troubleshooting."
+cd "${navPath}"
+claude -p --permission-mode acceptEdits "Encountered error Y during deployment. Please add this to troubleshooting docs."
 \`\`\`
 
-### Creating Status Reports
-\`\`\`bash
-cd "${navPath}" && claude -p --permission-mode acceptEdits \\
-  "Create a status report for this week's work: [summary of completed tasks]"
-\`\`\`
+## Important
 
-### Adding New Documentation
-\`\`\`bash
-cd "${navPath}" && claude -p --permission-mode acceptEdits \\
-  "Add a new guide for [topic] covering: [key points]"
-\`\`\`
-
-## Best Practices
-
-1. **Be Specific** - Clearly state what needs to be updated and where
-2. **Provide Context** - Explain why changes are needed
-3. **Review Changes** - Check the navigator's edits before accepting
-4. **Use Structured Updates** - Organize information logically
-5. **Track Sessions** - Use UUIDs to maintain context across updates
-
-## File Organization
-
-The navigator will typically update files in:
-- \`knowledge/\` - Documentation and guides
-- \`system-configuration.md\` - Configuration settings
-- Progress logs and status reports (created as needed)
-
-## Important Notes
-
-- Navigator location: \`${navPath}\`
-- **Write permissions are ALWAYS enabled** for this skill
-- Each conversation needs a unique UUID for session tracking
-- Changes are made directly to the knowledge base
-- Review edits before committing to version control
-- Use this skill for reporting back to the navigator, not just querying it
+- This skill grants **write permissions** to the navigator
+- Changes are made directly to files in the knowledge base
+- Always review edits before committing to version control
 `;
 }
 
