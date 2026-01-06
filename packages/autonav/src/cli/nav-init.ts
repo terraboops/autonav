@@ -3,10 +3,21 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import * as readline from "node:readline";
 import { loadTemplates, replaceTemplateVars } from "../templates/index.js";
 import { validateNavigatorName } from "../validation/index.js";
 import { installPack } from "../pack-installer/index.js";
-import { runInterviewTUI, isInteractiveTerminal, type NavigatorConfig, type PackContext } from "../interview/index.js";
+import {
+  runInterviewTUI,
+  isInteractiveTerminal,
+  hasProgress,
+  loadProgress,
+  clearProgress,
+  getProgressSummary,
+  type NavigatorConfig,
+  type PackContext,
+  type InterviewProgress,
+} from "../interview/index.js";
 import { scanRepository } from "../repo-scanner/index.js";
 import { analyzeRepository, type AnalysisResult } from "../repo-analyzer/index.js";
 import {
@@ -169,6 +180,29 @@ function parseArgs(args: string[]): {
 }
 
 /**
+ * Prompt user if they want to resume from saved progress
+ */
+async function promptResumeProgress(
+  progress: InterviewProgress
+): Promise<boolean> {
+  const summary = getProgressSummary(progress);
+
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    console.log(`\n${summary}`);
+    rl.question("Resume from saved progress? [Y/n] ", (answer) => {
+      rl.close();
+      const shouldResume = !answer || answer.toLowerCase() === "y";
+      resolve(shouldResume);
+    });
+  });
+}
+
+/**
  * Handle import mode (--from flag)
  * Scans an existing repository and creates a navigator that uses it as knowledge base
  */
@@ -270,6 +304,7 @@ async function handleImportMode(
 
       console.log("\nStarting interview to customize configuration...\n");
       const interviewConfig = await runInterviewTUI(navigatorName, {
+        navigatorPath,
         analysisContext: analysis,
       });
 
@@ -676,7 +711,32 @@ async function main() {
         }
       } else {
         try {
-          interviewConfig = await runInterviewTUI(navigatorName, { packContext });
+          // Check for existing progress
+          let savedProgress: InterviewProgress | undefined;
+          if (hasProgress(navigatorPath)) {
+            const progress = loadProgress(navigatorPath);
+            if (progress && !options.force) {
+              const shouldResume = await promptResumeProgress(progress);
+              if (shouldResume) {
+                savedProgress = progress;
+                if (!options.quiet) {
+                  console.log("✓ Resuming from saved progress\n");
+                }
+              } else {
+                // User chose not to resume, clear the progress
+                clearProgress(navigatorPath);
+                if (!options.quiet) {
+                  console.log("✓ Starting fresh interview\n");
+                }
+              }
+            }
+          }
+
+          interviewConfig = await runInterviewTUI(navigatorName, {
+            navigatorPath,
+            packContext,
+            savedProgress,
+          });
           if (!options.quiet) {
             console.log("\n✓ Interview completed");
           }
@@ -684,7 +744,29 @@ async function main() {
           // User cancelled or error occurred
           if (error instanceof Error && error.message === "Interview cancelled by user") {
             console.log("\n⚠️  Interview cancelled. Cleaning up...");
-            fs.rmSync(navigatorPath, { recursive: true, force: true });
+            // Clean up the directory but keep the progress file for resume
+            const progressPath = path.join(navigatorPath, ".autonav-init-progress.json");
+            const hasProgressFile = fs.existsSync(progressPath);
+
+            if (hasProgressFile) {
+              // Save the progress file temporarily
+              const tempProgressPath = path.join(os.tmpdir(), `.autonav-init-progress-${navigatorName}.json`);
+              fs.copyFileSync(progressPath, tempProgressPath);
+
+              // Clean up the directory
+              fs.rmSync(navigatorPath, { recursive: true, force: true });
+
+              // Restore the progress file
+              fs.mkdirSync(navigatorPath, { recursive: true });
+              fs.copyFileSync(tempProgressPath, progressPath);
+              fs.unlinkSync(tempProgressPath);
+
+              if (!options.quiet) {
+                console.log("💾 Progress saved. Run the same command again to resume.\n");
+              }
+            } else {
+              fs.rmSync(navigatorPath, { recursive: true, force: true });
+            }
             process.exit(0);
           }
           throw error;

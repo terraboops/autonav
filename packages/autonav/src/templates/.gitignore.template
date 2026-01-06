@@ -8,6 +8,9 @@ node_modules/
 # Plugin credentials (NEVER commit these!)
 .claude/plugins.json
 
+# Interview progress (temporary state)
+.autonav-init-progress.json
+
 # OS files
 .DS_Store
 Thumbs.db
