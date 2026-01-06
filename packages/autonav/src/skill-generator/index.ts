@@ -47,6 +47,15 @@ export function getSkillName(navigatorName: string): string {
 }
 
 /**
+ * Generate the update skill name from navigator name
+ */
+export function getUpdateSkillName(navigatorName: string): string {
+  // Convert to lowercase, replace spaces/underscores with hyphens
+  const normalized = navigatorName.toLowerCase().replace(/[_\s]+/g, "-");
+  return `update-${normalized}`;
+}
+
+/**
  * Generate the SKILL.md content for a navigator
  */
 export function generateSkillContent(config: SkillConfig): string {
@@ -212,6 +221,135 @@ This navigator follows strict grounding rules:
 }
 
 /**
+ * Generate the update skill content for a navigator (with write permissions)
+ */
+export function generateUpdateSkillContent(config: SkillConfig): string {
+  const skillName = getUpdateSkillName(config.navigatorName);
+  const navPath = config.navigatorPath;
+
+  return `---
+name: ${skillName}
+description: Update ${config.navigatorName} navigator by editing its documents and knowledge base. Use when user asks to "update ${config.navigatorName}" or when reporting implementation progress, issues, or changes.
+---
+
+# Update ${config.navigatorName} Skill
+
+## Purpose
+Enable write access to the **${config.navigatorName}** navigator at \`${navPath}\` for updating documentation, reporting progress, and managing knowledge base content.
+
+${config.description}
+
+${config.scope ? `**Scope**: ${config.scope}\n` : ""}
+${config.audience ? `**Audience**: ${config.audience}\n` : ""}
+
+## When to Use This Skill
+
+Use this skill when you need to:
+- Report implementation progress or issues to ${config.navigatorName}
+- Update documentation in the knowledge base
+- Add new knowledge files or sections
+- Modify existing content
+- Create implementation logs or status reports
+- Track work progress across sessions
+
+## Write Permission Mode
+
+This skill **ALWAYS** uses write permissions. The navigator can edit files in its knowledge base.
+
+### Starting a Conversation with Write Access
+
+1. Generate a session UUID:
+\`\`\`bash
+UUID=$(python -c "import uuid; print(uuid.uuid4())")
+\`\`\`
+
+2. Start conversation with write permissions:
+\`\`\`bash
+cd "${navPath}" && claude -p --session-id "$UUID" --permission-mode acceptEdits "$message"
+\`\`\`
+
+### Continuing a Conversation
+
+\`\`\`bash
+cd "${navPath}" && claude --resume "$UUID" -p --permission-mode acceptEdits "$message"
+\`\`\`
+
+## Conversation Template
+
+When updating the navigator, provide:
+1. **What changed** - What implementation work was done
+2. **Where to update** - Which documents should be updated
+3. **Status/Progress** - Current status or issues encountered
+
+Example:
+\`\`\`
+Hi ${config.navigatorName}! I've completed work on [feature/fix].
+
+Changes made:
+- [list of changes]
+
+Issues encountered:
+- [any problems or blockers]
+
+Please update the following documents:
+- [document 1]: Add section about [topic]
+- [document 2]: Update status to [status]
+\`\`\`
+
+## Common Use Cases
+
+### Reporting Implementation Progress
+\`\`\`bash
+UUID=$(python -c "import uuid; print(uuid.uuid4())")
+cd "${navPath}" && claude -p --session-id "$UUID" --permission-mode acceptEdits \\
+  "I've implemented feature X. Please update the documentation to reflect these changes: [details]"
+\`\`\`
+
+### Logging Issues
+\`\`\`bash
+cd "${navPath}" && claude -p --permission-mode acceptEdits \\
+  "Encountered an error while deploying: [error details]. Please document this in troubleshooting."
+\`\`\`
+
+### Creating Status Reports
+\`\`\`bash
+cd "${navPath}" && claude -p --permission-mode acceptEdits \\
+  "Create a status report for this week's work: [summary of completed tasks]"
+\`\`\`
+
+### Adding New Documentation
+\`\`\`bash
+cd "${navPath}" && claude -p --permission-mode acceptEdits \\
+  "Add a new guide for [topic] covering: [key points]"
+\`\`\`
+
+## Best Practices
+
+1. **Be Specific** - Clearly state what needs to be updated and where
+2. **Provide Context** - Explain why changes are needed
+3. **Review Changes** - Check the navigator's edits before accepting
+4. **Use Structured Updates** - Organize information logically
+5. **Track Sessions** - Use UUIDs to maintain context across updates
+
+## File Organization
+
+The navigator will typically update files in:
+- \`knowledge/\` - Documentation and guides
+- \`system-configuration.md\` - Configuration settings
+- Progress logs and status reports (created as needed)
+
+## Important Notes
+
+- Navigator location: \`${navPath}\`
+- **Write permissions are ALWAYS enabled** for this skill
+- Each conversation needs a unique UUID for session tracking
+- Changes are made directly to the knowledge base
+- Review edits before committing to version control
+- Use this skill for reporting back to the navigator, not just querying it
+`;
+}
+
+/**
  * Create a global skill for a navigator
  *
  * @param config - Skill configuration
@@ -225,57 +363,82 @@ export async function createNavigatorSkill(
     quiet?: boolean;
   } = {}
 ): Promise<string | null> {
-  const skillName = getSkillName(config.navigatorName);
+  const askSkillName = getSkillName(config.navigatorName);
+  const updateSkillName = getUpdateSkillName(config.navigatorName);
   const skillsDir = getGlobalSkillsDir();
-  const skillDir = path.join(skillsDir, skillName);
-
-  // Check if skill already exists
-  if (skillExists(skillName) && !options.force) {
-    if (!options.quiet) {
-      console.log(`⏭️  Skill "${skillName}" already exists (use --force to overwrite)`);
-    }
-    return null;
-  }
+  const askSkillDir = path.join(skillsDir, askSkillName);
+  const updateSkillDir = path.join(skillsDir, updateSkillName);
 
   // Ensure skills directory exists
   fs.mkdirSync(skillsDir, { recursive: true });
 
-  // Create skill directory
-  fs.mkdirSync(skillDir, { recursive: true });
-
-  // Generate and write SKILL.md
-  const skillContent = generateSkillContent(config);
-  fs.writeFileSync(path.join(skillDir, "SKILL.md"), skillContent);
-
-  if (!options.quiet) {
-    console.log(`✓ Created global skill: ${skillName}`);
+  // Create "ask" skill
+  if (skillExists(askSkillName) && !options.force) {
+    if (!options.quiet) {
+      console.log(`⏭️  Skill "${askSkillName}" already exists (use --force to overwrite)`);
+    }
+  } else {
+    fs.mkdirSync(askSkillDir, { recursive: true });
+    const askSkillContent = generateSkillContent(config);
+    fs.writeFileSync(path.join(askSkillDir, "SKILL.md"), askSkillContent);
+    if (!options.quiet) {
+      console.log(`✓ Created global skill: ${askSkillName}`);
+    }
   }
 
-  return skillDir;
+  // Create "update" skill
+  if (skillExists(updateSkillName) && !options.force) {
+    if (!options.quiet) {
+      console.log(`⏭️  Skill "${updateSkillName}" already exists (use --force to overwrite)`);
+    }
+  } else {
+    fs.mkdirSync(updateSkillDir, { recursive: true });
+    const updateSkillContent = generateUpdateSkillContent(config);
+    fs.writeFileSync(path.join(updateSkillDir, "SKILL.md"), updateSkillContent);
+    if (!options.quiet) {
+      console.log(`✓ Created global skill: ${updateSkillName}`);
+    }
+  }
+
+  return askSkillDir;
 }
 
 /**
- * Remove a navigator skill
+ * Remove a navigator skill (both ask and update skills)
  */
 export function removeNavigatorSkill(
   navigatorName: string,
   options: { quiet?: boolean } = {}
 ): boolean {
-  const skillName = getSkillName(navigatorName);
-  const skillDir = path.join(getGlobalSkillsDir(), skillName);
+  const askSkillName = getSkillName(navigatorName);
+  const updateSkillName = getUpdateSkillName(navigatorName);
+  const skillsDir = getGlobalSkillsDir();
+  const askSkillDir = path.join(skillsDir, askSkillName);
+  const updateSkillDir = path.join(skillsDir, updateSkillName);
 
-  if (!fs.existsSync(skillDir)) {
+  let removedAny = false;
+
+  // Remove ask skill
+  if (fs.existsSync(askSkillDir)) {
+    fs.rmSync(askSkillDir, { recursive: true, force: true });
     if (!options.quiet) {
-      console.log(`⚠️  Skill "${skillName}" does not exist`);
+      console.log(`✓ Removed skill: ${askSkillName}`);
     }
-    return false;
+    removedAny = true;
   }
 
-  fs.rmSync(skillDir, { recursive: true, force: true });
-
-  if (!options.quiet) {
-    console.log(`✓ Removed skill: ${skillName}`);
+  // Remove update skill
+  if (fs.existsSync(updateSkillDir)) {
+    fs.rmSync(updateSkillDir, { recursive: true, force: true });
+    if (!options.quiet) {
+      console.log(`✓ Removed skill: ${updateSkillName}`);
+    }
+    removedAny = true;
   }
 
-  return true;
+  if (!removedAny && !options.quiet) {
+    console.log(`⚠️  No skills found for navigator "${navigatorName}"`);
+  }
+
+  return removedAny;
 }
