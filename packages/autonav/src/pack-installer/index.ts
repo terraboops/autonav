@@ -65,12 +65,27 @@ export async function installPackFromFile(
       cwd: tempDir,
     });
 
+    // Check if extraction created a single top-level directory
+    // (common pattern in tarballs from GitHub, etc.)
+    let packDir = tempDir;
+    const extractedEntries = fs.readdirSync(tempDir);
+    if (extractedEntries.length === 1) {
+      const firstEntry = extractedEntries[0];
+      if (
+        firstEntry &&
+        fs.statSync(path.join(tempDir, firstEntry)).isDirectory()
+      ) {
+        // Use the single top-level directory as the pack directory
+        packDir = path.join(tempDir, firstEntry);
+      }
+    }
+
     // Validate pack structure
-    const metadata = validatePackStructure(tempDir);
+    const metadata = validatePackStructure(packDir);
     onProgress?.(`Validated pack: ${metadata.name} v${metadata.version}`);
 
     // Install pack files to target directory
-    const installedFiles = installPackFiles(tempDir, targetDir, onProgress);
+    const installedFiles = installPackFiles(packDir, targetDir, onProgress);
 
     // Clean up temp directory
     fs.rmSync(tempDir, { recursive: true, force: true });

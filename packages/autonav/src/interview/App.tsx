@@ -57,8 +57,10 @@ export function InterviewApp({
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showHint, setShowHint] = useState(false);
   const queryRef = useRef<Query | null>(null);
   const completedRef = useRef(false);
+  const consecutiveDone = useRef(0);
   const { exit } = useApp();
 
   // Process messages from Claude
@@ -114,9 +116,12 @@ export function InterviewApp({
 
       // Check if the response contains a navigator config
       if (fullText) {
+        debugLog("Checking for navigator config in response...");
         const config = parseNavigatorConfig(fullText);
         if (config) {
-          debugLog("Interview complete, config parsed");
+          debugLog("✓ Interview complete! Config parsed successfully");
+          debugLog("  - purpose:", config.purpose?.substring(0, 50) + "...");
+          debugLog("  - Calling onComplete to exit...");
           completedRef.current = true;
           // Clear progress file on successful completion
           try {
@@ -126,7 +131,11 @@ export function InterviewApp({
             debugLog("Failed to clear progress:", err);
           }
           onComplete(config);
+          debugLog("onComplete called, should be exiting now");
           return;
+        } else {
+          debugLog("✗ No valid config found in response (or validation failed)");
+          debugLog("  Response preview:", fullText.substring(0, 200));
         }
       }
 
@@ -191,15 +200,34 @@ export function InterviewApp({
     initQuery();
   }, [name, processResponse]);
 
+  // Show hint after 5+ user messages
+  useEffect(() => {
+    const userMessageCount = messages.filter(m => m.role === 'user').length;
+    if (userMessageCount >= 5 && !showHint) {
+      setShowHint(true);
+    }
+  }, [messages, showHint]);
+
   // Handle user input submission
   const handleSubmit = useCallback(
     async (value: string) => {
       if (!value.trim() || isLoading || completedRef.current) return;
 
+      // Detect 'done' command - case-insensitive, trimmed
+      const normalizedInput = value.trim().toLowerCase();
+      const isDoneCommand = ['done', 'finish', 'ready', 'create'].includes(normalizedInput);
+
       setInput("");
       const newMessages: Message[] = [...messages, { role: "user" as const, content: value }];
       setMessages(newMessages);
       setIsLoading(true);
+
+      // Update consecutive done tracking
+      if (isDoneCommand) {
+        consecutiveDone.current += 1;
+      } else {
+        consecutiveDone.current = 0;
+      }
 
       // Save progress after user input
       try {
@@ -220,13 +248,34 @@ export function InterviewApp({
       try {
         debugLog("Sending user message:", value);
 
-        // Create a new query for each turn
-        // Include conversation history in the prompt with clear separation
+        // Build conversation history
         const conversationHistory = messages
           .map((m) => `<${m.role}>\n${m.content}\n</${m.role}>`)
           .join("\n\n");
 
-        const fullPrompt = `<conversation_history>
+        // Modify prompt based on 'done' command
+        let fullPrompt: string;
+
+        if (isDoneCommand) {
+          // User wants to finish - FORCE config generation
+          const urgency = consecutiveDone.current > 1
+            ? "The user has REPEATEDLY indicated they are ready. You MUST generate the configuration NOW, even if it's basic or has gaps. Work with what you have."
+            : "The user has indicated they are ready to create the navigator by typing \"" + value + "\".";
+
+          fullPrompt = `<conversation_history>
+${conversationHistory}
+</conversation_history>
+
+${urgency}
+
+CRITICAL: You MUST now generate the JSON configuration based on the information gathered so far. Even if you would prefer more details, work with what you have.
+
+Output ONLY the JSON configuration block wrapped in \`\`\`json and \`\`\` markers. DO NOT add any text before or after the JSON block. DO NOT provide explanations, summaries, or ask for confirmation. The JSON itself is your complete and final response.
+
+If you truly don't have enough information to create a basic configuration (e.g., only 1-2 exchanges with no meaningful detail), explain what critical information is missing and ask ONE final clarifying question. Otherwise, generate ONLY the JSON configuration block and nothing else.`;
+        } else {
+          // Normal conversation flow
+          fullPrompt = `<conversation_history>
 ${conversationHistory}
 </conversation_history>
 
@@ -235,7 +284,8 @@ The user just responded with:
 ${value}
 </user_message>
 
-Continue the interview by responding to their message. Ask your next question OR if you have enough information, output the JSON configuration. Do NOT simulate user responses - only provide YOUR response as the assistant.`;
+Continue the interview by responding to their message. Remember: after gathering enough information (usually 4-6 exchanges), you should signal that you're ready to create the navigator and wait for the user to type 'done'. Do NOT output the JSON configuration until the user explicitly says they're ready. Do NOT simulate user responses - only provide YOUR response as the assistant.`;
+        }
 
         const queryInstance = query({
           prompt: fullPrompt,
@@ -254,7 +304,7 @@ Continue the interview by responding to their message. Ask your next question OR
         setIsLoading(false);
       }
     },
-    [isLoading, messages, processResponse, name, navigatorPath, packContext, analysisContext]
+    [isLoading, messages, systemPrompt, processResponse, name, navigatorPath, packContext, analysisContext]
   );
 
   // Handle Ctrl+C to exit
@@ -306,6 +356,13 @@ Continue the interview by responding to their message. Ask your next question OR
       {isLoading && (
         <Box marginBottom={1}>
           <Text color="gray">Thinking...</Text>
+        </Box>
+      )}
+
+      {/* Hint after 5+ exchanges */}
+      {showHint && !isLoading && !error && (
+        <Box marginBottom={1}>
+          <Text color="yellow">💡 Tip: Type 'done' when ready to create your navigator</Text>
         </Box>
       )}
 

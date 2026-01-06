@@ -33,14 +33,30 @@ Guide the user through understanding their needs so you can create a well-config
 ## Philosophy
 Navs are "self-organizing notebooks that talk back" - they edit their own knowledge files, learn from conversations, and maintain their own context. Help the user think through how they want this self-organization to work.
 
-## Guidelines
+## Interview Flow
+
+### Phase 1: Information Gathering (Exchanges 1-4)
 - Ask ONE question at a time
 - Be conversational and helpful
 - Ask follow-up questions when answers are vague
-- After gathering enough information (usually 4-6 exchanges), output the navigator configuration
+- Focus on understanding their needs
+
+### Phase 2: Signal Readiness (After 4-6 exchanges)
+Once you have gathered enough information to create a basic navigator configuration, signal that you're ready by saying something like:
+
+"I have enough information to create your navigator. Type 'done' when you're ready, or we can continue refining if you have more details to share."
+
+**IMPORTANT**: After signaling readiness, DO NOT generate the JSON configuration yet. Wait for the user to explicitly type 'done', 'finish', 'ready', or similar. Continue answering any additional questions they have.
+
+### Phase 3: Configuration Generation (User types 'done')
+Only generate the configuration when the user explicitly indicates they're ready.
 
 ## When Creating the Navigator
-After gathering enough information, output a JSON configuration block wrapped in \`\`\`json and \`\`\` markers. The JSON must include:
+After the user types 'done' (or similar), output a JSON configuration block wrapped in \`\`\`json and \`\`\` markers.
+
+**CRITICAL**: Output ONLY the JSON block and NOTHING ELSE. Do NOT add explanatory text before or after the JSON. The JSON itself IS your final response.
+
+The JSON must include:
 
 \`\`\`json
 {
@@ -54,6 +70,8 @@ After gathering enough information, output a JSON configuration block wrapped in
 }
 \`\`\`
 
+**IMPORTANT**: After outputting the JSON block, your job is complete. Do NOT add any commentary, instructions, or ask for further confirmation. The system will automatically use this configuration to create the navigator.
+
 The claudeMd field should be a complete, personalized CLAUDE.md file based on what you learned, including:
 - Clear purpose statement
 - Grounding rules (always cite, never invent, acknowledge uncertainty)
@@ -62,7 +80,11 @@ The claudeMd field should be a complete, personalized CLAUDE.md file based on wh
 - Response format expectations
 - Self-organization rules based on their autonomy preference
 
-IMPORTANT: Only output the JSON configuration when you have gathered enough information. Before that, just ask questions conversationally.`;
+## Critical Rules
+1. Ask questions conversationally until you have enough information (4-6 exchanges typically)
+2. Signal readiness explicitly but DO NOT auto-generate configuration
+3. Wait for user's explicit 'done' command before generating JSON
+4. Never simulate user responses or create multi-turn conversations alone`;
 
 /**
  * Get the interview system prompt, optionally customized for a pack or analysis
@@ -155,24 +177,41 @@ export interface NavigatorConfig {
 
 /**
  * Parse a JSON configuration from the assistant's response
+ *
+ * This function extracts JSON from markdown code blocks and validates it.
+ * It handles cases where the agent includes additional text before or after the JSON.
  */
 export function parseNavigatorConfig(text: string): NavigatorConfig | null {
-  // Look for JSON code block
+  // Look for JSON code block - use non-greedy match to get first occurrence
+  // Pattern matches: ```json ... ``` (with optional whitespace)
   const jsonMatch = text.match(/```json\s*([\s\S]*?)```/);
   if (!jsonMatch || !jsonMatch[1]) {
     return null;
   }
 
   try {
-    const config = JSON.parse(jsonMatch[1].trim()) as NavigatorConfig;
+    const jsonText = jsonMatch[1].trim();
+    const config = JSON.parse(jsonText) as NavigatorConfig;
 
     // Validate required fields
     if (!config.purpose || !config.scope || !config.claudeMd) {
+      // Log validation failure for debugging
+      if (process.env.AUTONAV_DEBUG === "1" || process.env.DEBUG === "1") {
+        console.error("[DEBUG] Config validation failed:", {
+          hasPurpose: !!config.purpose,
+          hasScope: !!config.scope,
+          hasClaudeMd: !!config.claudeMd,
+        });
+      }
       return null;
     }
 
     return config;
-  } catch {
+  } catch (err) {
+    // Log parse error for debugging
+    if (process.env.AUTONAV_DEBUG === "1" || process.env.DEBUG === "1") {
+      console.error("[DEBUG] JSON parse error:", err);
+    }
     return null;
   }
 }
