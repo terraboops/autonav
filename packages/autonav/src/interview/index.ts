@@ -70,8 +70,14 @@ export function runInterviewTUI(
     let completed = false;
 
     const handleComplete = (config: NavigatorConfig) => {
+      if (process.env.AUTONAV_DEBUG === "1" || process.env.DEBUG === "1") {
+        console.error("[DEBUG] handleComplete called - unmounting Ink instance");
+      }
       completed = true;
       instance.unmount();
+      if (process.env.AUTONAV_DEBUG === "1" || process.env.DEBUG === "1") {
+        console.error("[DEBUG] Ink unmounted, resolving promise");
+      }
       resolve(config);
     };
 
