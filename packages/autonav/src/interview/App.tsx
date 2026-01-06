@@ -15,6 +15,7 @@ import {
   type PackContext,
 } from "./prompts.js";
 import type { AnalysisResult } from "../repo-analyzer/index.js";
+import { saveProgress, clearProgress, type InterviewProgress } from "./progress.js";
 
 // Check if debug mode is enabled
 const DEBUG = process.env.AUTONAV_DEBUG === "1" || process.env.DEBUG === "1";
@@ -35,20 +36,24 @@ interface Message {
 
 interface InterviewAppProps {
   name: string;
+  navigatorPath: string;
   packContext?: PackContext;
   analysisContext?: AnalysisResult;
+  initialMessages?: Message[];
   onComplete: (config: NavigatorConfig) => void;
 }
 
 export function InterviewApp({
   name,
+  navigatorPath,
   packContext,
   analysisContext,
+  initialMessages,
   onComplete,
 }: InterviewAppProps) {
   // Get the system prompt, customized for pack or analysis if provided
   const systemPrompt = getInterviewSystemPrompt(packContext, analysisContext);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(initialMessages || []);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -78,10 +83,27 @@ export function InterviewApp({
 
           if (text) {
             fullText = text;
-            setMessages((prev) => [
-              ...prev,
-              { role: "assistant", content: text },
-            ]);
+            setMessages((prev) => {
+              const newMessages: Message[] = [
+                ...prev,
+                { role: "assistant" as const, content: text },
+              ];
+              // Save progress after assistant message
+              try {
+                const progress: InterviewProgress = {
+                  navigatorName: name,
+                  messages: newMessages,
+                  packContext,
+                  analysisContext,
+                  lastSaved: new Date().toISOString(),
+                };
+                saveProgress(navigatorPath, progress);
+                debugLog("Progress saved after assistant message:", newMessages.length, "messages");
+              } catch (err) {
+                debugLog("Failed to save progress:", err);
+              }
+              return newMessages;
+            });
           }
         } else if (message.type === "result") {
           debugLog("Result received:", message.subtype);
@@ -96,6 +118,13 @@ export function InterviewApp({
         if (config) {
           debugLog("Interview complete, config parsed");
           completedRef.current = true;
+          // Clear progress file on successful completion
+          try {
+            clearProgress(navigatorPath);
+            debugLog("Progress cleared");
+          } catch (err) {
+            debugLog("Failed to clear progress:", err);
+          }
           onComplete(config);
           return;
         }
@@ -109,7 +138,7 @@ export function InterviewApp({
       );
       setIsLoading(false);
     }
-  }, [onComplete]);
+  }, [onComplete, name, navigatorPath, packContext, analysisContext]);
 
   // Initialize query and send first message
   useEffect(() => {
@@ -168,8 +197,25 @@ export function InterviewApp({
       if (!value.trim() || isLoading || completedRef.current) return;
 
       setInput("");
-      setMessages((prev) => [...prev, { role: "user", content: value }]);
+      const newMessages: Message[] = [...messages, { role: "user" as const, content: value }];
+      setMessages(newMessages);
       setIsLoading(true);
+
+      // Save progress after user input
+      try {
+        const progress: InterviewProgress = {
+          navigatorName: name,
+          messages: newMessages,
+          packContext,
+          analysisContext,
+          lastSaved: new Date().toISOString(),
+        };
+        saveProgress(navigatorPath, progress);
+        debugLog("Progress saved after user input:", newMessages.length, "messages");
+      } catch (err) {
+        debugLog("Failed to save progress:", err);
+        // Don't block on save failures
+      }
 
       try {
         debugLog("Sending user message:", value);
@@ -208,7 +254,7 @@ Continue the interview by responding to their message. Ask your next question OR
         setIsLoading(false);
       }
     },
-    [isLoading, messages, processResponse]
+    [isLoading, messages, processResponse, name, navigatorPath, packContext, analysisContext]
   );
 
   // Handle Ctrl+C to exit

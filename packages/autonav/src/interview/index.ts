@@ -10,18 +10,30 @@ import { render } from "ink";
 import { InterviewApp } from "./App.js";
 import type { NavigatorConfig, PackContext } from "./prompts.js";
 import type { AnalysisResult } from "../repo-analyzer/index.js";
+import type { InterviewProgress } from "./progress.js";
 
 export type { NavigatorConfig, PackContext } from "./prompts.js";
+export type { InterviewProgress } from "./progress.js";
 export { getInterviewSystemPrompt } from "./prompts.js";
+export {
+  hasProgress,
+  loadProgress,
+  clearProgress,
+  getProgressSummary,
+} from "./progress.js";
 
 /**
  * Options for the interview TUI
  */
 export interface InterviewOptions {
+  /** Path to the navigator directory */
+  navigatorPath: string;
   /** Optional pack context to customize the interview */
   packContext?: PackContext;
   /** Optional analysis context from repository scan */
   analysisContext?: AnalysisResult;
+  /** Optional saved progress to resume from */
+  savedProgress?: InterviewProgress;
 }
 
 /**
@@ -39,13 +51,13 @@ export function isInteractiveTerminal(): boolean {
  * Run the interactive interview TUI
  *
  * @param name - Name of the navigator to create
- * @param options - Optional interview options (pack context, etc.)
+ * @param options - Interview options (navigatorPath required, pack context, saved progress optional)
  * @returns Promise that resolves with the navigator configuration
  * @throws Error if terminal doesn't support interactive mode
  */
 export function runInterviewTUI(
   name: string,
-  options?: InterviewOptions
+  options: InterviewOptions
 ): Promise<NavigatorConfig> {
   // Check for TTY support before attempting to render
   if (!isInteractiveTerminal()) {
@@ -66,8 +78,10 @@ export function runInterviewTUI(
     const instance = render(
       React.createElement(InterviewApp, {
         name,
-        packContext: options?.packContext,
-        analysisContext: options?.analysisContext,
+        navigatorPath: options.navigatorPath,
+        packContext: options.packContext,
+        analysisContext: options.analysisContext,
+        initialMessages: options.savedProgress?.messages,
         onComplete: handleComplete,
       })
     );
