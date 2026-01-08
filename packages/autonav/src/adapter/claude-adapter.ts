@@ -400,6 +400,114 @@ export class ClaudeAdapter {
   }
 
   /**
+   * Update navigator documentation
+   *
+   * Sends an update message to Claude with write permissions enabled.
+   * Claude can edit files in the knowledge base to document progress,
+   * add troubleshooting steps, or update existing documentation.
+   *
+   * @param navigator - Loaded navigator to update
+   * @param message - Update message or report
+   * @param options - Query options (maxTurns)
+   * @returns Text response from Claude describing what was updated
+   * @throws {Error} If API call fails or update fails
+   *
+   * @example
+   * ```typescript
+   * const result = await adapter.update(
+   *   navigator,
+   *   'I completed feature X. Please document this in the knowledge base.'
+   * );
+   * console.log(result);
+   * ```
+   */
+  async update(
+    navigator: LoadedNavigator,
+    message: string,
+    options: QueryOptions = {}
+  ): Promise<string> {
+    const { maxTurns = this.options.maxTurns } = options;
+
+    // Validate inputs
+    if (!message || message.trim().length === 0) {
+      throw new Error('Update message cannot be empty');
+    }
+
+    // Build system prompt with update-specific instructions
+    const systemPrompt = `${navigator.systemPrompt}
+
+# Update Mode
+
+You are in UPDATE MODE with write permissions enabled. The user wants to update the navigator's documentation.
+
+When updating documentation:
+- Edit existing files or create new files in the knowledge/ directory
+- Be specific about what you're changing and why
+- Maintain consistent formatting and style
+- Cite which files you modified in your response
+
+Your task: ${message}`;
+
+    try {
+      // Execute update using Claude Agent SDK with write permissions
+      const queryIterator = query({
+        prompt: message,
+        options: {
+          model: this.options.model,
+          maxTurns,
+          systemPrompt,
+          cwd: navigator.navigatorPath,
+          // Don't load user/project settings - we control everything
+          settingSources: [],
+          // Allow file writes in the navigator directory
+          permissionMode: "bypassPermissions",
+        },
+      });
+
+      // Collect the result
+      let resultMessage: SDKResultMessage | undefined;
+      let lastAssistantText = "";
+
+      for await (const message of queryIterator) {
+        if (message.type === "assistant") {
+          const content = message.message.content;
+          for (const block of content) {
+            if (block.type === "text") {
+              lastAssistantText = block.text;
+            }
+          }
+        }
+
+        if (message.type === "result") {
+          resultMessage = message;
+        }
+      }
+
+      // Check for errors
+      if (!resultMessage) {
+        throw new Error("No result message received from Claude Agent SDK");
+      }
+
+      if (resultMessage.subtype !== "success") {
+        const errorDetails = "errors" in resultMessage
+          ? resultMessage.errors.join(", ")
+          : "Unknown error";
+        throw new Error(`Update failed: ${resultMessage.subtype} - ${errorDetails}`);
+      }
+
+      // Return the final response text
+      return resultMessage.result || lastAssistantText || "Update completed (no response text)";
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error(
+        `Failed to update navigator: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /**
    * Parse Claude's response into a NavigatorResponse
    *
    * Extracts JSON from the response text (either from code blocks or raw JSON)
