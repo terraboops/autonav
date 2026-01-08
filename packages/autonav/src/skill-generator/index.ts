@@ -47,6 +47,15 @@ export function getSkillName(navigatorName: string): string {
 }
 
 /**
+ * Generate the update skill name from navigator name
+ */
+export function getUpdateSkillName(navigatorName: string): string {
+  // Convert to lowercase, replace spaces/underscores with hyphens
+  const normalized = navigatorName.toLowerCase().replace(/[_\s]+/g, "-");
+  return `update-${normalized}`;
+}
+
+/**
  * Generate the SKILL.md content for a navigator
  */
 export function generateSkillContent(config: SkillConfig): string {
@@ -55,159 +64,97 @@ export function generateSkillContent(config: SkillConfig): string {
 
   return `---
 name: ${skillName}
-description: Consult with ${config.navigatorName} navigator for questions about ${config.description}. Use when user asks to "ask ${config.navigatorName}" or needs information from this knowledge base.
+description: Query ${config.navigatorName} navigator about ${config.description}. Use when user asks to "ask ${config.navigatorName}" or needs information from this knowledge base.
 ---
 
-# Ask ${config.navigatorName} Skill
+# Ask ${config.navigatorName}
 
-## Purpose
-Facilitate conversations with the **${config.navigatorName}** navigator located at \`${navPath}\`.
+Query the **${config.navigatorName}** navigator for information.
+
+**Navigator Location**: \`${navPath}\`
 
 ${config.description}
 
 ${config.scope ? `**Scope**: ${config.scope}\n` : ""}
 ${config.audience ? `**Audience**: ${config.audience}\n` : ""}
 
-## When to Use This Skill
+## How to Use
 
-Use this skill when the user:
-- Asks to "ask ${config.navigatorName.toLowerCase()}" or "query ${config.navigatorName.toLowerCase()}"
-- Needs information from the ${config.navigatorName} knowledge base
-- Wants to consult this navigator's domain expertise
+Simply use \`autonav query\` to ask questions:
 
-## Communication Protocol
-
-This navigator uses the Autonav communication layer for structured interactions.
-
-### Query Format (NavigatorQuery)
-\`\`\`json
-{
-  "protocolVersion": "1.0.0",
-  "fromNavigator": "<your-navigator-name>",
-  "toNavigator": "${config.navigatorName}",
-  "question": "<the question>",
-  "context": "<optional context>",
-  "reason": "needs_specialist"
-}
-\`\`\`
-
-### Response Format (NavigatorResponse)
-\`\`\`json
-{
-  "protocolVersion": "1.0.0",
-  "query": "<original question>",
-  "answer": "<grounded answer with citations>",
-  "sources": [
-    {
-      "filePath": "path/to/file.md",
-      "excerpt": "exact quote",
-      "section": "section heading"
-    }
-  ],
-  "confidence": 0.85
-}
-\`\`\`
-
-## Technical Implementation
-
-### Starting a New Conversation
-
-1. Generate a session UUID:
-\`\`\`bash
-UUID=$(python -c "import uuid; print(uuid.uuid4())")
-\`\`\`
-
-2. Start conversation:
-\`\`\`bash
-cd "${navPath}" && claude -p --session-id "$UUID" "$message"
-\`\`\`
-
-### Continuing a Conversation
-
-\`\`\`bash
-cd "${navPath}" && claude --resume "$UUID" -p "$message"
-\`\`\`
-
-### Using autonav query (Simpler)
-
-For one-off queries without maintaining session state:
 \`\`\`bash
 autonav query "${navPath}" "your question here"
 \`\`\`
 
-## Conversation Template
+The navigator will provide grounded answers with sources from its knowledge base.
 
-When starting a conversation, provide:
-1. **Context** - What you're working on
-2. **Question** - Specific question for this navigator
-3. **Expected format** - If you need structured output
+## What This Navigator Knows
 
-Example:
-\`\`\`
-Hi ${config.navigatorName}! I'm working on [context].
-
-Question: [your specific question]
-
-Please provide sources for your answer.
-\`\`\`
-
-## Example Workflow
-
-### Quick Query
-\`\`\`bash
-autonav query "${navPath}" "How do I configure X?"
-\`\`\`
-
-### Interactive Session
-\`\`\`bash
-# Generate UUID
-UUID=$(python -c "import uuid; print(uuid.uuid4())")
-
-# Start conversation
-cd "${navPath}" && claude -p --session-id "$UUID" \\
-  "I need help understanding the architecture. Can you explain the main components?"
-
-# Follow up
-cd "${navPath}" && claude --resume "$UUID" -p \\
-  "Thanks! How do those components interact?"
-\`\`\`
-
-### With Write Access (for self-configuration)
-\`\`\`bash
-cd "${navPath}" && claude --resume "$UUID" -p --permission-mode acceptEdits \\
-  "Please update the configuration to enable feature X"
-\`\`\`
-
-## Best Practices
-
-1. **Provide Context** - Give enough information for grounded answers
-2. **Be Specific** - Focused questions get better answers
-3. **Request Sources** - Ask for citations to verify grounding
-4. **Check Confidence** - Low confidence answers may need human review
-5. **Use Structured Queries** - For programmatic access, use the NavigatorQuery format
-
-## Grounding Rules
-
-This navigator follows strict grounding rules:
+This navigator specializes in ${config.scope || 'its configured domain'} and follows strict grounding rules:
 - Always cites sources from the knowledge base
 - Never invents information
 - Acknowledges uncertainty with confidence scores
 - Only references files that actually exist
+`;
+}
 
-## Tool Usage
+/**
+ * Generate the update skill content for a navigator (with write permissions)
+ */
+export function generateUpdateSkillContent(config: SkillConfig): string {
+  const skillName = getUpdateSkillName(config.navigatorName);
+  const navPath = config.navigatorPath;
 
-- Use \`Bash\` tool to communicate with the navigator
-- Always \`cd\` to the navigator directory first
-- Use \`-p\` flag for prompt mode
-- Store UUIDs for multi-turn conversations
-- Add \`--permission-mode acceptEdits\` only when edits are needed and confirmed
+  return `---
+name: ${skillName}
+description: Update ${config.navigatorName} navigator's documentation and knowledge base. Use when reporting implementation progress, documenting issues, or updating knowledge about ${config.description}.
+---
 
-## Important Notes
+# Update ${config.navigatorName}
 
-- Navigator location: \`${navPath}\`
-- Each conversation needs a unique UUID for session tracking
-- Use \`autonav query\` for simple one-off questions
-- Use \`claude -p --session-id\` for multi-turn conversations
+Update the **${config.navigatorName}** navigator's documentation and knowledge base.
+
+**Navigator Location**: \`${navPath}\`
+
+${config.description}
+
+${config.scope ? `**Scope**: ${config.scope}\n` : ""}
+${config.audience ? `**Audience**: ${config.audience}\n` : ""}
+
+## When to Use
+
+Use this skill to:
+- Report implementation progress or issues
+- Update documentation after making changes
+- Add new knowledge or learnings
+- Document troubleshooting steps
+- Create status reports or logs
+
+## How to Use
+
+Simply use \`autonav update\` to send an update message:
+
+\`\`\`bash
+autonav update "${navPath}" "your update message"
+\`\`\`
+
+**Example updates:**
+
+Report progress:
+\`\`\`bash
+autonav update "${navPath}" "I completed feature X. Please document this in the knowledge base."
+\`\`\`
+
+Log an issue:
+\`\`\`bash
+autonav update "${navPath}" "Encountered error Y during deployment. Add this to troubleshooting docs."
+\`\`\`
+
+## Important
+
+- This command grants **write permissions** to the navigator
+- Changes are made directly to files in the knowledge base
+- Always review edits before committing to version control
 `;
 }
 
@@ -225,57 +172,82 @@ export async function createNavigatorSkill(
     quiet?: boolean;
   } = {}
 ): Promise<string | null> {
-  const skillName = getSkillName(config.navigatorName);
+  const askSkillName = getSkillName(config.navigatorName);
+  const updateSkillName = getUpdateSkillName(config.navigatorName);
   const skillsDir = getGlobalSkillsDir();
-  const skillDir = path.join(skillsDir, skillName);
-
-  // Check if skill already exists
-  if (skillExists(skillName) && !options.force) {
-    if (!options.quiet) {
-      console.log(`⏭️  Skill "${skillName}" already exists (use --force to overwrite)`);
-    }
-    return null;
-  }
+  const askSkillDir = path.join(skillsDir, askSkillName);
+  const updateSkillDir = path.join(skillsDir, updateSkillName);
 
   // Ensure skills directory exists
   fs.mkdirSync(skillsDir, { recursive: true });
 
-  // Create skill directory
-  fs.mkdirSync(skillDir, { recursive: true });
-
-  // Generate and write SKILL.md
-  const skillContent = generateSkillContent(config);
-  fs.writeFileSync(path.join(skillDir, "SKILL.md"), skillContent);
-
-  if (!options.quiet) {
-    console.log(`✓ Created global skill: ${skillName}`);
+  // Create "ask" skill
+  if (skillExists(askSkillName) && !options.force) {
+    if (!options.quiet) {
+      console.log(`⏭️  Skill "${askSkillName}" already exists (use --force to overwrite)`);
+    }
+  } else {
+    fs.mkdirSync(askSkillDir, { recursive: true });
+    const askSkillContent = generateSkillContent(config);
+    fs.writeFileSync(path.join(askSkillDir, "SKILL.md"), askSkillContent);
+    if (!options.quiet) {
+      console.log(`✓ Created global skill: ${askSkillName}`);
+    }
   }
 
-  return skillDir;
+  // Create "update" skill
+  if (skillExists(updateSkillName) && !options.force) {
+    if (!options.quiet) {
+      console.log(`⏭️  Skill "${updateSkillName}" already exists (use --force to overwrite)`);
+    }
+  } else {
+    fs.mkdirSync(updateSkillDir, { recursive: true });
+    const updateSkillContent = generateUpdateSkillContent(config);
+    fs.writeFileSync(path.join(updateSkillDir, "SKILL.md"), updateSkillContent);
+    if (!options.quiet) {
+      console.log(`✓ Created global skill: ${updateSkillName}`);
+    }
+  }
+
+  return askSkillDir;
 }
 
 /**
- * Remove a navigator skill
+ * Remove a navigator skill (both ask and update skills)
  */
 export function removeNavigatorSkill(
   navigatorName: string,
   options: { quiet?: boolean } = {}
 ): boolean {
-  const skillName = getSkillName(navigatorName);
-  const skillDir = path.join(getGlobalSkillsDir(), skillName);
+  const askSkillName = getSkillName(navigatorName);
+  const updateSkillName = getUpdateSkillName(navigatorName);
+  const skillsDir = getGlobalSkillsDir();
+  const askSkillDir = path.join(skillsDir, askSkillName);
+  const updateSkillDir = path.join(skillsDir, updateSkillName);
 
-  if (!fs.existsSync(skillDir)) {
+  let removedAny = false;
+
+  // Remove ask skill
+  if (fs.existsSync(askSkillDir)) {
+    fs.rmSync(askSkillDir, { recursive: true, force: true });
     if (!options.quiet) {
-      console.log(`⚠️  Skill "${skillName}" does not exist`);
+      console.log(`✓ Removed skill: ${askSkillName}`);
     }
-    return false;
+    removedAny = true;
   }
 
-  fs.rmSync(skillDir, { recursive: true, force: true });
-
-  if (!options.quiet) {
-    console.log(`✓ Removed skill: ${skillName}`);
+  // Remove update skill
+  if (fs.existsSync(updateSkillDir)) {
+    fs.rmSync(updateSkillDir, { recursive: true, force: true });
+    if (!options.quiet) {
+      console.log(`✓ Removed skill: ${updateSkillName}`);
+    }
+    removedAny = true;
   }
 
-  return true;
+  if (!removedAny && !options.quiet) {
+    console.log(`⚠️  No skills found for navigator "${navigatorName}"`);
+  }
+
+  return removedAny;
 }

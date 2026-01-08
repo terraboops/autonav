@@ -6,6 +6,7 @@
  * Routes commands to appropriate handlers:
  * - autonav init -> nav-init.ts
  * - autonav query -> nav-query.ts
+ * - autonav update -> nav-update.ts
  * - autonav chat -> nav-chat.ts
  */
 
@@ -39,6 +40,7 @@ Usage:
 Commands:
   init <name>     Create a new navigator
   query <path>    Query a navigator
+  update <path>   Update a navigator's documentation
   chat <path>     Interactive conversation with a navigator
 
 Options:
@@ -50,11 +52,13 @@ Examples:
   autonav init platform-nav --pack platform-engineering
   autonav init my-nav --from ./existing-repo
   autonav query ./my-navigator "How do I deploy?"
+  autonav update ./my-navigator "I completed feature X. Please document this."
   autonav chat ./my-navigator
 
 For command-specific help:
   autonav init --help
   autonav query --help
+  autonav update --help
   autonav chat --help
 `);
 }
@@ -86,6 +90,9 @@ function main() {
       break;
     case "query":
       scriptPath = path.join(__dirname, "nav-query.js");
+      break;
+    case "update":
+      scriptPath = path.join(__dirname, "nav-update.js");
       break;
     case "chat":
       scriptPath = path.join(__dirname, "nav-chat.js");
