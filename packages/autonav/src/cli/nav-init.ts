@@ -26,7 +26,7 @@ import {
   checkFileConflicts,
   type ExistingClaudeMdAction,
 } from "../confirmation/index.js";
-import { createNavigatorSkill } from "../skill-generator/index.js";
+import { createAndSymlinkSkill } from "../skill-generator/index.js";
 
 /**
  * autonav init CLI command
@@ -492,8 +492,9 @@ See \`config.json\` for navigator configuration.
       );
     }
 
-    // Create global "ask-<navname>" skill for inter-navigator communication
-    await createNavigatorSkill(
+    // Create local skill and symlink to global for inter-navigator communication
+    await createAndSymlinkSkill(
+      navigatorPath,
       {
         navigatorName,
         navigatorPath,
@@ -899,8 +900,9 @@ This is your knowledge base directory. Add your documentation files here.
       );
     }
 
-    // Create global "ask-<navname>" skill for inter-navigator communication
-    await createNavigatorSkill(
+    // Create local skill and symlink to global for inter-navigator communication
+    await createAndSymlinkSkill(
+      navigatorPath,
       {
         navigatorName,
         navigatorPath,
