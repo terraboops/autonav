@@ -38,10 +38,12 @@ Usage:
   autonav <command> [options]
 
 Commands:
-  init <name>     Create a new navigator
-  query <path>    Query a navigator
-  update <path>   Update a navigator's documentation
-  chat <path>     Interactive conversation with a navigator
+  init <name>       Create a new navigator
+  query <path>      Query a navigator
+  update <path>     Update a navigator's documentation
+  chat <path>       Interactive conversation with a navigator
+  install [path]    Symlink local skills to global location
+  uninstall [path]  Remove global skill symlinks (preserves local)
 
 Options:
   --help, -h      Show help
@@ -54,12 +56,16 @@ Examples:
   autonav query ./my-navigator "How do I deploy?"
   autonav update ./my-navigator "I completed feature X. Please document this."
   autonav chat ./my-navigator
+  autonav install ./my-navigator
+  autonav uninstall ./my-navigator
 
 For command-specific help:
   autonav init --help
   autonav query --help
   autonav update --help
   autonav chat --help
+  autonav install --help
+  autonav uninstall --help
 `);
 }
 
@@ -97,8 +103,14 @@ function main() {
     case "chat":
       scriptPath = path.join(__dirname, "nav-chat.js");
       break;
+    case "install":
+      scriptPath = path.join(__dirname, "nav-install.js");
+      break;
+    case "uninstall":
+      scriptPath = path.join(__dirname, "nav-uninstall.js");
+      break;
     default:
-      console.error(`❌ Error: Unknown command: ${command}\n`);
+      console.error(`Error: Unknown command: ${command}\n`);
       printUsage();
       process.exit(1);
   }

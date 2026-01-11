@@ -5,8 +5,12 @@ import os from "node:os";
 /**
  * Skill Generator
  *
- * Generates global Claude Code skills for navigators, enabling
+ * Generates Claude Code skills for navigators, enabling
  * inter-navigator communication via the "ask <navname>" pattern.
+ *
+ * Skills are stored locally in the navigator directory (.autonav/skills/)
+ * and symlinked to the global skills directory (~/.claude/skills/) for
+ * discovery by Claude Code.
  */
 
 export interface SkillConfig {
@@ -23,18 +27,68 @@ export interface SkillConfig {
 }
 
 /**
- * Get the global skills directory path
+ * Get the global skills directory path (~/.claude/skills/)
  */
 export function getGlobalSkillsDir(): string {
   return path.join(os.homedir(), ".claude", "skills");
 }
 
 /**
- * Check if a skill already exists
+ * Get the local skills directory path for a navigator (.autonav/skills/)
+ */
+export function getLocalSkillsDir(navigatorPath: string): string {
+  return path.join(navigatorPath, ".autonav", "skills");
+}
+
+/**
+ * Get the full path to a local skill directory
+ */
+export function getLocalSkillPath(navigatorPath: string, skillName: string): string {
+  return path.join(getLocalSkillsDir(navigatorPath), skillName);
+}
+
+/**
+ * Check if a skill already exists globally
  */
 export function skillExists(skillName: string): boolean {
   const skillDir = path.join(getGlobalSkillsDir(), skillName);
   return fs.existsSync(skillDir);
+}
+
+/**
+ * Check if a skill exists locally in a navigator
+ */
+export function localSkillExists(navigatorPath: string, skillName: string): boolean {
+  const skillDir = getLocalSkillPath(navigatorPath, skillName);
+  return fs.existsSync(skillDir);
+}
+
+/**
+ * Check if a global skill is a symlink
+ */
+export function isSkillSymlink(skillName: string): boolean {
+  const skillDir = path.join(getGlobalSkillsDir(), skillName);
+  try {
+    const stats = fs.lstatSync(skillDir);
+    return stats.isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Get the target of a global skill symlink
+ */
+export function getSkillSymlinkTarget(skillName: string): string | null {
+  const skillDir = path.join(getGlobalSkillsDir(), skillName);
+  try {
+    if (!isSkillSymlink(skillName)) {
+      return null;
+    }
+    return fs.readlinkSync(skillDir);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -213,7 +267,7 @@ export async function createNavigatorSkill(
 }
 
 /**
- * Remove a navigator skill (both ask and update skills)
+ * Remove a navigator skill (both ask and update skills, global only)
  */
 export function removeNavigatorSkill(
   navigatorName: string,
@@ -231,7 +285,7 @@ export function removeNavigatorSkill(
   if (fs.existsSync(askSkillDir)) {
     fs.rmSync(askSkillDir, { recursive: true, force: true });
     if (!options.quiet) {
-      console.log(`✓ Removed skill: ${askSkillName}`);
+      console.log(`Removed skill: ${askSkillName}`);
     }
     removedAny = true;
   }
@@ -240,14 +294,277 @@ export function removeNavigatorSkill(
   if (fs.existsSync(updateSkillDir)) {
     fs.rmSync(updateSkillDir, { recursive: true, force: true });
     if (!options.quiet) {
-      console.log(`✓ Removed skill: ${updateSkillName}`);
+      console.log(`Removed skill: ${updateSkillName}`);
     }
     removedAny = true;
   }
 
   if (!removedAny && !options.quiet) {
-    console.log(`⚠️  No skills found for navigator "${navigatorName}"`);
+    console.log(`No skills found for navigator "${navigatorName}"`);
   }
 
   return removedAny;
+}
+
+// ============================================================================
+// Local Storage + Symlink Functions (v1.2.0+)
+// ============================================================================
+
+export interface SymlinkResult {
+  success: boolean;
+  action: "created" | "already_linked" | "conflict" | "error";
+  message: string;
+  skillName: string;
+  localPath?: string;
+  globalPath?: string;
+  conflictTarget?: string;
+}
+
+/**
+ * Create a skill locally in the navigator's .autonav/skills/ directory
+ */
+export async function createLocalSkill(
+  navigatorPath: string,
+  config: SkillConfig,
+  options: {
+    force?: boolean;
+    quiet?: boolean;
+  } = {}
+): Promise<string | null> {
+  const skillName = getSkillName(config.navigatorName);
+  const localSkillsDir = getLocalSkillsDir(navigatorPath);
+  const localSkillDir = path.join(localSkillsDir, skillName);
+
+  // Check if skill already exists locally
+  if (localSkillExists(navigatorPath, skillName) && !options.force) {
+    if (!options.quiet) {
+      console.log(`Skill "${skillName}" already exists locally (use --force to overwrite)`);
+    }
+    return null;
+  }
+
+  // Ensure local skills directory exists
+  fs.mkdirSync(localSkillsDir, { recursive: true });
+
+  // Create local skill directory
+  fs.mkdirSync(localSkillDir, { recursive: true });
+
+  // Generate and write SKILL.md
+  const skillContent = generateSkillContent(config);
+  fs.writeFileSync(path.join(localSkillDir, "SKILL.md"), skillContent);
+
+  if (!options.quiet) {
+    console.log(`Created local skill: ${skillName}`);
+  }
+
+  return localSkillDir;
+}
+
+/**
+ * Create a symlink from global skills directory to local skill
+ *
+ * @returns SymlinkResult with status and details
+ */
+export function symlinkSkillToGlobal(
+  localSkillPath: string,
+  skillName: string,
+  options: {
+    force?: boolean;
+    quiet?: boolean;
+  } = {}
+): SymlinkResult {
+  const globalSkillsDir = getGlobalSkillsDir();
+  const globalSkillDir = path.join(globalSkillsDir, skillName);
+
+  // Ensure global skills directory exists
+  fs.mkdirSync(globalSkillsDir, { recursive: true });
+
+  // Check if global skill already exists
+  if (fs.existsSync(globalSkillDir)) {
+    // Check if it's already a symlink to the correct location
+    if (isSkillSymlink(skillName)) {
+      const target = getSkillSymlinkTarget(skillName);
+      const resolvedLocal = path.resolve(localSkillPath);
+      const resolvedTarget = target ? path.resolve(path.dirname(globalSkillDir), target) : null;
+
+      if (resolvedTarget === resolvedLocal) {
+        if (!options.quiet) {
+          console.log(`Skill "${skillName}" already linked`);
+        }
+        return {
+          success: true,
+          action: "already_linked",
+          message: `Skill "${skillName}" already symlinked correctly`,
+          skillName,
+          localPath: localSkillPath,
+          globalPath: globalSkillDir,
+        };
+      }
+
+      // Symlink exists but points elsewhere
+      if (!options.force) {
+        if (!options.quiet) {
+          console.log(`Conflict: "${skillName}" symlinked to different location: ${target}`);
+        }
+        return {
+          success: false,
+          action: "conflict",
+          message: `Global skill "${skillName}" already symlinked to different location`,
+          skillName,
+          localPath: localSkillPath,
+          globalPath: globalSkillDir,
+          conflictTarget: target ?? undefined,
+        };
+      }
+
+      // Force: remove existing symlink
+      fs.unlinkSync(globalSkillDir);
+    } else {
+      // Regular directory exists (not a symlink)
+      if (!options.force) {
+        if (!options.quiet) {
+          console.log(`Conflict: "${skillName}" exists as regular directory (not symlink)`);
+        }
+        return {
+          success: false,
+          action: "conflict",
+          message: `Global skill "${skillName}" exists as regular directory, not symlink`,
+          skillName,
+          localPath: localSkillPath,
+          globalPath: globalSkillDir,
+        };
+      }
+
+      // Force: remove existing directory
+      fs.rmSync(globalSkillDir, { recursive: true, force: true });
+    }
+  }
+
+  // Create symlink
+  try {
+    fs.symlinkSync(localSkillPath, globalSkillDir, "dir");
+    if (!options.quiet) {
+      console.log(`Symlinked skill: ${skillName}`);
+    }
+    return {
+      success: true,
+      action: "created",
+      message: `Created symlink for "${skillName}"`,
+      skillName,
+      localPath: localSkillPath,
+      globalPath: globalSkillDir,
+    };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    if (!options.quiet) {
+      console.error(`Failed to create symlink for "${skillName}": ${errorMsg}`);
+    }
+    return {
+      success: false,
+      action: "error",
+      message: `Failed to create symlink: ${errorMsg}`,
+      skillName,
+      localPath: localSkillPath,
+      globalPath: globalSkillDir,
+    };
+  }
+}
+
+/**
+ * Remove the global symlink for a skill (preserves local skill)
+ */
+export function removeSkillSymlink(
+  skillName: string,
+  options: { quiet?: boolean } = {}
+): { success: boolean; wasSymlink: boolean; message: string } {
+  const globalSkillDir = path.join(getGlobalSkillsDir(), skillName);
+
+  if (!fs.existsSync(globalSkillDir)) {
+    if (!options.quiet) {
+      console.log(`No global skill "${skillName}" found`);
+    }
+    return {
+      success: true,
+      wasSymlink: false,
+      message: `No global skill "${skillName}" found`,
+    };
+  }
+
+  if (!isSkillSymlink(skillName)) {
+    if (!options.quiet) {
+      console.log(`Warning: "${skillName}" is not a symlink, skipping removal`);
+    }
+    return {
+      success: false,
+      wasSymlink: false,
+      message: `"${skillName}" is a regular directory, not a symlink. Manual removal required.`,
+    };
+  }
+
+  try {
+    fs.unlinkSync(globalSkillDir);
+    if (!options.quiet) {
+      console.log(`Removed symlink: ${skillName}`);
+    }
+    return {
+      success: true,
+      wasSymlink: true,
+      message: `Removed symlink for "${skillName}"`,
+    };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    if (!options.quiet) {
+      console.error(`Failed to remove symlink for "${skillName}": ${errorMsg}`);
+    }
+    return {
+      success: false,
+      wasSymlink: true,
+      message: `Failed to remove symlink: ${errorMsg}`,
+    };
+  }
+}
+
+/**
+ * Create a skill locally AND symlink it globally (recommended for new navigators)
+ *
+ * This is the preferred method for creating skills as it:
+ * 1. Stores the skill in the navigator's .autonav/skills/ (version-controlled)
+ * 2. Symlinks to ~/.claude/skills/ for global discovery
+ */
+export async function createAndSymlinkSkill(
+  navigatorPath: string,
+  config: SkillConfig,
+  options: {
+    force?: boolean;
+    quiet?: boolean;
+  } = {}
+): Promise<{ localPath: string | null; symlinkResult: SymlinkResult | null }> {
+  // Create local skill
+  const localPath = await createLocalSkill(navigatorPath, config, options);
+
+  if (!localPath) {
+    return { localPath: null, symlinkResult: null };
+  }
+
+  // Symlink to global
+  const skillName = getSkillName(config.navigatorName);
+  const symlinkResult = symlinkSkillToGlobal(localPath, skillName, options);
+
+  return { localPath, symlinkResult };
+}
+
+/**
+ * Discover all local skills in a navigator
+ */
+export function discoverLocalSkills(navigatorPath: string): string[] {
+  const localSkillsDir = getLocalSkillsDir(navigatorPath);
+
+  if (!fs.existsSync(localSkillsDir)) {
+    return [];
+  }
+
+  const entries = fs.readdirSync(localSkillsDir, { withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith("ask-"))
+    .map((entry) => entry.name);
 }
