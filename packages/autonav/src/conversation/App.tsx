@@ -1,7 +1,8 @@
 /**
  * Ink-based TUI for interactive navigator conversation
  *
- * Uses Claude Agent SDK for authentication (leverages Claude Code's OAuth)
+ * Supports multiple LLM providers through the adapter abstraction.
+ * Claude uses streaming via SDK, OpenCode uses sequential CLI calls.
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -9,12 +10,18 @@ import { Box, Text, useApp, useInput } from "ink";
 import TextInput from "ink-text-input";
 import { query, type Query } from "@anthropic-ai/claude-agent-sdk";
 import { buildConversationSystemPrompt } from "./prompts.js";
+import {
+  createAdapter,
+  getConfiguredProvider,
+  getConfiguredModel,
+  type Provider,
+} from "../adapter/index.js";
 
 // Check if debug mode is enabled
 const DEBUG = process.env.AUTONAV_DEBUG === "1" || process.env.DEBUG === "1";
 
-// Model to use for conversation
-const CONVERSATION_MODEL = "claude-sonnet-4-5";
+// Default model for Claude conversation (used only when provider is 'claude')
+const DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-5";
 
 function debugLog(...args: unknown[]) {
   if (DEBUG) {
@@ -37,6 +44,8 @@ interface ConversationAppProps {
   navigatorPath: string;
   navigatorSystemPrompt: string;
   knowledgeBasePath: string;
+  provider?: Provider;
+  model?: string;
 }
 
 export function ConversationApp({
@@ -44,7 +53,12 @@ export function ConversationApp({
   navigatorPath,
   navigatorSystemPrompt,
   knowledgeBasePath,
+  provider: propProvider,
+  model: propModel,
 }: ConversationAppProps) {
+  // Resolve provider and model
+  const provider = propProvider || getConfiguredProvider();
+  const model = propModel || (provider === "claude" ? DEFAULT_CLAUDE_MODEL : getConfiguredModel(provider));
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -205,7 +219,8 @@ Or just type naturally to chat with your navigator.`,
             content: `Navigator: ${navigatorName}
 Path: ${navigatorPath}
 Knowledge Base: ${knowledgeBasePath}
-Model: ${CONVERSATION_MODEL}`,
+Provider: ${provider}
+Model: ${model}`,
           },
         ]);
         return true;
@@ -228,7 +243,7 @@ Model: ${CONVERSATION_MODEL}`,
 
       return false;
     },
-    [navigatorName, navigatorPath, knowledgeBasePath, exit]
+    [navigatorName, navigatorPath, knowledgeBasePath, provider, model, exit]
   );
 
   // Handle user input submission
@@ -255,7 +270,7 @@ Model: ${CONVERSATION_MODEL}`,
 
         // Build conversation history for context
         const conversationHistory = messages
-          .filter((m) => m.role !== "system")
+          .filter((m) => m.role !== "system" && m.role !== "activity")
           .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
           .join("\n\n");
 
@@ -263,25 +278,54 @@ Model: ${CONVERSATION_MODEL}`,
           ? `${conversationHistory}\n\nUser: ${value}`
           : value;
 
-        const queryInstance = query({
-          prompt: fullPrompt,
-          options: {
-            model: CONVERSATION_MODEL,
-            systemPrompt,
-            permissionMode: "acceptEdits", // Allow file operations
-            cwd: navigatorPath, // Set working directory to navigator
-          },
-        });
+        if (provider === "claude") {
+          // Use Claude SDK for streaming responses
+          const queryInstance = query({
+            prompt: fullPrompt,
+            options: {
+              model,
+              systemPrompt,
+              permissionMode: "acceptEdits", // Allow file operations
+              cwd: navigatorPath, // Set working directory to navigator
+            },
+          });
 
-        queryRef.current = queryInstance;
-        await processResponse();
+          queryRef.current = queryInstance;
+          await processResponse();
+        } else {
+          // Use adapter for non-Claude providers (e.g., OpenCode)
+          setActivity({ type: "thinking" });
+
+          try {
+            const adapter = createAdapter({ provider, model });
+
+            // Load navigator for the adapter
+            const navigator = await adapter.loadNavigator(navigatorPath);
+
+            // For conversation mode, we use the update method with conversation context
+            const response = await adapter.update(
+              navigator,
+              `You are in a conversation. Previous context:\n\n${conversationHistory}\n\nUser's current message: ${value}\n\nRespond conversationally to the user. You can ask clarifying questions, provide information from the knowledge base, or help with tasks.`,
+              { enableSelfConfig: false }
+            );
+
+            setMessages((prev) => [
+              ...prev,
+              { role: "assistant", content: response },
+            ]);
+          } finally {
+            setActivity(null);
+            setIsLoading(false);
+          }
+        }
       } catch (err) {
         debugLog("Error sending message:", err);
         setError(err instanceof Error ? err.message : "Failed to send message");
+        setActivity(null);
         setIsLoading(false);
       }
     },
-    [isLoading, messages, systemPrompt, navigatorPath, handleCommand, processResponse]
+    [isLoading, messages, systemPrompt, navigatorPath, handleCommand, processResponse, provider, model]
   );
 
   // Handle Ctrl+C or Ctrl+D to exit

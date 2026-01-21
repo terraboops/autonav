@@ -19,7 +19,8 @@ import {
   type InterviewProgress,
 } from "../interview/index.js";
 import { scanRepository } from "../repo-scanner/index.js";
-import { analyzeRepository, type AnalysisResult } from "../repo-analyzer/index.js";
+import { analyzeRepository, type AnalysisResult, type AnalyzeOptions } from "../repo-analyzer/index.js";
+import { getConfiguredProvider, type Provider } from "../adapter/index.js";
 import {
   confirmAnalysis,
   promptExistingClaudeMd,
@@ -46,6 +47,8 @@ interface InitOptions {
   force?: boolean;
   quiet?: boolean;
   quick?: boolean;
+  provider?: Provider;
+  model?: string;
 }
 
 function printUsage() {
@@ -69,6 +72,8 @@ Options:
   --force             Overwrite existing files without prompting
   --quiet             Minimal output
   --quick             Skip interactive interview, use defaults
+  --provider <name>   LLM provider for analysis (claude|opencode)
+  --model <model>     Model to use for analysis
 
 Examples:
   # Create basic navigator
@@ -166,6 +171,10 @@ function parseArgs(args: string[]): {
       options.quiet = true;
     } else if (arg === "--quick") {
       options.quick = true;
+    } else if (arg === "--provider" && args[i + 1]) {
+      options.provider = args[++i] as Provider;
+    } else if (arg === "--model" && args[i + 1]) {
+      options.model = args[++i];
     } else if (!arg.startsWith("-")) {
       navigatorName = arg;
     }
@@ -278,8 +287,12 @@ async function handleImportMode(
       console.log("Analyzing repository...");
     }
 
-    // Phase 2: Analyze with Claude
-    const analysis = await analyzeRepository(scanResult);
+    // Phase 2: Analyze with LLM
+    const analyzeOpts: AnalyzeOptions = {
+      provider: options.provider || getConfiguredProvider(),
+      model: options.model,
+    };
+    const analysis = await analyzeRepository(scanResult, analyzeOpts);
 
     if (!options.quiet) {
       console.log("✓ Analysis complete");
