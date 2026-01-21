@@ -1,14 +1,29 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { spawn } from "node:child_process";
 import type { ScanResult } from "../repo-scanner/index.js";
+import {
+  getConfiguredProvider,
+  getConfiguredModel,
+  type Provider,
+} from "../adapter/index.js";
 
 /**
  * Repository Analyzer
  *
- * Uses Claude to analyze scan results and infer navigator configuration.
+ * Uses LLM to analyze scan results and infer navigator configuration.
+ * Supports multiple providers (Claude, OpenCode).
  */
 
-// Model to use for analysis
-const ANALYSIS_MODEL = "claude-sonnet-4-5";
+// Default model for Claude analysis
+const DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-5";
+
+/**
+ * Options for repository analysis
+ */
+export interface AnalyzeOptions {
+  provider?: Provider;
+  model?: string;
+}
 
 export interface AnalysisResult {
   purpose: string;
@@ -147,37 +162,115 @@ export function validateAnalysisResult(
 }
 
 /**
- * Analyze a scanned repository using Claude
+ * Execute analysis using Claude SDK
  */
-export async function analyzeRepository(
-  scanResult: ScanResult
-): Promise<AnalysisResult> {
-  const prompt = buildAnalysisPrompt(scanResult);
+async function analyzeWithClaude(prompt: string, model: string): Promise<string> {
+  const queryInstance = query({
+    prompt,
+    options: {
+      model,
+      permissionMode: "bypassPermissions",
+    },
+  });
 
-  try {
-    const queryInstance = query({
-      prompt,
-      options: {
-        model: ANALYSIS_MODEL,
-        permissionMode: "bypassPermissions",
+  let responseText = "";
+
+  for await (const message of queryInstance) {
+    if (message.type === "assistant") {
+      const content = message.message.content;
+      const textBlocks = content.filter(
+        (b): b is Extract<typeof b, { type: "text" }> => b.type === "text"
+      );
+      responseText = textBlocks.map((b) => b.text).join("\n");
+    }
+  }
+
+  return responseText;
+}
+
+/**
+ * Execute analysis using OpenCode CLI
+ */
+async function analyzeWithOpenCode(prompt: string, model: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const args = [
+      "-p", prompt,
+      "-f", "json",
+      "-q", // Suppress spinner
+    ];
+
+    const process = spawn("opencode", args, {
+      env: {
+        ...globalThis.process.env,
+        OPENCODE_MODEL: model,
       },
+      stdio: ["pipe", "pipe", "pipe"],
     });
 
-    let responseText = "";
+    let stdout = "";
+    let stderr = "";
 
-    for await (const message of queryInstance) {
-      if (message.type === "assistant") {
-        const content = message.message.content;
-        const textBlocks = content.filter(
-          (b): b is Extract<typeof b, { type: "text" }> => b.type === "text"
-        );
-        responseText = textBlocks.map((b) => b.text).join("\n");
+    process.stdout.on("data", (data) => {
+      stdout += data.toString();
+    });
+
+    process.stderr.on("data", (data) => {
+      stderr += data.toString();
+    });
+
+    // Timeout after 5 minutes
+    const timeoutId = setTimeout(() => {
+      process.kill("SIGTERM");
+      reject(new Error("OpenCode analysis timed out"));
+    }, 300000);
+
+    process.on("close", (code) => {
+      clearTimeout(timeoutId);
+
+      if (code !== 0) {
+        reject(new Error(`OpenCode exited with code ${code}: ${stderr || stdout}`));
+        return;
       }
+
+      try {
+        const response = JSON.parse(stdout);
+        resolve(response.content || stdout);
+      } catch {
+        resolve(stdout.trim());
+      }
+    });
+
+    process.on("error", (err) => {
+      clearTimeout(timeoutId);
+      reject(err);
+    });
+  });
+}
+
+/**
+ * Analyze a scanned repository using LLM
+ */
+export async function analyzeRepository(
+  scanResult: ScanResult,
+  options: AnalyzeOptions = {}
+): Promise<AnalysisResult> {
+  const provider = options.provider || getConfiguredProvider();
+  const model = options.model || (provider === "claude" ? DEFAULT_CLAUDE_MODEL : getConfiguredModel(provider));
+  const prompt = buildAnalysisPrompt(scanResult);
+  const fallbackName = scanResult.projectMetadata.name || "project";
+
+  try {
+    let responseText: string;
+
+    if (provider === "claude") {
+      responseText = await analyzeWithClaude(prompt, model);
+    } else if (provider === "opencode") {
+      responseText = await analyzeWithOpenCode(prompt, model);
+    } else {
+      throw new Error(`Unsupported provider: ${provider}`);
     }
 
     const result = parseAnalysisResponse(responseText);
-
-    const fallbackName = scanResult.projectMetadata.name || "project";
 
     if (!result) {
       // Return a default with low confidence if parsing failed
@@ -210,9 +303,6 @@ export async function analyzeRepository(
         .slice(0, 5),
       confidence: 0.2,
     };
-    return validateAnalysisResult(
-      fallback,
-      scanResult.projectMetadata.name || "project"
-    );
+    return validateAnalysisResult(fallback, fallbackName);
   }
 }

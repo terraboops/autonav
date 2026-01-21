@@ -14,6 +14,7 @@ import {
 import { createPluginManager, PluginManager, PluginConfigFileSchema } from "../plugins/index.js";
 import { sanitizeError } from "../plugins/utils/security.js";
 import { createSelfConfigMcpServer, createResponseMcpServer, SUBMIT_ANSWER_TOOL } from "../tools/index.js";
+import type { LLMAdapter, AdapterOptions, LoadedNavigator, QueryOptions } from "./types.js";
 
 /**
  * Optional LangSmith integration for tracing Claude Agent SDK calls
@@ -63,7 +64,7 @@ async function initializeLangSmith(): Promise<boolean> {
 /**
  * Configuration options for Claude Adapter
  */
-export interface ClaudeAdapterOptions {
+export interface ClaudeAdapterOptions extends AdapterOptions {
   /**
    * Claude model to use (defaults to claude-sonnet-4-20250514)
    */
@@ -75,32 +76,8 @@ export interface ClaudeAdapterOptions {
   maxTurns?: number;
 }
 
-/**
- * Loaded navigator with all necessary context
- */
-export interface LoadedNavigator {
-  config: NavigatorConfig;
-  systemPrompt: string;
-  navigatorPath: string;
-  knowledgeBasePath: string;
-  pluginManager?: PluginManager;
-  pluginsConfigPath?: string;
-}
-
-/**
- * Query options
- */
-export interface QueryOptions {
-  /**
-   * Enable self-configuration tools (defaults to true)
-   */
-  enableSelfConfig?: boolean;
-
-  /**
-   * Maximum turns for agentic loop (defaults to 10)
-   */
-  maxTurns?: number;
-}
+// Re-export types from the common types module
+export type { LoadedNavigator, QueryOptions } from "./types.js";
 
 /**
  * Claude Agent SDK Adapter
@@ -119,7 +96,8 @@ export interface QueryOptions {
  * const response = await adapter.query(navigator, 'How do I deploy?');
  * ```
  */
-export class ClaudeAdapter {
+export class ClaudeAdapter implements LLMAdapter {
+  readonly provider = "claude" as const;
   private readonly options: Required<ClaudeAdapterOptions>;
 
   /**
