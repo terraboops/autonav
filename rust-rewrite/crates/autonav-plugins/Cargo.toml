@@ -1,0 +1,29 @@
+[package]
+name = "autonav-plugins"
+description = "Plugin system for Autonav (Slack, GitHub, FileWatcher)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+autonav-communication = { path = "../autonav-communication" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+reqwest = { workspace = true }
+octocrab = { workspace = true }
+notify = { workspace = true }
+notify-debouncer-mini = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+globset = { workspace = true }
+shellexpand = "3.1"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+mockall = { workspace = true }
+wiremock = { workspace = true }

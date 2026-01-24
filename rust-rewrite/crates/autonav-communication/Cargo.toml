@@ -1,0 +1,20 @@
+[package]
+name = "autonav-communication"
+description = "Communication layer schemas and protocols for Autonav"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+validator = { workspace = true }
+chrono = { workspace = true }
+semver = { workspace = true }
+uuid = { workspace = true }
+regex = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

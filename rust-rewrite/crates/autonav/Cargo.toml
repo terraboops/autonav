@@ -1,0 +1,34 @@
+[package]
+name = "autonav"
+description = "Core library for Autonav - LLM-agnostic context management system"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+autonav-communication = { path = "../autonav-communication" }
+autonav-plugins = { path = "../autonav-plugins" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+reqwest = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+semver = { workspace = true }
+uuid = { workspace = true }
+tar = { workspace = true }
+flate2 = { workspace = true }
+octocrab = { workspace = true }
+regex = { workspace = true }
+ignore = { workspace = true }
+globset = { workspace = true }
+once_cell = "1.20"
+tempfile = { workspace = true }
+
+[dev-dependencies]
+mockall = { workspace = true }
+wiremock = { workspace = true }
