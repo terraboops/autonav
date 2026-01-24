@@ -10,6 +10,7 @@ import {
   getSkillSymlinkTarget,
   getLocalSkillPath,
   getGlobalSkillsDir,
+  removeChibiSkills,
 } from "../skill-generator/index.js";
 
 /**
@@ -18,6 +19,7 @@ import {
 interface UninstallCommandOptions {
   quiet?: boolean;
   noColor?: boolean;
+  chibi?: boolean;
 }
 
 /**
@@ -32,6 +34,7 @@ program
   .argument("[path]", "Path to the navigator directory (default: current directory)", ".")
   .option("-q, --quiet", "Suppress output")
   .option("--no-color", "Disable colored output")
+  .option("--chibi", "Also remove chibi skills from ~/.chibi/skills/")
   .action(async (navigatorPath: string, options: UninstallCommandOptions) => {
     await executeUninstall(navigatorPath, options);
   });
@@ -153,6 +156,31 @@ async function executeUninstall(
 
   if (errors > 0) {
     process.exit(1);
+  }
+
+  // Handle chibi skill removal if requested
+  if (options.chibi) {
+    if (!options.quiet) {
+      console.log("");
+      console.log(chalk.bold("Removing chibi skills..."));
+    }
+
+    // Load navigator config to get name
+    let navigatorName = path.basename(resolvedPath);
+
+    try {
+      const configContent = fs.readFileSync(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+      if (config.name) navigatorName = config.name;
+    } catch {
+      // Use directory name if config can't be parsed
+    }
+
+    const chibiRemoved = removeChibiSkills(navigatorName, { quiet: options.quiet });
+
+    if (!options.quiet && chibiRemoved) {
+      console.log(chalk.green("  Chibi skills removed"));
+    }
   }
 }
 
