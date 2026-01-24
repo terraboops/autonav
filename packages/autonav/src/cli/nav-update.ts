@@ -5,10 +5,12 @@ import chalk from "chalk";
 import ora from "ora";
 import { ClaudeAdapter } from "../adapter/index.js";
 import {
-  loadNavigator,
   formatErrorMessage,
   NavigatorLoadError,
 } from "../query-engine/index.js";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { debugLog, parseDuration } from "./utils.js";
 
 /**
  * Command line options
@@ -16,52 +18,6 @@ import {
 interface UpdateCommandOptions {
   timeout?: number;
   verbose?: boolean;
-}
-
-/**
- * Parse a human-readable duration string into milliseconds
- * Supports formats: "30s", "1m", "1m30s", "90", "90000" (plain ms)
- * Max timeout: 10 minutes (600000ms) to prevent overflow issues
- */
-function parseDuration(input: string): number {
-  const MAX_TIMEOUT_MS = 600000; // 10 minutes
-
-  // Try plain number first (milliseconds)
-  const plainNumber = Number(input);
-  if (!isNaN(plainNumber) && Number.isFinite(plainNumber)) {
-    const ms = Math.floor(plainNumber);
-    if (ms <= 0) {
-      throw new Error("Timeout must be positive");
-    }
-    return Math.min(ms, MAX_TIMEOUT_MS);
-  }
-
-  // Parse human-readable format: 1m30s, 30s, 2m, etc.
-  const pattern = /^(?:(\d+)m)?(?:(\d+)s)?$/i;
-  const match = input.trim().match(pattern);
-
-  if (!match || (!match[1] && !match[2])) {
-    throw new Error(
-      `Invalid duration format: "${input}". Use formats like: 30s, 1m, 1m30s, or milliseconds`
-    );
-  }
-
-  const minutes = match[1] ? parseInt(match[1], 10) : 0;
-  const seconds = match[2] ? parseInt(match[2], 10) : 0;
-
-  // Calculate total milliseconds with overflow protection
-  const totalMs = (minutes * 60 + seconds) * 1000;
-
-  if (totalMs <= 0) {
-    throw new Error("Timeout must be positive");
-  }
-
-  if (totalMs > MAX_TIMEOUT_MS) {
-    console.error(`Warning: Timeout capped at 10 minutes (was ${input})`);
-    return MAX_TIMEOUT_MS;
-  }
-
-  return totalMs;
 }
 
 /**
@@ -94,14 +50,38 @@ async function executeUpdate(
   message: string,
   options: UpdateCommandOptions
 ): Promise<void> {
+  debugLog("executeUpdate", "Starting with options:", {
+    navigatorPath,
+    message: message.substring(0, 50) + (message.length > 50 ? "..." : ""),
+    timeout: options.timeout,
+    verbose: options.verbose,
+  });
+
   let spinner: ReturnType<typeof ora> | undefined;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
 
   try {
     // Show loading spinner
     spinner = ora("Loading navigator...").start();
 
-    // Load navigator (sync, from query-engine)
-    const navigator = loadNavigator(navigatorPath);
+    // Initialize adapter first (we need it for loadNavigator)
+    debugLog("executeUpdate", "Creating ClaudeAdapter...");
+    const adapter = new ClaudeAdapter();
+
+    // Resolve path and validate it exists before loading
+    const resolvedPath = path.resolve(navigatorPath);
+    if (!fs.existsSync(resolvedPath)) {
+      throw new NavigatorLoadError(
+        `Navigator directory not found: ${navigatorPath}`,
+        { searchedPath: resolvedPath }
+      );
+    }
+
+    debugLog("executeUpdate", "Loading navigator with plugin support...");
+    // Load navigator using adapter's method (includes plugin support)
+    const navigator = await adapter.loadNavigator(resolvedPath);
+    debugLog("executeUpdate", "Navigator loaded:", navigator.config.name);
 
     if (spinner) {
       spinner.succeed(`Loaded: ${chalk.bold(navigator.config.name)}`);
@@ -116,18 +96,29 @@ async function executeUpdate(
     console.error(""); // Blank line
     spinner = ora("Updating documentation...").start();
 
-    // Initialize adapter
-    const adapter = new ClaudeAdapter();
-
     // Execute update with timeout
+    debugLog("executeUpdate", "Starting update with timeout:", options.timeout, "ms");
+    const startTime = Date.now();
+
     const updatePromise = adapter.update(navigator, message);
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
-        reject(new Error(`Update timed out after ${options.timeout}ms`));
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        debugLog("executeUpdate", "TIMEOUT triggered after", options.timeout, "ms");
+        reject(new Error(`Update timed out after ${options.timeout}ms. The update may still be running in the background. Set AUTONAV_DEBUG=1 to see detailed logs.`));
       }, options.timeout);
     });
 
     const result = await Promise.race([updatePromise, timeoutPromise]);
+
+    // Clear timeout if update completed first
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = undefined;
+    }
+
+    const duration = Date.now() - startTime;
+    debugLog("executeUpdate", "Update completed in", duration, "ms");
 
     if (spinner) {
       spinner.succeed("Update completed");
@@ -141,10 +132,17 @@ async function executeUpdate(
     console.error(""); // Blank line
     console.error(chalk.green("✅") + " Documentation updated successfully!");
   } catch (error) {
+    // Clear timeout on error
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+
     if (spinner) {
       spinner.fail("Update failed");
       console.error(""); // Blank line
     }
+
+    debugLog("executeUpdate", "Error caught:", error);
 
     // Handle different error types
     if (error instanceof NavigatorLoadError) {
@@ -159,12 +157,13 @@ async function executeUpdate(
       console.error(formatErrorMessage(error.message));
 
       // Timeout error suggestions
-      if (error.message.includes("timed out")) {
+      if (error.message.includes("timed out") || timedOut) {
         console.error("");
         console.error(chalk.bold("Try:"));
         console.error(
-          chalk.dim(`  Increase timeout: autonav update "${navigatorPath}" "${message}" --timeout 3m`)
+          chalk.dim(`  Increase timeout: autonav update "${navigatorPath}" "${message}" --timeout 5m`)
         );
+        console.error(chalk.dim("  Enable debug logging: AUTONAV_DEBUG=1 autonav update ..."));
         console.error(chalk.dim("  Simplify the update"));
       }
     } else {
