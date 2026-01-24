@@ -26,7 +26,7 @@ import {
   checkFileConflicts,
   type ExistingClaudeMdAction,
 } from "../confirmation/index.js";
-import { createAndSymlinkSkill } from "../skill-generator/index.js";
+import { createAndSymlinkSkill, createChibiSkills, isChibiAvailable } from "../skill-generator/index.js";
 
 /**
  * autonav init CLI command
@@ -46,6 +46,7 @@ interface InitOptions {
   force?: boolean;
   quiet?: boolean;
   quick?: boolean;
+  chibi?: boolean;
 }
 
 function printUsage() {
@@ -69,6 +70,7 @@ Options:
   --force             Overwrite existing files without prompting
   --quiet             Minimal output
   --quick             Skip interactive interview, use defaults
+  --chibi             Also create chibi-compatible skills in ~/.chibi/skills/
 
 Examples:
   # Create basic navigator
@@ -166,6 +168,8 @@ function parseArgs(args: string[]): {
       options.quiet = true;
     } else if (arg === "--quick") {
       options.quick = true;
+    } else if (arg === "--chibi") {
+      options.chibi = true;
     } else if (!arg.startsWith("-")) {
       navigatorName = arg;
     }
@@ -504,6 +508,29 @@ See \`config.json\` for navigator configuration.
       },
       { force: options.force, quiet: options.quiet }
     );
+
+    // Create chibi skills if requested
+    if (options.chibi) {
+      if (!options.quiet) {
+        if (!isChibiAvailable()) {
+          console.log("⚠️  ~/.chibi directory not found. Creating chibi skills anyway.");
+        }
+        console.log("Creating chibi skills...");
+      }
+      await createChibiSkills(
+        {
+          navigatorName,
+          navigatorPath,
+          description: finalAnalysis.purpose,
+          scope: finalAnalysis.scope,
+          audience: finalAnalysis.audience,
+        },
+        { force: options.force, quiet: options.quiet }
+      );
+      if (!options.quiet) {
+        console.log("✓ Created chibi skills");
+      }
+    }
 
     if (!options.quiet) {
       console.log("✓ Navigator ready at " + (options.inPlace ? sourcePath : `./${navigatorName}`));
@@ -912,6 +939,29 @@ This is your knowledge base directory. Add your documentation files here.
       },
       { force: options.force, quiet: options.quiet }
     );
+
+    // Create chibi skills if requested
+    if (options.chibi) {
+      if (!options.quiet) {
+        if (!isChibiAvailable()) {
+          console.log("⚠️  ~/.chibi directory not found. Creating chibi skills anyway.");
+        }
+        console.log("Creating chibi skills...");
+      }
+      await createChibiSkills(
+        {
+          navigatorName,
+          navigatorPath,
+          description,
+          scope: interviewConfig?.scope,
+          audience: interviewConfig?.audience,
+        },
+        { force: options.force, quiet: options.quiet }
+      );
+      if (!options.quiet) {
+        console.log("✓ Created chibi skills");
+      }
+    }
 
     if (!options.quiet) {
       console.log("✓ Navigator ready at ./" + navigatorName);

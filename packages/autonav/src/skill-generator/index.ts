@@ -13,6 +13,20 @@ import os from "node:os";
  * discovery by Claude Code.
  */
 
+// Re-export chibi skill generator for chibi CLI integration
+export {
+  createChibiSkills,
+  removeChibiSkills,
+  listChibiSkills,
+  isChibiAvailable,
+  getChibiSkillsDir,
+  getChibiSkillPath,
+  chibiSkillExists,
+  getChibiAskSkillName,
+  getChibiUpdateSkillName,
+  type ChibiSkillConfig,
+} from "./chibi.js";
+
 export interface SkillConfig {
   /** Navigator name (used for skill name: ask-<navname>) */
   navigatorName: string;
