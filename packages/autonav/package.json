@@ -70,5 +70,13 @@
     "ink-testing-library": "^4.0.0",
     "typescript": "^5.3.0",
     "vitest": "^1.2.0"
+  },
+  "peerDependencies": {
+    "langsmith": "^0.3.0"
+  },
+  "peerDependenciesMeta": {
+    "langsmith": {
+      "optional": true
+    }
   }
 }
