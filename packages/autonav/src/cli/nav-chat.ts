@@ -3,6 +3,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { runConversationTUI, isInteractiveTerminal } from "../conversation/index.js";
+import {
+  getConfiguredProvider,
+  getSupportedProviders,
+  type Provider,
+} from "../adapter/index.js";
 
 /**
  * autonav chat CLI command
@@ -15,20 +20,29 @@ import { runConversationTUI, isInteractiveTerminal } from "../conversation/index
 
 interface ChatOptions {
   verbose?: boolean;
+  provider?: Provider;
+  model?: string;
 }
 
 function printUsage() {
+  const providers = getSupportedProviders().join("|");
   console.log(`
 autonav chat - Interactive conversation with a navigator
 
 Usage:
-  autonav chat <navigator-path>
+  autonav chat <navigator-path> [options]
 
 Arguments:
   navigator-path    Path to the navigator directory
 
 Options:
-  --verbose         Show debug information
+  --verbose              Show debug information
+  --provider <provider>  LLM provider to use (${providers})
+  --model <model>        Model to use (provider-specific format)
+
+Environment Variables:
+  AUTONAV_PROVIDER    Default LLM provider (${providers})
+  AUTONAV_MODEL       Default model to use
 
 Description:
   Opens an interactive conversation mode with your navigator. You can:
@@ -41,6 +55,8 @@ Description:
 Examples:
   autonav chat ./my-navigator
   autonav chat .                  # Use current directory
+  autonav chat . --provider opencode
+  autonav chat . --provider claude --model claude-opus-4-20250514
 
 Commands available in conversation:
   /help    - Show available commands
@@ -54,7 +70,9 @@ function parseArgs(args: string[]): {
   navigatorPath?: string;
   options: ChatOptions;
 } {
-  const options: ChatOptions = {};
+  const options: ChatOptions = {
+    provider: getConfiguredProvider(),
+  };
   let navigatorPath: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
@@ -67,6 +85,12 @@ function parseArgs(args: string[]): {
     } else if (arg === "--help" || arg === "-h") {
       printUsage();
       process.exit(0);
+    } else if (arg === "--provider" && args[i + 1]) {
+      options.provider = args[i + 1] as Provider;
+      i++;
+    } else if (arg === "--model" && args[i + 1]) {
+      options.model = args[i + 1];
+      i++;
     } else if (!arg.startsWith("-")) {
       navigatorPath = arg;
     }
@@ -156,12 +180,20 @@ async function main() {
     process.exit(1);
   }
 
+  // Validate provider
+  const supportedProviders = getSupportedProviders();
+  if (options.provider && !supportedProviders.includes(options.provider)) {
+    console.error(`❌ Error: Invalid provider "${options.provider}". Supported: ${supportedProviders.join(", ")}`);
+    process.exit(1);
+  }
+
   // Run the conversation TUI
   try {
     if (options.verbose) {
       console.log(`Navigator: ${config.name}`);
       console.log(`Path: ${navigatorPath}`);
       console.log(`Knowledge Base: ${knowledgeBasePath}`);
+      console.log(`Provider: ${options.provider}${options.model ? `, Model: ${options.model}` : ""}`);
       console.log("");
     }
 
@@ -170,6 +202,8 @@ async function main() {
       navigatorPath,
       navigatorSystemPrompt: systemPrompt,
       knowledgeBasePath,
+      provider: options.provider,
+      model: options.model,
     });
 
     console.log("\n👋 Conversation ended.\n");

@@ -3,7 +3,12 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
-import { ClaudeAdapter } from "../adapter/index.js";
+import {
+  createAdapter,
+  getConfiguredProvider,
+  getSupportedProviders,
+  type Provider,
+} from "../adapter/index.js";
 import {
   loadNavigator,
   validateResponse,
@@ -27,6 +32,8 @@ interface QueryCommandOptions {
   confidence?: ConfidenceLevel;
   timeout?: number;
   verbose?: boolean;
+  provider?: Provider;
+  model?: string;
 }
 
 /**
@@ -101,6 +108,15 @@ program
     30000
   )
   .option("--verbose", "Show additional debug information")
+  .option(
+    "--provider <provider>",
+    `LLM provider to use (${getSupportedProviders().join("|")})`,
+    getConfiguredProvider()
+  )
+  .option(
+    "--model <model>",
+    "Model to use (provider-specific format)"
+  )
   .action(async (navigator: string, question: string, options: QueryCommandOptions) => {
     await executeQuery(navigator, question, options);
   });
@@ -159,15 +175,33 @@ async function executeQuery(
       console.error(""); // Blank line
     }
 
+    // Validate provider option
+    const provider = options.provider as Provider;
+    const supportedProviders = getSupportedProviders();
+    if (!supportedProviders.includes(provider)) {
+      console.error(
+        formatErrorMessage(
+          `Invalid provider: ${provider}. Must be one of: ${supportedProviders.join(", ")}`
+        )
+      );
+      process.exit(1);
+    }
+
     // Show question (only in non-JSON mode)
     if (format !== "json") {
       console.error(chalk.blue("❓") + " Question: " + chalk.italic(question));
+      if (options.verbose) {
+        console.error(chalk.dim(`Provider: ${provider}${options.model ? `, Model: ${options.model}` : ""}`));
+      }
       console.error(""); // Blank line
-      spinner = ora("Querying Claude...").start();
+      spinner = ora(`Querying ${provider}...`).start();
     }
 
-    // Initialize adapter
-    const adapter = new ClaudeAdapter();
+    // Initialize adapter using factory
+    const adapter = createAdapter({
+      provider,
+      model: options.model,
+    });
 
     // Execute query with timeout
     const queryPromise = adapter.query(navigator, question);

@@ -291,7 +291,7 @@ describe('autonav init smoke tests', () => {
         // Clean up for next iteration
         fs.rmSync(navPath, { recursive: true, force: true });
       }
-    });
+    }, 30000); // Increase timeout for sequential init commands
   });
 
   describe('file content validation', () => {

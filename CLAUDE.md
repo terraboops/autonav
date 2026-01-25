@@ -321,16 +321,32 @@ Navs manage their own behavior through self-configuration. No scheduler, no exte
 
 **Goal**: Autonav as general context management system
 
-**Support**:
-- Claude Code SDK (primary, initial implementation)
-- Gemini CLI (future)
-- Other CLI-based LLM toolings (future)
-- All LLMs support tool use → Autonav can be a tool
+**Currently Supported Providers**:
+- **Claude** (default) - Claude Code SDK with streaming support
+- **OpenCode** - Open-source multi-provider CLI tool (supports OpenAI, Anthropic, Ollama, etc.)
 
-**Architecture Questions** (Unresolved):
-- Should Autonav be just a binary that runs?
-- Should it follow MCP protocol?
-- How to best abstract across different LLM CLIs?
+**Provider Selection**:
+```bash
+# Via environment variable
+export AUTONAV_PROVIDER=opencode
+export AUTONAV_MODEL=openai:gpt-4o
+
+# Via CLI flag
+autonav query ./my-nav "question" --provider opencode --model anthropic:claude-sonnet-4-20250514
+autonav chat ./my-nav --provider claude
+autonav init my-nav --from ./repo --provider opencode
+```
+
+**Adapter Architecture**:
+- `LLMAdapter` interface in `src/adapter/types.ts`
+- `ClaudeAdapter` - Uses Claude Agent SDK with streaming
+- `OpenCodeAdapter` - Spawns OpenCode CLI subprocess
+- `createAdapter()` factory function for provider selection
+
+**Future Support**:
+- Gemini CLI
+- Other CLI-based LLM toolings
+- All LLMs support tool use → Autonav can be a tool
 
 **Long-Term Vision**:
 - Navs become THE way to work with LLMs

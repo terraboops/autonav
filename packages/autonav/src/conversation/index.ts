@@ -8,6 +8,7 @@
 import React from "react";
 import { render } from "ink";
 import { ConversationApp } from "./App.js";
+import type { Provider } from "../adapter/index.js";
 
 export { buildConversationSystemPrompt } from "./prompts.js";
 
@@ -30,6 +31,14 @@ export interface ConversationOptions {
   navigatorPath: string;
   navigatorSystemPrompt: string;
   knowledgeBasePath: string;
+  /**
+   * LLM provider to use (defaults to 'claude')
+   */
+  provider?: Provider;
+  /**
+   * Model to use (provider-specific format)
+   */
+  model?: string;
 }
 
 /**

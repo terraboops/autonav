@@ -51,12 +51,38 @@ A knowledge pack must contain:
 
 **Note:** Currently, navigators support one knowledge pack. Multiple packs may be supported in a future release.
 
+## Multi-Provider Support
+
+Autonav supports multiple LLM providers:
+
+```bash
+# Use Claude (default)
+autonav query ./my-nav "How do I deploy?"
+
+# Use OpenCode (supports OpenAI, Anthropic, Ollama, etc.)
+autonav query ./my-nav "How do I deploy?" --provider opencode
+
+# Set default provider via environment
+export AUTONAV_PROVIDER=opencode
+export AUTONAV_MODEL=openai:gpt-4o
+```
+
+**Supported providers:**
+- `claude` - Claude Code SDK (default, with streaming support)
+- `opencode` - OpenCode CLI (requires `opencode` to be installed)
+
 ## Programmatic use
 
 ```typescript
-import { ClaudeAdapter } from "@autonav/core";
+import { createAdapter, ClaudeAdapter, OpenCodeAdapter } from "@autonav/core";
 
-const adapter = new ClaudeAdapter();
+// Use factory (respects AUTONAV_PROVIDER env var)
+const adapter = createAdapter();
+
+// Or explicitly choose a provider
+const claudeAdapter = new ClaudeAdapter();
+const openCodeAdapter = new OpenCodeAdapter({ model: "openai:gpt-4o" });
+
 const nav = await adapter.loadNavigator("./my-docs");
 const response = await adapter.query(nav, "How do I deploy?");
 
@@ -91,11 +117,17 @@ my-docs/
 }
 ```
 
-## Environment
+## Environment Variables
 
 ### Required
 
-`ANTHROPIC_API_KEY` - Required for queries.
+| Variable | Description |
+|----------|-------------|
+| `ANTHROPIC_API_KEY` | API key for Claude provider |
+| `AUTONAV_PROVIDER` | Default LLM provider (`claude` or `opencode`) |
+| `AUTONAV_MODEL` | Default model to use (provider-specific format) |
+
+For OpenCode, configure your provider API keys using `opencode config`.
 
 ### Optional - LangSmith Tracing
 
