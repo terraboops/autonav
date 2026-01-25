@@ -10,7 +10,6 @@ import {
   type UpdatePluginConfigInput,
   type GetPluginConfigInput,
   type SelfConfigResult,
-  type ConfigurablePlugin,
   CONFIGURABLE_PLUGINS,
 } from "./self-config.js";
 
@@ -175,83 +174,5 @@ export async function handleGetPluginConfig(
       plugin,
       error: errorMessage,
     };
-  }
-}
-
-/**
- * Validate and parse update_plugin_config input
- */
-function parseUpdatePluginConfigInput(
-  input: Record<string, unknown>
-): UpdatePluginConfigInput | null {
-  const plugin = input.plugin as ConfigurablePlugin | undefined;
-  const updates = input.updates as Record<string, unknown> | undefined;
-  const reason = input.reason as string | undefined;
-
-  if (!plugin || !updates || !reason) {
-    return null;
-  }
-
-  return { plugin, updates, reason };
-}
-
-/**
- * Validate and parse get_plugin_config input
- */
-function parseGetPluginConfigInput(
-  input: Record<string, unknown>
-): GetPluginConfigInput | null {
-  const plugin = input.plugin as ConfigurablePlugin | "all" | undefined;
-
-  if (!plugin) {
-    return null;
-  }
-
-  return { plugin };
-}
-
-/**
- * Process a tool call and return the result
- */
-export async function processToolCall(
-  toolName: string,
-  toolInput: Record<string, unknown>,
-  pluginManager: PluginManager | undefined,
-  pluginsConfigPath: string
-): Promise<SelfConfigResult> {
-  switch (toolName) {
-    case "update_plugin_config": {
-      const parsed = parseUpdatePluginConfigInput(toolInput);
-      if (!parsed) {
-        return {
-          success: false,
-          message: "Invalid input for update_plugin_config",
-          plugin: "unknown",
-          error: "Missing required fields: plugin, updates, reason",
-        };
-      }
-      return handleUpdatePluginConfig(parsed, pluginManager, pluginsConfigPath);
-    }
-
-    case "get_plugin_config": {
-      const parsed = parseGetPluginConfigInput(toolInput);
-      if (!parsed) {
-        return {
-          success: false,
-          message: "Invalid input for get_plugin_config",
-          plugin: "unknown",
-          error: "Missing required field: plugin",
-        };
-      }
-      return handleGetPluginConfig(parsed, pluginsConfigPath);
-    }
-
-    default:
-      return {
-        success: false,
-        message: `Unknown tool: ${toolName}`,
-        plugin: "unknown",
-        error: `Tool "${toolName}" is not recognized`,
-      };
   }
 }

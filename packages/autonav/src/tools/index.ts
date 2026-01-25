@@ -17,7 +17,6 @@ export {
 export {
   handleUpdatePluginConfig,
   handleGetPluginConfig,
-  processToolCall,
 } from "./handler.js";
 
 export {

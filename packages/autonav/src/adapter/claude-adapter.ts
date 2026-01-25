@@ -15,6 +15,19 @@ import { createPluginManager, PluginManager, PluginConfigFileSchema } from "../p
 import { sanitizeError } from "../plugins/utils/security.js";
 import { createSelfConfigMcpServer, createResponseMcpServer, SUBMIT_ANSWER_TOOL } from "../tools/index.js";
 
+// Debug logging - enabled via AUTONAV_DEBUG=1 environment variable
+const DEBUG = process.env.AUTONAV_DEBUG === "1" || process.env.DEBUG === "1";
+
+function debugLog(context: string, ...args: unknown[]): void {
+  if (DEBUG) {
+    const timestamp = new Date().toISOString();
+    console.error(`[DEBUG ${timestamp}] [${context}]`, ...args);
+  }
+}
+
+// Default model - using the short form that works in conversation mode
+const DEFAULT_MODEL = "claude-sonnet-4-5";
+
 /**
  * Optional LangSmith integration for tracing Claude Agent SDK calls
  */
@@ -129,9 +142,10 @@ export class ClaudeAdapter {
    */
   constructor(options: ClaudeAdapterOptions = {}) {
     this.options = {
-      model: options.model || "claude-sonnet-4-20250514",
+      model: options.model || DEFAULT_MODEL,
       maxTurns: options.maxTurns || 10,
     };
+    debugLog("ClaudeAdapter", "Initialized with options:", this.options);
   }
 
   /**
@@ -153,10 +167,12 @@ export class ClaudeAdapter {
    * ```
    */
   async loadNavigator(navigatorPath: string): Promise<LoadedNavigator> {
+    debugLog("loadNavigator", "Loading navigator from:", navigatorPath);
     const configPath = path.join(navigatorPath, "config.json");
 
     // Validate directory exists
     if (!fs.existsSync(navigatorPath)) {
+      debugLog("loadNavigator", "Directory not found:", navigatorPath);
       throw new Error(
         `Navigator directory not found: ${navigatorPath}\n` +
         `Make sure the path is correct and the navigator exists.`
@@ -237,26 +253,33 @@ export class ClaudeAdapter {
     const pluginsConfigPath = path.join(navigatorPath, ".claude", "plugins.json");
 
     if (fs.existsSync(pluginsConfigPath)) {
+      debugLog("loadNavigator", "Found plugins config at:", pluginsConfigPath);
       try {
         const pluginsConfigContent = fs.readFileSync(pluginsConfigPath, "utf-8");
         const pluginsConfig = PluginConfigFileSchema.parse(JSON.parse(pluginsConfigContent));
+        debugLog("loadNavigator", "Parsed plugins config:", Object.keys(pluginsConfig));
 
         // Create plugin manager
         pluginManager = createPluginManager(pluginsConfigPath);
 
         // Actually initialize the plugins
         await pluginManager.loadPlugins(pluginsConfig);
+        debugLog("loadNavigator", "Plugins loaded successfully");
       } catch (error) {
         // Sanitize error to prevent credential leakage in logs
         const safeMessage = sanitizeError(error instanceof Error ? error.message : String(error));
+        debugLog("loadNavigator", "Failed to load plugins:", safeMessage);
 
         console.warn(`⚠️  Failed to load plugins: ${safeMessage}`);
         console.warn("   Continuing without plugins...");
         // Continue without plugins (fail-safe)
         pluginManager = undefined;
       }
+    } else {
+      debugLog("loadNavigator", "No plugins config found at:", pluginsConfigPath);
     }
 
+    debugLog("loadNavigator", "Navigator loaded successfully:", config.name);
     return {
       config,
       systemPrompt,
@@ -332,6 +355,8 @@ export class ClaudeAdapter {
       maxTurns = this.options.maxTurns,
     } = options;
 
+    debugLog("query", "Starting query:", { question: question.substring(0, 100), enableSelfConfig, maxTurns });
+
     // Validate inputs
     if (!question || question.trim().length === 0) {
       throw new Error('Question cannot be empty');
@@ -339,28 +364,52 @@ export class ClaudeAdapter {
 
     // Create the prompt
     const prompt = createAnswerQuestionPrompt(question);
+    debugLog("query", "Created prompt, length:", prompt.length);
 
     // Build system prompt with self-config rules if enabled
     let systemPrompt = navigator.systemPrompt;
     if (enableSelfConfig && !systemPrompt.includes("Self-Configuration Capabilities")) {
       systemPrompt = `${navigator.systemPrompt}\n\n${SELF_CONFIG_RULES}`;
     }
+    debugLog("query", "System prompt length:", systemPrompt.length);
 
-    // Set up MCP servers
-    const mcpServers: Record<string, ReturnType<typeof createSelfConfigMcpServer>> = {};
+    // Set up MCP servers - wrapped in try-catch to prevent hangs
+    let mcpServers: Record<string, ReturnType<typeof createSelfConfigMcpServer>> | undefined;
 
-    // Always add response tools for structured output
-    mcpServers["autonav-response"] = createResponseMcpServer();
+    try {
+      debugLog("query", "Setting up MCP servers...");
+      const servers: Record<string, ReturnType<typeof createSelfConfigMcpServer>> = {};
 
-    // Add self-config tools if enabled
-    if (enableSelfConfig && navigator.pluginsConfigPath) {
-      mcpServers["autonav-self-config"] = createSelfConfigMcpServer(
-        navigator.pluginManager,
-        navigator.pluginsConfigPath
-      );
+      // Always add response tools for structured output
+      servers["autonav-response"] = createResponseMcpServer();
+      debugLog("query", "Created response MCP server");
+
+      // Add self-config tools if enabled
+      if (enableSelfConfig && navigator.pluginsConfigPath) {
+        servers["autonav-self-config"] = createSelfConfigMcpServer(
+          navigator.pluginManager,
+          navigator.pluginsConfigPath
+        );
+        debugLog("query", "Created self-config MCP server");
+      }
+
+      mcpServers = Object.keys(servers).length > 0 ? servers : undefined;
+      debugLog("query", "MCP servers ready:", mcpServers ? Object.keys(mcpServers) : "none");
+    } catch (mcpError) {
+      debugLog("query", "Failed to set up MCP servers:", mcpError);
+      console.warn("⚠️  Failed to set up MCP servers, continuing without them");
+      mcpServers = undefined;
     }
 
     try {
+      debugLog("query", "Calling Claude Agent SDK query()...");
+      debugLog("query", "SDK options:", {
+        model: this.options.model,
+        maxTurns,
+        cwd: navigator.navigatorPath,
+        hasMcpServers: !!mcpServers,
+      });
+
       // Execute query using Claude Agent SDK
       // The SDK handles the agentic loop automatically
       const queryIterator = query({
@@ -370,44 +419,55 @@ export class ClaudeAdapter {
           maxTurns,
           systemPrompt,
           cwd: navigator.navigatorPath,
-          mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
-          // Don't load user/project settings - we control everything
-          settingSources: [],
+          mcpServers,
           // Allow the SDK to handle permissions
           permissionMode: "bypassPermissions",
         },
       });
 
+      debugLog("query", "SDK query iterator created, starting iteration...");
+
       // Collect messages and find the result
       let resultMessage: SDKResultMessage | undefined;
       let lastAssistantText = "";
       let submitAnswerInput: { answer: string; sources: Array<{ file: string; section: string; relevance: string }>; confidence: number } | undefined;
+      let messageCount = 0;
 
       for await (const message of queryIterator) {
+        messageCount++;
+        debugLog("query", `Received message #${messageCount}, type:`, message.type);
+
         // Log tool usage for debugging
         if (message.type === "assistant") {
           const content = message.message.content;
           for (const block of content) {
             if (block.type === "tool_use") {
+              debugLog("query", "Tool use detected:", block.name);
               // Check if this is the submit_answer tool
               if (block.name === SUBMIT_ANSWER_TOOL) {
                 // Extract the structured response from tool input
                 submitAnswerInput = block.input as typeof submitAnswerInput;
+                debugLog("query", "submit_answer tool called with confidence:", submitAnswerInput?.confidence);
               }
             } else if (block.type === "text") {
               lastAssistantText = block.text;
+              debugLog("query", "Text block received, length:", block.text.length);
             }
           }
         }
 
         // Capture the result message
         if (message.type === "result") {
+          debugLog("query", "Result message received, subtype:", message.subtype);
           resultMessage = message;
         }
       }
 
+      debugLog("query", "Iteration complete, total messages:", messageCount);
+
       // Check for errors
       if (!resultMessage) {
+        debugLog("query", "ERROR: No result message received");
         throw new Error("No result message received from Claude Agent SDK");
       }
 
@@ -415,6 +475,7 @@ export class ClaudeAdapter {
         const errorDetails = "errors" in resultMessage
           ? resultMessage.errors.join(", ")
           : "Unknown error";
+        debugLog("query", "ERROR: Query failed:", resultMessage.subtype, errorDetails);
         throw new Error(`Query failed: ${resultMessage.subtype} - ${errorDetails}`);
       }
 
@@ -422,6 +483,7 @@ export class ClaudeAdapter {
       let navigatorResponse: NavigatorResponse;
 
       if (submitAnswerInput) {
+        debugLog("query", "Building response from submit_answer tool");
         // Use structured output from tool call (preferred)
         navigatorResponse = NavigatorResponseSchema.parse({
           query: question,
@@ -431,16 +493,20 @@ export class ClaudeAdapter {
           timestamp: new Date().toISOString(),
         });
       } else {
+        debugLog("query", "Falling back to text parsing");
         // Fall back to parsing text response (legacy path)
         const finalText = resultMessage.result || lastAssistantText;
 
         if (!finalText) {
+          debugLog("query", "ERROR: No response text available");
           throw new Error("No response received from Claude. Expected submit_answer tool call or text response.");
         }
 
         // Parse the response from text
         navigatorResponse = this.parseResponse(finalText, question);
       }
+
+      debugLog("query", "Response built, validating...");
 
       // Validate the response
       const validation = this.validate(
@@ -450,6 +516,7 @@ export class ClaudeAdapter {
 
       // Log warnings but don't throw
       if (validation.warnings.length > 0) {
+        debugLog("query", "Validation warnings:", validation.warnings);
         console.warn("⚠️  Validation warnings:");
         for (const warning of validation.warnings) {
           console.warn(`  - ${warning}`);
@@ -458,6 +525,7 @@ export class ClaudeAdapter {
 
       // Throw on errors
       if (!validation.valid) {
+        debugLog("query", "Validation failed:", validation.errors);
         console.error("❌ Validation failed:");
         for (const error of validation.errors) {
           console.error(`  - ${error.message}`);
@@ -467,8 +535,10 @@ export class ClaudeAdapter {
         );
       }
 
+      debugLog("query", "Query completed successfully");
       return navigatorResponse;
     } catch (error) {
+      debugLog("query", "ERROR in query:", error);
       if (error instanceof Error) {
         throw error;
       }
@@ -507,6 +577,8 @@ export class ClaudeAdapter {
   ): Promise<string> {
     const { maxTurns = this.options.maxTurns } = options;
 
+    debugLog("update", "Starting update:", { message: message.substring(0, 100), maxTurns });
+
     // Validate inputs
     if (!message || message.trim().length === 0) {
       throw new Error('Update message cannot be empty');
@@ -527,7 +599,16 @@ When updating documentation:
 
 Your task: ${message}`;
 
+    debugLog("update", "System prompt prepared, length:", systemPrompt.length);
+
     try {
+      debugLog("update", "Calling Claude Agent SDK query()...");
+      debugLog("update", "SDK options:", {
+        model: this.options.model,
+        maxTurns,
+        cwd: navigator.navigatorPath,
+      });
+
       // Execute update using Claude Agent SDK with write permissions
       const queryIterator = query({
         prompt: message,
@@ -536,34 +617,45 @@ Your task: ${message}`;
           maxTurns,
           systemPrompt,
           cwd: navigator.navigatorPath,
-          // Don't load user/project settings - we control everything
-          settingSources: [],
           // Allow file writes in the navigator directory
           permissionMode: "bypassPermissions",
         },
       });
 
+      debugLog("update", "SDK query iterator created, starting iteration...");
+
       // Collect the result
       let resultMessage: SDKResultMessage | undefined;
       let lastAssistantText = "";
+      let messageCount = 0;
 
       for await (const message of queryIterator) {
+        messageCount++;
+        debugLog("update", `Received message #${messageCount}, type:`, message.type);
+
         if (message.type === "assistant") {
           const content = message.message.content;
           for (const block of content) {
             if (block.type === "text") {
               lastAssistantText = block.text;
+              debugLog("update", "Text block received, length:", block.text.length);
+            } else if (block.type === "tool_use") {
+              debugLog("update", "Tool use detected:", block.name);
             }
           }
         }
 
         if (message.type === "result") {
+          debugLog("update", "Result message received, subtype:", message.subtype);
           resultMessage = message;
         }
       }
 
+      debugLog("update", "Iteration complete, total messages:", messageCount);
+
       // Check for errors
       if (!resultMessage) {
+        debugLog("update", "ERROR: No result message received");
         throw new Error("No result message received from Claude Agent SDK");
       }
 
@@ -571,12 +663,17 @@ Your task: ${message}`;
         const errorDetails = "errors" in resultMessage
           ? resultMessage.errors.join(", ")
           : "Unknown error";
+        debugLog("update", "ERROR: Update failed:", resultMessage.subtype, errorDetails);
         throw new Error(`Update failed: ${resultMessage.subtype} - ${errorDetails}`);
       }
 
+      const result = resultMessage.result || lastAssistantText || "Update completed (no response text)";
+      debugLog("update", "Update completed successfully, response length:", result.length);
+
       // Return the final response text
-      return resultMessage.result || lastAssistantText || "Update completed (no response text)";
+      return result;
     } catch (error) {
+      debugLog("update", "ERROR in update:", error);
       if (error instanceof Error) {
         throw error;
       }

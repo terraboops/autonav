@@ -18,7 +18,6 @@ export {
 export {
   createSelfConfigMcpServer,
   CONFIGURABLE_PLUGINS,
-  processToolCall,
   handleUpdatePluginConfig,
   handleGetPluginConfig,
   type ConfigurablePlugin,
