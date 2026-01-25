@@ -9,6 +9,8 @@ import {
   getLocalSkillPath,
   symlinkSkillToGlobal,
   type SymlinkResult,
+  createChibiSkills,
+  isChibiAvailable,
 } from "../skill-generator/index.js";
 
 /**
@@ -18,6 +20,7 @@ interface InstallCommandOptions {
   force?: boolean;
   quiet?: boolean;
   noColor?: boolean;
+  chibi?: boolean;
 }
 
 /**
@@ -33,6 +36,7 @@ program
   .option("-f, --force", "Overwrite existing skills if conflicts detected")
   .option("-q, --quiet", "Suppress output")
   .option("--no-color", "Disable colored output")
+  .option("--chibi", "Also create chibi-compatible skills in ~/.chibi/skills/")
   .action(async (navigatorPath: string, options: InstallCommandOptions) => {
     await executeInstall(navigatorPath, options);
   });
@@ -128,6 +132,69 @@ async function executeInstall(
 
   if (hasErrors) {
     process.exit(1);
+  }
+
+  // Handle chibi skill installation if requested
+  if (options.chibi) {
+    if (!options.quiet) {
+      console.log("");
+      console.log(chalk.bold("Installing chibi skills..."));
+    }
+
+    // Check if chibi is available
+    if (!isChibiAvailable()) {
+      if (!options.quiet) {
+        console.log(chalk.yellow("Note:") + " ~/.chibi directory not found. Creating it anyway.");
+        console.log(chalk.dim("  Install chibi and agent-skills plugin for full functionality."));
+        console.log(chalk.dim("  See: https://github.com/emesal/chibi"));
+      }
+    }
+
+    // Load navigator config to get description
+    let navigatorName = path.basename(resolvedPath);
+    let description = `Knowledge navigator for ${navigatorName}`;
+    let scope: string | undefined;
+    let audience: string | undefined;
+
+    try {
+      const configContent = fs.readFileSync(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+      if (config.name) navigatorName = config.name;
+      if (config.description) description = config.description;
+      if (config.scope) scope = config.scope;
+      if (config.audience) audience = config.audience;
+    } catch {
+      // Use defaults if config can't be parsed
+    }
+
+    try {
+      const chibiResult = await createChibiSkills(
+        {
+          navigatorName,
+          navigatorPath: resolvedPath,
+          description,
+          scope,
+          audience,
+        },
+        { force: options.force, quiet: options.quiet }
+      );
+
+      if (!options.quiet) {
+        const created =
+          (chibiResult.askSkillDir ? 1 : 0) +
+          (chibiResult.updateSkillDir ? 1 : 0);
+        if (created > 0) {
+          console.log(chalk.green(`  ${created} chibi skill(s) installed`));
+        }
+      }
+    } catch (error) {
+      if (!options.quiet) {
+        console.log(
+          chalk.red("  Error creating chibi skills:") +
+            ` ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
   }
 }
 
