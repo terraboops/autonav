@@ -19,7 +19,8 @@
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:indicator": "npm run build && node dist/interview/ui/test-indicator.js"
   },
   "keywords": [
     "autonav",
