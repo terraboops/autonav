@@ -51,24 +51,54 @@ export const boxChars = {
 /** Glitch block characters for decorations */
 export const glitchBlocks = ["░", "▒", "▓", "█"] as const;
 
-/** Matrix-style glyphs for animated activity indicator */
-// Matrix-inspired characters: ASCII-safe for consistent terminal width
-export const matrixGlyphs = [
-  // Uppercase (common in Matrix)
-  "A", "B", "C", "D", "E", "F", "G", "H", "I", "J",
-  "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T",
-  "U", "V", "W", "X", "Y", "Z",
-  // Numbers (very Matrix)
+/** Matrix-style glyph sets for animated activity indicator */
+
+// A. Classic Mix: Letters + Numbers + Symbols + Blocks
+export const glyphSetA = [
+  "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+  "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
   "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
-  // Symbols and box-drawing (guaranteed single-width ASCII)
-  ":", ".", "=", "*", "+", "-", "<", ">", "|", "/",
-  "\\", "^", "~", "_", "#", "@", "$", "%", "&",
-  // Extended ASCII box-drawing (still single-width)
+  ":", ".", "=", "*", "+", "-", "<", ">", "|", "/", "\\", "^", "~", "_",
   "│", "─", "┤", "┐", "└", "┴", "┬", "├", "┼", "┘", "┌",
-  "║", "═", "╬", "╪", "╔", "╗", "╚", "╝",
-  // Block characters (single-width)
-  "░", "▒", "▓", "█", "▀", "▄", "■", "□", "▪", "▫",
+  "░", "▒", "▓", "█", "▀", "▄", "■", "□",
 ] as const;
+
+// B. Block Heavy: Mostly blocks and symbols
+export const glyphSetB = [
+  "░", "▒", "▓", "█", "▀", "▄", "■", "□", "▪", "▫",
+  "░", "▒", "▓", "█", "▀", "▄", "■", "□", "▪", "▫", // Repeat for density
+  "│", "─", "║", "═", "╬", "╪", "┼", "╔", "╗", "╚", "╝",
+  ":", ".", "*", "#", "@", "$", "%", "&", "=", "+", "-",
+  "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+] as const;
+
+// C. Numbers + Symbols: Digital/binary feel
+export const glyphSetC = [
+  "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+  "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", // More numbers
+  ":", ".", "=", "*", "+", "-", "<", ">", "|", "/", "\\",
+  "░", "▒", "▓", "█",
+  "#", "@", "$", "%", "&", "^", "~",
+] as const;
+
+// D. Box Drawing: Geometric/architectural
+export const glyphSetD = [
+  "│", "─", "┤", "┐", "└", "┴", "┬", "├", "┼", "┘", "┌",
+  "║", "═", "╬", "╪", "╔", "╗", "╚", "╝", "╠", "╣", "╦", "╩",
+  "│", "─", "┤", "┐", "└", "┴", "┬", "├", "┼", "┘", "┌", // Repeat
+  "░", "▒", "▓", "█", "▀", "▄",
+  "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+] as const;
+
+// E. Minimal: Just blocks and numbers
+export const glyphSetE = [
+  "░", "▒", "▓", "█", "▀", "▄", "■", "□",
+  "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+  "░", "▒", "▓", "█", "▀", "▄", "■", "□", // Repeat for more blocks
+] as const;
+
+// Default export for backwards compatibility
+export const matrixGlyphs = glyphSetA;
 
 /** Brightness levels for Matrix fade effect */
 export const matrixBrightness = {

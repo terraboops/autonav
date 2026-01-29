@@ -10,7 +10,7 @@
 import { useState, useEffect } from "react";
 import { Box, Text } from "ink";
 import chalk from "chalk";
-import { matrixGlyphs, matrixBrightness, boxChars, colors } from "./theme.js";
+import { matrixGlyphs, matrixBrightness, colors } from "./theme.js";
 
 interface ActivityIndicatorProps {
   /** Message to display next to the indicator */
@@ -19,6 +19,10 @@ interface ActivityIndicatorProps {
   width?: number;
   /** Update interval in milliseconds (default: 80) */
   interval?: number;
+  /** Number of lines to display (default: 1) */
+  lines?: number;
+  /** Custom glyph set to use (default: matrixGlyphs) */
+  glyphSet?: readonly string[];
 }
 
 /** Character with brightness level */
@@ -28,10 +32,10 @@ interface MatrixChar {
 }
 
 /**
- * Get a random glyph from the matrix set
+ * Get a random glyph from the provided set
  */
-function randomGlyph(): string {
-  const glyph = matrixGlyphs[Math.floor(Math.random() * matrixGlyphs.length)];
+function randomGlyph(glyphSet: readonly string[]): string {
+  const glyph = glyphSet[Math.floor(Math.random() * glyphSet.length)];
   if (!glyph) {
     throw new Error("Failed to get random glyph");
   }
@@ -41,25 +45,25 @@ function randomGlyph(): string {
 /**
  * Initialize strip with random characters and brightness wave
  */
-function initializeStrip(width: number): MatrixChar[] {
+function initializeStrip(width: number, glyphSet: readonly string[], lineOffset: number = 0): MatrixChar[] {
   return Array.from({ length: width }, (_, i) => ({
-    char: randomGlyph(),
-    // Create initial brightness wave
-    brightness: Math.floor((Math.sin(i / 3) + 1) * 1.5) % 4,
+    char: randomGlyph(glyphSet),
+    // Create initial brightness wave with line offset for variation
+    brightness: Math.floor((Math.sin((i + lineOffset * 10) / 3) + 1) * 1.5) % 4,
   }));
 }
 
 /**
  * Update the strip: shift brightness wave and randomly change some characters
  */
-function updateStrip(strip: MatrixChar[], tick: number): MatrixChar[] {
+function updateStrip(strip: MatrixChar[], tick: number, glyphSet: readonly string[], lineOffset: number = 0): MatrixChar[] {
   return strip.map((item, i) => {
-    // Brightness wave moves across the strip
-    const wavePosition = (i + tick) / 4;
+    // Brightness wave moves across the strip with line offset for variation
+    const wavePosition = (i + tick + lineOffset * 10) / 4;
     const brightness = Math.floor((Math.sin(wavePosition) + 1) * 1.5) % 4;
 
     // Randomly change character ~20% of the time
-    const char = Math.random() < 0.2 ? randomGlyph() : item.char;
+    const char = Math.random() < 0.2 ? randomGlyph(glyphSet) : item.char;
 
     return { char, brightness };
   });
@@ -88,46 +92,40 @@ export function ActivityIndicator({
   message = "thinking...",
   width = 40,
   interval = 80,
+  lines = 1,
+  glyphSet = matrixGlyphs,
 }: ActivityIndicatorProps) {
-  const [strip, setStrip] = useState<MatrixChar[]>(() => initializeStrip(width));
+  // Initialize multiple strips, one per line
+  const [strips, setStrips] = useState<MatrixChar[][]>(() =>
+    Array.from({ length: lines }, (_, i) => initializeStrip(width, glyphSet, i))
+  );
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
     const timer = setInterval(() => {
       setTick((t) => t + 1);
-      setStrip((prev) => updateStrip(prev, tick));
+      setStrips((prev) => prev.map((strip, lineIndex) => updateStrip(strip, tick, glyphSet, lineIndex)));
     }, interval);
 
     return () => clearInterval(timer);
-  }, [interval, tick]);
+  }, [interval, tick, lines, glyphSet]);
 
-  const { single } = boxChars;
-
-  // Build the content string with all characters colored
-  // This ensures consistent spacing and width
-  const content = strip.map((item) => {
-    const colorFn = getColorForBrightness(item.brightness);
-    return colorFn(item.char);
-  }).join("");
+  // Build content for each line
+  const lineContents = strips.map((strip) =>
+    strip.map((item) => {
+      const colorFn = getColorForBrightness(item.brightness);
+      return colorFn(item.char);
+    }).join("")
+  );
 
   return (
     <Box flexDirection="column">
-      <Box>
-        <Text color={colors.dimmed}>{single.topLeft}</Text>
-        <Text color={colors.dimmed}>{single.horizontal.repeat(width + 2)}</Text>
-        <Text color={colors.dimmed}>{single.topRight}</Text>
-      </Box>
-      <Box>
-        <Text color={colors.dimmed}>{single.vertical} </Text>
-        <Text>{content}</Text>
-        <Text color={colors.dimmed}> {single.vertical}</Text>
-      </Box>
-      <Box>
-        <Text color={colors.dimmed}>{single.bottomLeft}</Text>
-        <Text color={colors.dimmed}>{single.horizontal.repeat(width + 2)}</Text>
-        <Text color={colors.dimmed}>{single.bottomRight}</Text>
-        <Text color={colors.dimmed}>  {message}</Text>
-      </Box>
+      {lineContents.map((content, i) => (
+        <Box key={i}>
+          <Text>{content}</Text>
+          {i === lines - 1 && <Text color={colors.dimmed}>  {message}</Text>}
+        </Box>
+      ))}
     </Box>
   );
 }
