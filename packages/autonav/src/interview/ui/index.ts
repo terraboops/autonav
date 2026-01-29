@@ -9,3 +9,4 @@ export { UserResponse } from "./UserResponse.js";
 export { Divider } from "./Divider.js";
 export { CompletionScreen } from "./CompletionScreen.js";
 export * from "./theme.js";
+export * from "./text-utils.js";

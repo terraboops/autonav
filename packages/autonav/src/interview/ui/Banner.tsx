@@ -1,5 +1,7 @@
 /**
  * Welcome banner with block-letter AUTONAV header
+ *
+ * Uses a fixed-width box with simple string padding for alignment.
  */
 
 import { Box, Text } from "ink";
@@ -12,48 +14,43 @@ interface BannerProps {
   version?: string;
 }
 
-export function Banner({ name, version = "1.2.0" }: BannerProps) {
-  const { double } = boxChars;
-  const width = 62;
+/** Fixed inner width for the banner box */
+const INNER_WIDTH = 60;
 
-  // Block letter AUTONAV (simplified for better readability)
-  const line1 = " ▄▀█ █░█ ▀█▀ █▀█ █▄░█ ▄▀█ █░█";
-  const line2 = " █▀█ █▄█ ░█░ █▄█ █░▀█ █▀█ ▀▄▀";
+export function Banner({ name, version = "1.2.0" }: BannerProps): React.ReactNode {
+  const { double } = boxChars;
+
+  // Block letter AUTONAV (30 chars each)
+  const logoLine1 = " ▄▀█ █░█ ▀█▀ █▀█ █▄░█ ▄▀█ █░█";
+  const logoLine2 = " █▀█ █▄█ ░█░ █▄█ █░▀█ █▀█ ▀▄▀";
+
+  // Build info line with proper spacing
+  const infoLine = ` Creating: ${name}`.padEnd(INNER_WIDTH - version.length - 2) + `v${version} `;
+
+  const topBorder = double.topLeft + double.horizontal.repeat(INNER_WIDTH) + double.topRight;
+  const midBorder = double.leftT + double.horizontal.repeat(INNER_WIDTH) + double.rightT;
+  const bottomBorder = double.bottomLeft + double.horizontal.repeat(INNER_WIDTH) + double.bottomRight;
 
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Text color={colors.dimmed}>
-        {double.topLeft + double.horizontal.repeat(width) + double.topRight}
-      </Text>
+      <Text color={colors.dimmed}>{topBorder}</Text>
       <Text color={colors.dimmed}>
         {double.vertical}
-        <Text color={colors.primary}>{line1}</Text>
-        {"".padEnd(width - line1.length - 1)}
+        <Text color={colors.primary}>{logoLine1.padEnd(INNER_WIDTH)}</Text>
         {double.vertical}
       </Text>
       <Text color={colors.dimmed}>
         {double.vertical}
-        <Text color={colors.primary}>{line2}</Text>
-        {"".padEnd(width - line2.length - 1)}
+        <Text color={colors.primary}>{logoLine2.padEnd(INNER_WIDTH)}</Text>
         {double.vertical}
       </Text>
-      <Text color={colors.dimmed}>
-        {double.leftT + double.horizontal.repeat(width) + double.rightT}
-      </Text>
+      <Text color={colors.dimmed}>{midBorder}</Text>
       <Text color={colors.dimmed}>
         {double.vertical}
-        {" "}
-        <Text color={colors.accent}>Creating:</Text>
-        {" "}
-        <Text color="white">{name}</Text>
-        {"".padEnd(width - name.length - 12)}
-        <Text color={colors.dimmed}>v{version}</Text>
-        {"  "}
+        <Text color="white">{infoLine}</Text>
         {double.vertical}
       </Text>
-      <Text color={colors.dimmed}>
-        {double.bottomLeft + double.horizontal.repeat(width) + double.bottomRight}
-      </Text>
+      <Text color={colors.dimmed}>{bottomBorder}</Text>
     </Box>
   );
 }
