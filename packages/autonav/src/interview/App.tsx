@@ -29,6 +29,119 @@ function debugLog(...args: unknown[]) {
   }
 }
 
+/** Steps for config generation with user-friendly labels */
+const CONFIG_GENERATION_STEPS = [
+  { key: "purpose", label: "Defining purpose..." },
+  { key: "scope", label: "Setting scope..." },
+  { key: "knowledgeStructure", label: "Organizing knowledge structure..." },
+  { key: "audience", label: "Identifying audience..." },
+  { key: "autonomy", label: "Configuring autonomy..." },
+  { key: "directories", label: "Suggesting directories..." },
+  { key: "claudeMd", label: "Generating CLAUDE.md..." },
+] as const;
+
+/**
+ * Generate navigator config fields via separate LLM calls.
+ *
+ * This avoids the nested backtick problem where claudeMd contains markdown
+ * with code blocks that break the JSON extraction regex.
+ */
+async function generateConfigFields(
+  conversationHistory: string,
+  systemPrompt: string,
+  name: string,
+  onProgress: (step: number, label: string) => void
+): Promise<NavigatorConfig> {
+  // Helper to make a single-field extraction call
+  const extractField = async (fieldPrompt: string): Promise<string> => {
+    const q = query({
+      prompt: `<conversation>\n${conversationHistory}\n</conversation>\n\n${fieldPrompt}`,
+      options: {
+        model: INTERVIEW_MODEL,
+        systemPrompt,
+        permissionMode: "bypassPermissions",
+      },
+    });
+
+    let result = "";
+    for await (const message of q) {
+      if (message.type === "assistant") {
+        const textBlocks = message.message.content.filter(
+          (b): b is Extract<typeof b, { type: "text" }> => b.type === "text"
+        );
+        result = textBlocks.map((b) => b.text).join("\n");
+      }
+    }
+    return result.trim();
+  };
+
+  debugLog("Generating config fields separately...");
+
+  // Generate required fields
+  onProgress(1, CONFIG_GENERATION_STEPS[0].label);
+  debugLog("  - Extracting purpose...");
+  const purpose = await extractField(
+    "Based on the conversation, output ONLY a single sentence describing the navigator's purpose. No explanation, just the purpose statement."
+  );
+
+  onProgress(2, CONFIG_GENERATION_STEPS[1].label);
+  debugLog("  - Extracting scope...");
+  const scope = await extractField(
+    "Based on the conversation, output ONLY a brief description of what is IN SCOPE and OUT OF SCOPE. Format: 'IN SCOPE: ... OUT OF SCOPE: ...'"
+  );
+
+  // Generate optional fields
+  onProgress(3, CONFIG_GENERATION_STEPS[2].label);
+  debugLog("  - Extracting knowledgeStructure...");
+  const knowledgeStructure = await extractField(
+    "Based on the conversation, describe how knowledge should be organized for this navigator. Output ONLY the description, 1-3 sentences. If not discussed, output 'default'."
+  );
+
+  onProgress(4, CONFIG_GENERATION_STEPS[3].label);
+  debugLog("  - Extracting audience...");
+  const audience = await extractField(
+    "Based on the conversation, describe who the navigator serves and how communication style should adapt. Output ONLY the description. If not discussed, output 'default'."
+  );
+
+  onProgress(5, CONFIG_GENERATION_STEPS[4].label);
+  debugLog("  - Extracting autonomy...");
+  const autonomy = await extractField(
+    "Based on the conversation, describe the navigator's level of autonomous action (e.g., 'fully autonomous', 'ask before changes', etc.). Output ONLY the description. If not discussed, output 'default'."
+  );
+
+  onProgress(6, CONFIG_GENERATION_STEPS[5].label);
+  debugLog("  - Extracting suggestedDirectories...");
+  const suggestedDirsRaw = await extractField(
+    "Based on the conversation, list the suggested directories for this navigator as a comma-separated list (e.g., 'knowledge, projects, archive'). Output ONLY the comma-separated list. If not discussed, output 'knowledge'."
+  );
+
+  // Generate claudeMd last (largest field)
+  onProgress(7, CONFIG_GENERATION_STEPS[6].label);
+  debugLog("  - Generating claudeMd...");
+  const claudeMd = await extractField(
+    `Generate the complete CLAUDE.md file for the "${name}" navigator based on the conversation. Output ONLY the raw markdown content, starting with "# ${name}". Include sections for: Purpose, Critical Boundaries (if any), Scope, Knowledge Structure, Communication Style, Grounding Rules, and Autonomy. Make it comprehensive based on everything discussed.`
+  );
+
+  // Parse suggestedDirectories from comma-separated string
+  const suggestedDirectories = suggestedDirsRaw
+    .split(",")
+    .map((d) => d.trim())
+    .filter((d) => d.length > 0 && d !== "default");
+
+  debugLog("Config fields generated successfully");
+
+  return {
+    purpose,
+    scope,
+    claudeMd,
+    // Only include optional fields if they have meaningful values
+    ...(knowledgeStructure !== "default" && { knowledgeStructure }),
+    ...(audience !== "default" && { audience }),
+    ...(autonomy !== "default" && { autonomy }),
+    ...(suggestedDirectories.length > 0 && { suggestedDirectories }),
+  };
+}
+
 interface Message {
   role: "user" | "assistant";
   content: string;
@@ -55,12 +168,14 @@ export function InterviewApp({
   const systemPrompt = getInterviewSystemPrompt(packContext, analysisContext);
   const [messages, setMessages] = useState<Message[]>(initialMessages || []);
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
+  // Don't start loading when resuming - we already have messages to display
+  const [isLoading, setIsLoading] = useState(!initialMessages?.length);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [completionStep, setCompletionStep] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showHint, setShowHint] = useState(false);
   const queryRef = useRef<Query | null>(null);
   const completedRef = useRef(false);
-  const consecutiveDone = useRef(0);
   const { exit } = useApp();
 
   // Process messages from Claude
@@ -130,8 +245,10 @@ export function InterviewApp({
           } catch (err) {
             debugLog("Failed to clear progress:", err);
           }
-          onComplete(config);
-          debugLog("onComplete called, should be exiting now");
+          // Defer onComplete to next tick to avoid render race conditions
+          // This ensures the component finishes its current render before unmounting
+          setTimeout(() => onComplete(config), 0);
+          debugLog("onComplete scheduled, should be exiting soon");
           return;
         } else {
           debugLog("✗ No valid config found in response (or validation failed)");
@@ -151,6 +268,12 @@ export function InterviewApp({
 
   // Initialize query and send first message
   useEffect(() => {
+    // Skip initialization when resuming - we already have messages
+    if (initialMessages?.length) {
+      debugLog("Resuming from saved progress with", initialMessages.length, "messages");
+      return;
+    }
+
     const initQuery = async () => {
       try {
         debugLog("Creating query with model:", INTERVIEW_MODEL);
@@ -198,7 +321,7 @@ export function InterviewApp({
     };
 
     initQuery();
-  }, [name, processResponse]);
+  }, [name, processResponse, initialMessages]);
 
   // Show hint after 5+ user messages
   useEffect(() => {
@@ -217,17 +340,61 @@ export function InterviewApp({
       const normalizedInput = value.trim().toLowerCase();
       const isDoneCommand = ['done', 'finish', 'ready', 'create'].includes(normalizedInput);
 
+      // Fast path: when user says "done", check if any recent assistant message already has valid config
+      // This handles the race condition where Claude generated valid JSON but the interview didn't exit
+      if (isDoneCommand) {
+        const assistantMessages = messages.filter(m => m.role === 'assistant');
+        // Check the last 3 assistant messages for a valid config
+        for (let i = assistantMessages.length - 1; i >= Math.max(0, assistantMessages.length - 3); i--) {
+          const msg = assistantMessages[i];
+          if (!msg) continue;
+          const config = parseNavigatorConfig(msg.content);
+          if (config) {
+            debugLog("Fast path: found valid config in existing message, exiting");
+            completedRef.current = true;
+            clearProgress(navigatorPath);
+            setTimeout(() => onComplete(config), 0);
+            return;
+          }
+        }
+        debugLog("Fast path: no existing config found, generating fields separately");
+
+        // Generate config fields via separate LLM calls to avoid nested backtick issues
+        setInput("");
+        setIsCompleting(true);
+        setIsLoading(true);
+        setCompletionStep(CONFIG_GENERATION_STEPS[0].label);
+
+        try {
+          const conversationHistory = messages
+            .map((m) => `<${m.role}>\n${m.content}\n</${m.role}>`)
+            .join("\n\n");
+
+          const config = await generateConfigFields(
+            conversationHistory,
+            systemPrompt,
+            name,
+            (_step, label) => setCompletionStep(label)
+          );
+
+          completedRef.current = true;
+          clearProgress(navigatorPath);
+          setTimeout(() => onComplete(config), 0);
+          return;
+        } catch (err) {
+          debugLog("Error generating config fields:", err);
+          setError(err instanceof Error ? err.message : "Failed to generate config");
+          setIsLoading(false);
+          setIsCompleting(false);
+          setCompletionStep(null);
+        }
+        return; // Don't fall through to normal conversation flow
+      }
+
       setInput("");
       const newMessages: Message[] = [...messages, { role: "user" as const, content: value }];
       setMessages(newMessages);
       setIsLoading(true);
-
-      // Update consecutive done tracking
-      if (isDoneCommand) {
-        consecutiveDone.current += 1;
-      } else {
-        consecutiveDone.current = 0;
-      }
 
       // Save progress after user input
       try {
@@ -253,29 +420,8 @@ export function InterviewApp({
           .map((m) => `<${m.role}>\n${m.content}\n</${m.role}>`)
           .join("\n\n");
 
-        // Modify prompt based on 'done' command
-        let fullPrompt: string;
-
-        if (isDoneCommand) {
-          // User wants to finish - FORCE config generation
-          const urgency = consecutiveDone.current > 1
-            ? "The user has REPEATEDLY indicated they are ready. You MUST generate the configuration NOW, even if it's basic or has gaps. Work with what you have."
-            : "The user has indicated they are ready to create the navigator by typing \"" + value + "\".";
-
-          fullPrompt = `<conversation_history>
-${conversationHistory}
-</conversation_history>
-
-${urgency}
-
-CRITICAL: You MUST now generate the JSON configuration based on the information gathered so far. Even if you would prefer more details, work with what you have.
-
-Output ONLY the JSON configuration block wrapped in \`\`\`json and \`\`\` markers. DO NOT add any text before or after the JSON block. DO NOT provide explanations, summaries, or ask for confirmation. The JSON itself is your complete and final response.
-
-If you truly don't have enough information to create a basic configuration (e.g., only 1-2 exchanges with no meaningful detail), explain what critical information is missing and ask ONE final clarifying question. Otherwise, generate ONLY the JSON configuration block and nothing else.`;
-        } else {
-          // Normal conversation flow
-          fullPrompt = `<conversation_history>
+        // Normal conversation flow
+        const fullPrompt = `<conversation_history>
 ${conversationHistory}
 </conversation_history>
 
@@ -285,7 +431,6 @@ ${value}
 </user_message>
 
 Continue the interview by responding to their message. Remember: after gathering enough information (usually 4-6 exchanges), you should signal that you're ready to create the navigator and wait for the user to type 'done'. Do NOT output the JSON configuration until the user explicitly says they're ready. Do NOT simulate user responses - only provide YOUR response as the assistant.`;
-        }
 
         const queryInstance = query({
           prompt: fullPrompt,
@@ -304,7 +449,7 @@ Continue the interview by responding to their message. Remember: after gathering
         setIsLoading(false);
       }
     },
-    [isLoading, messages, systemPrompt, processResponse, name, navigatorPath, packContext, analysisContext]
+    [isLoading, messages, systemPrompt, processResponse, name, navigatorPath, packContext, analysisContext, onComplete]
   );
 
   // Handle Ctrl+C to exit
@@ -355,7 +500,9 @@ Continue the interview by responding to their message. Remember: after gathering
       {/* Loading indicator */}
       {isLoading && (
         <Box marginBottom={1}>
-          <Text color="gray">Thinking...</Text>
+          <Text color={isCompleting ? "cyan" : "gray"}>
+            {isCompleting && completionStep ? completionStep : isCompleting ? "Completing interview..." : "Thinking..."}
+          </Text>
         </Box>
       )}
 
