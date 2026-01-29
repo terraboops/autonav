@@ -12,20 +12,27 @@ interface UserResponseProps {
 
 export function UserResponse({ content }: UserResponseProps) {
   const { rounded } = boxChars;
-  const maxWidth = 60;
+
+  // Calculate width based on content
+  const contentLength = content.length + 2; // +2 for "▸ " prefix
+  const contentWidth = Math.max(Math.min(contentLength, 80), 40); // Min 40, max 80
+
+  // Border width = content + 2 spaces + 2 borders
+  const innerWidth = contentWidth + 2;
 
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Text color={colors.dimmed}>
-        {rounded.topLeft + rounded.horizontal.repeat(maxWidth) + rounded.topRight}
+        {rounded.topLeft + rounded.horizontal.repeat(innerWidth) + rounded.topRight}
       </Text>
       <Text color={colors.dimmed}>
         {rounded.vertical + " "}
         <Text color={colors.primary}>▸ </Text>
-        <Text color="white">{content}</Text>
+        <Text color="white">{content.padEnd(contentWidth - 2)}</Text>
+        <Text color={colors.dimmed}> {rounded.vertical}</Text>
       </Text>
       <Text color={colors.dimmed}>
-        {rounded.bottomLeft + rounded.horizontal.repeat(maxWidth) + rounded.bottomRight}
+        {rounded.bottomLeft + rounded.horizontal.repeat(innerWidth) + rounded.bottomRight}
       </Text>
     </Box>
   );
