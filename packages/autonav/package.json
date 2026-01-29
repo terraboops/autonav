@@ -1,6 +1,6 @@
 {
   "name": "@autonav/core",
-  "version": "1.1.5",
+  "version": "1.2.0",
   "description": "CLI tools and Claude SDK Adapter for Autonav navigators",
   "type": "module",
   "main": "./dist/index.js",
@@ -19,7 +19,8 @@
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:indicator": "npm run build && node dist/interview/ui/test-indicator.js"
   },
   "keywords": [
     "autonav",

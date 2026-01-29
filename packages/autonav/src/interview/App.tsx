@@ -16,6 +16,7 @@ import {
 } from "./prompts.js";
 import type { AnalysisResult } from "../repo-analyzer/index.js";
 import { saveProgress, clearProgress, type InterviewProgress } from "./progress.js";
+import { ActivityIndicator, Banner, SystemMessage, UserResponse, Divider } from "./ui/index.js";
 
 // Check if debug mode is enabled
 const DEBUG = process.env.AUTONAV_DEBUG === "1" || process.env.DEBUG === "1";
@@ -461,31 +462,19 @@ Continue the interview by responding to their message. Remember: after gathering
 
   return (
     <Box flexDirection="column" padding={1}>
-      {/* Header */}
-      <Box marginBottom={1}>
-        <Text bold color="cyan">
-          🧭 Creating navigator: {name}
-        </Text>
-      </Box>
-
-      <Box marginBottom={1}>
-        <Text color="gray">
-          Answer the questions below. Press Ctrl+C to cancel.
-        </Text>
-      </Box>
+      {/* Banner - only show at start */}
+      {messages.length === 0 && <Banner name={name} version="1.2.0" />}
 
       {/* Conversation history */}
       {messages.map((msg, i) => (
-        <Box key={i} marginBottom={1} flexDirection="column">
+        <Box key={i} flexDirection="column">
           {msg.role === "user" ? (
-            <Box>
-              <Text color="green">{"› "}</Text>
-              <Text>{msg.content}</Text>
-            </Box>
+            <UserResponse content={msg.content} />
           ) : (
-            <Box>
-              <Text color="white">{msg.content}</Text>
-            </Box>
+            <>
+              <SystemMessage content={msg.content} />
+              {i < messages.length - 1 && <Divider />}
+            </>
           )}
         </Box>
       ))}
@@ -493,30 +482,30 @@ Continue the interview by responding to their message. Remember: after gathering
       {/* Error display */}
       {error && (
         <Box marginBottom={1}>
-          <Text color="red">Error: {error}</Text>
+          <Text color="red">✗ Error: {error}</Text>
         </Box>
       )}
 
       {/* Loading indicator */}
       {isLoading && (
         <Box marginBottom={1}>
-          <Text color={isCompleting ? "cyan" : "gray"}>
-            {isCompleting && completionStep ? completionStep : isCompleting ? "Completing interview..." : "Thinking..."}
-          </Text>
+          <ActivityIndicator
+            message={isCompleting && completionStep ? completionStep : isCompleting ? "completing interview..." : "thinking..."}
+          />
         </Box>
       )}
 
       {/* Hint after 5+ exchanges */}
       {showHint && !isLoading && !error && (
         <Box marginBottom={1}>
-          <Text color="yellow">💡 Tip: Type 'done' when ready to create your navigator</Text>
+          <Text color="yellow">▸ Tip: Type 'done' when ready to create your navigator</Text>
         </Box>
       )}
 
       {/* Input */}
       {!isLoading && !error && (
-        <Box>
-          <Text color="green">{"› "}</Text>
+        <Box marginBottom={1}>
+          <Text color="green" bold>{"▸ "}</Text>
           <TextInput
             value={input}
             onChange={setInput}
