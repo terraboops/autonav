@@ -52,19 +52,22 @@ export const boxChars = {
 export const glitchBlocks = ["░", "▒", "▓", "█"] as const;
 
 /** Matrix-style glyphs for animated activity indicator */
-// Authentic Matrix characters: halfwidth katakana + numbers + symbols
+// Matrix-inspired characters: ASCII-safe for consistent terminal width
 export const matrixGlyphs = [
-  // Halfwidth katakana (most authentic to The Matrix)
-  "ｦ", "ｧ", "ｨ", "ｩ", "ｪ", "ｫ", "ｬ", "ｭ", "ｮ", "ｯ",
-  "ｰ", "ｱ", "ｲ", "ｳ", "ｴ", "ｵ", "ｶ", "ｷ", "ｸ", "ｹ",
-  "ｺ", "ｻ", "ｼ", "ｽ", "ｾ", "ｿ", "ﾀ", "ﾁ", "ﾂ", "ﾃ",
-  "ﾄ", "ﾅ", "ﾆ", "ﾇ", "ﾈ", "ﾉ", "ﾊ", "ﾋ", "ﾌ", "ﾍ",
-  "ﾎ", "ﾏ", "ﾐ", "ﾑ", "ﾒ", "ﾓ", "ﾔ", "ﾕ", "ﾖ", "ﾗ",
-  "ﾘ", "ﾙ", "ﾚ", "ﾛ", "ﾜ", "ﾝ",
-  // Numbers
+  // Uppercase (common in Matrix)
+  "A", "B", "C", "D", "E", "F", "G", "H", "I", "J",
+  "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T",
+  "U", "V", "W", "X", "Y", "Z",
+  // Numbers (very Matrix)
   "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
-  // Symbols
-  ":", ".", "=", "*", "+", "-", "<", ">", "¦", "｜",
+  // Symbols and box-drawing (guaranteed single-width ASCII)
+  ":", ".", "=", "*", "+", "-", "<", ">", "|", "/",
+  "\\", "^", "~", "_", "#", "@", "$", "%", "&",
+  // Extended ASCII box-drawing (still single-width)
+  "│", "─", "┤", "┐", "└", "┴", "┬", "├", "┼", "┘", "┌",
+  "║", "═", "╬", "╪", "╔", "╗", "╚", "╝",
+  // Block characters (single-width)
+  "░", "▒", "▓", "█", "▀", "▄", "■", "□", "▪", "▫",
 ] as const;
 
 /** Brightness levels for Matrix fade effect */

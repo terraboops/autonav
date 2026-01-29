@@ -103,11 +103,12 @@ export function ActivityIndicator({
 
   const { single } = boxChars;
 
-  // Render each character with its brightness color
-  const renderedChars = strip.map((item, i) => {
+  // Build the content string with all characters colored
+  // This ensures consistent spacing and width
+  const content = strip.map((item) => {
     const colorFn = getColorForBrightness(item.brightness);
-    return <Text key={i}>{colorFn(item.char)}</Text>;
-  });
+    return colorFn(item.char);
+  }).join("");
 
   return (
     <Box flexDirection="column">
@@ -118,7 +119,7 @@ export function ActivityIndicator({
       </Box>
       <Box>
         <Text color={colors.dimmed}>{single.vertical} </Text>
-        {renderedChars}
+        <Text>{content}</Text>
         <Text color={colors.dimmed}> {single.vertical}</Text>
       </Box>
       <Box>
