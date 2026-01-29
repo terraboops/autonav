@@ -593,16 +593,23 @@ async function main() {
 
   // Check if directory already exists
   if (fs.existsSync(navigatorPath)) {
-    if (!options.force) {
+    // Check if there's saved interview progress - if so, allow continuing
+    if (hasProgress(navigatorPath)) {
+      // Directory exists with progress - we'll handle resume logic later in the interview flow
+      if (!options.quiet) {
+        console.log(`📂 Found existing directory with saved interview progress`);
+      }
+    } else if (!options.force) {
       console.error(`❌ Error: Directory already exists: ${navigatorPath}`);
       console.error("Use --force to overwrite\n");
       process.exit(1);
+    } else {
+      // Remove existing directory if --force is specified (and no progress)
+      if (!options.quiet) {
+        console.log(`⚠️  Removing existing directory: ${navigatorPath}`);
+      }
+      fs.rmSync(navigatorPath, { recursive: true, force: true });
     }
-    // Remove existing directory if --force is specified
-    if (!options.quiet) {
-      console.log(`⚠️  Removing existing directory: ${navigatorPath}`);
-    }
-    fs.rmSync(navigatorPath, { recursive: true, force: true });
   }
 
   try {
