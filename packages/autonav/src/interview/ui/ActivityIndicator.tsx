@@ -10,7 +10,7 @@
 import { useState, useEffect } from "react";
 import { Box, Text } from "ink";
 import chalk from "chalk";
-import { matrixGlyphs, matrixBrightness, colors } from "./theme.js";
+import { matrixBrightness, colors, glyphSetE } from "./theme.js";
 
 interface ActivityIndicatorProps {
   /** Message to display next to the indicator */
@@ -92,8 +92,8 @@ export function ActivityIndicator({
   message = "thinking...",
   width = 40,
   interval = 80,
-  lines = 1,
-  glyphSet = matrixGlyphs,
+  lines = 3,
+  glyphSet = glyphSetE,
 }: ActivityIndicatorProps) {
   // Initialize multiple strips, one per line
   const [strips, setStrips] = useState<MatrixChar[][]>(() =>

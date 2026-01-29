@@ -16,6 +16,7 @@ import {
 } from "./prompts.js";
 import type { AnalysisResult } from "../repo-analyzer/index.js";
 import { saveProgress, clearProgress, type InterviewProgress } from "./progress.js";
+import { ActivityIndicator } from "./ui/index.js";
 
 // Check if debug mode is enabled
 const DEBUG = process.env.AUTONAV_DEBUG === "1" || process.env.DEBUG === "1";
@@ -500,9 +501,9 @@ Continue the interview by responding to their message. Remember: after gathering
       {/* Loading indicator */}
       {isLoading && (
         <Box marginBottom={1}>
-          <Text color={isCompleting ? "cyan" : "gray"}>
-            {isCompleting && completionStep ? completionStep : isCompleting ? "Completing interview..." : "Thinking..."}
-          </Text>
+          <ActivityIndicator
+            message={isCompleting && completionStep ? completionStep : isCompleting ? "completing interview..." : "thinking..."}
+          />
         </Box>
       )}
 
