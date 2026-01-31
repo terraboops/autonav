@@ -132,6 +132,15 @@ ${config.description}
 ${config.scope ? `**Scope**: ${config.scope}\n` : ""}
 ${config.audience ? `**Audience**: ${config.audience}\n` : ""}
 
+## Identity Protocol
+
+When querying this navigator, Claude Code should explicitly identify itself as the requester. This enables bidirectional identity affirmation and helps the navigator maintain context awareness.
+
+**Example**:
+\`\`\`bash
+autonav query "${navPath}" "Claude Code here, asking: How do I deploy?"
+\`\`\`
+
 ## How to Use
 
 Simply use \`autonav query\` to ask questions:

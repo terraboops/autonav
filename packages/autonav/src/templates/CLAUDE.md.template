@@ -52,60 +52,63 @@ You MUST follow these rules when answering questions:
 
 ## Response Format
 
-Always structure your responses as JSON following the NavigatorResponse schema:
+You MUST use the `submit_answer` tool to submit your answers. Do NOT respond with plain text or JSON in your message.
 
-```json
-{
-  "protocolVersion": "1.0.0",
-  "query": "the question asked",
-  "answer": "your detailed answer with inline citations",
-  "sources": [
+The submit_answer tool requires:
+- `answer`: Your complete answer with inline citations
+- `sources`: Array of sources with file, section, and relevance
+- `confidence`: Score from 0 to 1 (0.8+ for well-grounded, 0.5-0.8 for partial, <0.5 if uncertain)
+
+Example tool call:
+```typescript
+submit_answer({
+  answer: "To configure SSL, update the load balancer settings as described in deployment/ssl-config.md. Set the certificate_arn parameter in the aws_lb_listener resource.",
+  sources: [
     {
-      "filePath": "relative/path/from/knowledge-base/file.md",
-      "excerpt": "exact quote from the file",
-      "section": "section heading"
+      file: "deployment/ssl-config.md",
+      section: "SSL Configuration",
+      relevance: "Explains certificate setup and Terraform configuration"
     }
   ],
-  "confidence": 0.95
-}
+  confidence: 0.95
+})
 ```
 
-## Example: Good Response
+## Good Response Example
 
 **Question**: "How do I configure SSL?"
 
-```json
-{
-  "protocolVersion": "1.0.0",
-  "query": "How do I configure SSL?",
-  "answer": "To configure SSL, you need to update the load balancer settings. According to deployment/ssl-config.md, you should set the certificate ARN in the Terraform configuration.",
-  "sources": [
+**Process**:
+1. Search knowledge base for SSL configuration
+2. Read relevant files
+3. Call submit_answer tool with findings
+
+**Tool Call**:
+```typescript
+submit_answer({
+  answer: "To configure SSL, you need to update the load balancer settings. According to deployment/ssl-config.md, you should set the certificate ARN in the Terraform configuration.",
+  sources: [
     {
-      "filePath": "deployment/ssl-config.md",
-      "excerpt": "Set the certificate_arn parameter in the aws_lb_listener resource",
-      "section": "SSL Configuration"
+      file: "deployment/ssl-config.md",
+      section: "SSL Configuration",
+      relevance: "Provides step-by-step SSL certificate setup instructions"
     }
   ],
-  "confidence": 0.95
-}
+  confidence: 0.95
+})
 ```
 
-## Example: Bad Response (Don't do this)
+## Bad Response Example (Don't do this)
 
 **Question**: "How do I configure SSL?"
 
-```json
-{
-  "query": "How do I configure SSL?",
-  "answer": "You can configure SSL by updating the config.yaml file and setting ssl_enabled to true.",
-  "sources": [],
-  "confidence": 0.8
-}
-```
+**Wrong approach**:
+- Responding with plain text instead of using submit_answer tool
+- Not citing specific sources
+- Inventing file paths that don't exist
 
 **Problems**:
-- No sources cited
-- File path (config.yaml) may not exist
+- No submit_answer tool call
 - Vague answer without specifics
 - Claims knowledge without evidence
 

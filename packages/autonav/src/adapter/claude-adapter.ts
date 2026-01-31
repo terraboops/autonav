@@ -65,7 +65,7 @@ async function initializeLangSmith(): Promise<boolean> {
  */
 export interface ClaudeAdapterOptions {
   /**
-   * Claude model to use (defaults to claude-sonnet-4-20250514)
+   * Claude model to use (defaults to claude-sonnet-4-5)
    */
   model?: string;
 
@@ -111,7 +111,7 @@ export interface QueryOptions {
  * @example
  * ```typescript
  * const adapter = new ClaudeAdapter({
- *   model: 'claude-sonnet-4-20250514',
+ *   model: 'claude-sonnet-4-5',
  *   maxTurns: 10
  * });
  *
@@ -129,7 +129,7 @@ export class ClaudeAdapter {
    */
   constructor(options: ClaudeAdapterOptions = {}) {
     this.options = {
-      model: options.model || "claude-sonnet-4-20250514",
+      model: options.model || "claude-sonnet-4-5",
       maxTurns: options.maxTurns || 10,
     };
   }
@@ -371,8 +371,6 @@ export class ClaudeAdapter {
           systemPrompt,
           cwd: navigator.navigatorPath,
           mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
-          // Don't load user/project settings - we control everything
-          settingSources: [],
           // Allow the SDK to handle permissions
           permissionMode: "bypassPermissions",
         },
@@ -536,8 +534,6 @@ Your task: ${message}`;
           maxTurns,
           systemPrompt,
           cwd: navigator.navigatorPath,
-          // Don't load user/project settings - we control everything
-          settingSources: [],
           // Allow file writes in the navigator directory
           permissionMode: "bypassPermissions",
         },

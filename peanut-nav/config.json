@@ -1,0 +1,16 @@
+{
+  "version": "0.1.0",
+  "name": "peanut-nav",
+  "description": "Knowledge navigator for Peanut Nav",
+  "created": "2026-01-31T19:58:06.688Z",
+  "knowledgePack": {
+    "name": "peanut-farming",
+    "version": "1.0.0",
+    "installedAt": "2026-01-31T19:58:06.688Z"
+  },
+  "knowledgeBase": "./knowledge",
+  "systemConfiguration": "./system-configuration.md",
+  "plugins": {
+    "configFile": "./.claude/plugins.json"
+  }
+}
