@@ -48,11 +48,17 @@ Do NOT respond with plain text - always use this tool to submit your answer.`,
           section: z.string().min(1).describe("Specific section or heading in the file"),
           relevance: z.string().min(1).describe("Brief explanation of why this source supports the answer"),
         })
-      ).min(1).describe(
-        "List of sources from the knowledge base that support your answer. Must include at least one source."
+      ).describe(
+        "List of sources from the knowledge base that support your answer. Can be empty array if explicitly stating lack of information."
       ),
-      confidence: z.number().min(0).max(1).describe(
-        "Confidence score from 0 to 1. Use 0.8-1.0 for well-grounded answers with multiple sources, 0.5-0.8 for partially supported answers, below 0.5 if uncertain."
+      confidence: z.enum(['high', 'medium', 'low']).describe(
+        "Confidence level: 'high' for direct answers from clear sources, 'medium' for synthesized answers, 'low' for inferred or uncertain answers."
+      ),
+      confidenceReason: z.string().min(10).describe(
+        "Explanation of why you chose this confidence level. Justify your rating based on source quality and directness."
+      ),
+      outOfDomain: z.boolean().describe(
+        "Is this question outside the navigator's domain? Set to true only if the question clearly falls outside the knowledge base scope."
       ),
     },
     async (args) => {
@@ -63,7 +69,8 @@ Do NOT respond with plain text - always use this tool to submit your answer.`,
         answer: args.answer,
         sources: args.sources,
         confidence: args.confidence,
-        timestamp: new Date().toISOString(),
+        confidenceReason: args.confidenceReason,
+        outOfDomain: args.outOfDomain,
       });
 
       // Return success - the ClaudeAdapter will extract the response

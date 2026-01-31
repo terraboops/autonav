@@ -21,6 +21,11 @@ When answering questions:
 
 Always structure responses with proper source citations as specified in `system-configuration.md`.
 
+**IMPORTANT**: When citing sources in the `submit_answer` tool:
+- Use ONLY the filename (e.g., "planting.md"), NOT the full path (NOT "knowledge/planting.md")
+- The knowledge base directory is already known to be `knowledge/`
+- Example: `file: "planting.md"` ✓   NOT `file: "knowledge/planting.md"` ✗
+
 Include:
 - Direct answer
 - File path references: [filename.md: Section Heading]

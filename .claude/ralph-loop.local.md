@@ -1,0 +1,9 @@
+---
+active: true
+iteration: 1
+max_iterations: 0
+completion_promise: "COMPLETE"
+started_at: "2026-01-31T20:27:36Z"
+---
+
+Investigate why submit_answer tool is not being called by navigators despite being registered via MCP server. Start by verifying tool registration in packages/autonav/src/tools/response.ts and packages/autonav/src/adapter/claude-adapter.ts around line 353. Check that createResponseMcpServer is called and mcpServers object is passed to SDK query call. Add debug logging to see what tools are available to the agent. Create a minimal test case with a navigator that has only one instruction which is to immediately call submit_answer tool with no other complexity. Run this test with max 3 turns to see if the tool is even visible to the agent. If minimal case works then the issue is template complexity or conflicting instructions. If minimal case fails then tool registration is broken. Add comprehensive turn by turn logging in the adapter to see exactly what the agent does each turn including all tool calls and text responses. Check the actual CLAUDE.md content being used to see if there are instructions causing the agent to explore files endlessly instead of answering. Try testing with ultra minimal system prompt that says only call submit_answer immediately when asked a question. Check if claude-sonnet-4-5 model name is valid and supports MCP tools. Try switching to claude-sonnet-4 or claude-opus-4 to test. Search the SDK repository and examples for working MCP tool usage patterns and compare our implementation. Once root cause is identified implement the fix whether it is tool registration or prompt engineering or SDK options. Test end to end with peanut-nav to verify submit_answer is called with proper sources and confidence. Document findings and fix. Report each iteration with hypothesis actions findings and next step. When fix is validated and working print STATUS followed by completion marker.
