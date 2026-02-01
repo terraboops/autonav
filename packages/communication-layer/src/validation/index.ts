@@ -28,16 +28,20 @@ const STRICT_HALLUCINATION_PATTERNS = [
   { pattern: /\[INSERT[_ ]/i, description: 'Insert placeholder ([INSERT ...])' },
   { pattern: /\[REPLACE[_ ]/i, description: 'Replace placeholder ([REPLACE ...])' },
   { pattern: /\bplaceholder\b/i, description: 'Word "placeholder"' },
+  // Combination patterns - multiple placeholder indicators together
+  { pattern: /\/path\/to\/your[-_]?[a-z]/i, description: 'Generic path placeholder (/path/to/your-...)' },
 ];
 
 /**
  * Warning patterns - Might be legitimate documentation
  * These generate warnings but don't fail validation
+ * Allow when citing from documentation that contains these patterns
  */
 const WARNING_PATTERNS = [
   { pattern: /\/tmp\/example/i, description: '/tmp/example path (common in docs)' },
-  { pattern: /<[a-z-]+-name>/i, description: 'Generic placeholder like <deployment-name>' },
+  { pattern: /<[a-z-]+-name>/i, description: 'Kubernetes-style placeholder like <deployment-name>' },
   { pattern: /example\.com/i, description: 'example.com domain (common in docs)' },
+  { pattern: /<namespace>/i, description: 'Kubernetes <namespace> placeholder' },
 ];
 
 /**
