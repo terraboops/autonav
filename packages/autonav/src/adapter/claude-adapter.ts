@@ -71,7 +71,18 @@ export interface ClaudeAdapterOptions {
 
   /**
    * Maximum turns for agentic loop
-   * If not specified, only timeout will limit the agent loop
+   *
+   * The SDK's agentic loop continues until Claude naturally stops responding,
+   * or until this limit is reached. MCP tools cannot force early termination -
+   * instead, we rely on the system prompt instructing Claude to stop after
+   * calling submit_answer.
+   *
+   * In practice, Claude typically stops within 0-2 turns after calling submit_answer,
+   * often stopping immediately on the same turn. This parameter serves as a safety
+   * limit to prevent runaway execution in edge cases (e.g., if Claude ignores the
+   * stop instruction or enters an unexpected loop).
+   *
+   * @default 50
    */
   maxTurns?: number;
 }
@@ -99,7 +110,18 @@ export interface QueryOptions {
 
   /**
    * Maximum turns for agentic loop
-   * If not specified, only timeout will limit the agent loop
+   *
+   * The SDK's agentic loop continues until Claude naturally stops responding,
+   * or until this limit is reached. MCP tools cannot force early termination -
+   * instead, we rely on the system prompt instructing Claude to stop after
+   * calling submit_answer.
+   *
+   * In practice, Claude typically stops within 0-2 turns after calling submit_answer,
+   * often stopping immediately on the same turn. This parameter serves as a safety
+   * limit to prevent runaway execution in edge cases (e.g., if Claude ignores the
+   * stop instruction or enters an unexpected loop).
+   *
+   * @default 50
    */
   maxTurns?: number;
 }
@@ -131,7 +153,7 @@ export class ClaudeAdapter {
   constructor(options: ClaudeAdapterOptions = {}) {
     this.options = {
       model: options.model || "claude-sonnet-4-5",
-      maxTurns: options.maxTurns, // undefined = no limit, rely on timeout
+      maxTurns: options.maxTurns ?? 50, // Default: 50 turns max (prevents runaway execution)
     };
   }
 
@@ -406,12 +428,15 @@ export class ClaudeAdapter {
         outOfDomain: boolean;
       } | undefined;
       let turnNumber = 0;
+      let submitAnswerTurn: number | undefined;
 
       for await (const message of queryIterator) {
-        // Debug log each message
-        if (debug && message.type === "assistant") {
+        // Count turns (increment for each assistant message)
+        if (message.type === "assistant") {
           turnNumber++;
-          console.error(`\n[DEBUG] Turn ${turnNumber}: Assistant message`);
+          if (debug) {
+            console.error(`\n[DEBUG] Turn ${turnNumber}: Assistant message`);
+          }
         }
 
         // Log tool usage for debugging
@@ -427,8 +452,9 @@ export class ClaudeAdapter {
               if (block.name === SUBMIT_ANSWER_TOOL || block.name.endsWith(`__${SUBMIT_ANSWER_TOOL}`)) {
                 // Extract the structured response from tool input
                 submitAnswerInput = block.input as typeof submitAnswerInput;
+                submitAnswerTurn = turnNumber; // Track which turn submit_answer was called
                 if (debug) {
-                  console.error("[DEBUG] submit_answer tool called successfully!");
+                  console.error(`[DEBUG] submit_answer tool called successfully at turn ${turnNumber}!`);
                 }
               }
             } else if (block.type === "text") {
@@ -447,6 +473,35 @@ export class ClaudeAdapter {
             console.error(`\n[DEBUG] Result: ${resultMessage.subtype}`);
             console.error(`[DEBUG] Total turns: ${turnNumber}`);
           }
+        }
+      }
+
+      // Log execution metrics (controlled by AUTONAV_METRICS or AUTONAV_DEBUG)
+      const showMetrics = process.env.AUTONAV_METRICS === "1" || debug;
+      if (showMetrics && resultMessage) {
+        console.error(`\n[METRICS] Query completed`);
+        console.error(`[METRICS] Total turns: ${turnNumber}`);
+
+        // Track turns after submit_answer (diagnostic for termination behavior)
+        if (submitAnswerTurn !== undefined) {
+          const turnsAfterSubmit = turnNumber - submitAnswerTurn;
+          console.error(`[METRICS] submit_answer called at turn: ${submitAnswerTurn}`);
+          console.error(`[METRICS] Turns after submit_answer: ${turnsAfterSubmit}`);
+
+          // Warn if Claude continued for many turns after submit_answer
+          if (turnsAfterSubmit > 3) {
+            console.error(`[METRICS] ⚠️  Claude continued for ${turnsAfterSubmit} turns after submit_answer`);
+          }
+        }
+
+        if (resultMessage.duration_ms) {
+          console.error(`[METRICS] Duration: ${resultMessage.duration_ms}ms`);
+        }
+        if (resultMessage.duration_api_ms) {
+          console.error(`[METRICS] API duration: ${resultMessage.duration_api_ms}ms`);
+        }
+        if (resultMessage.total_cost_usd !== undefined) {
+          console.error(`[METRICS] Cost: $${resultMessage.total_cost_usd.toFixed(4)}`);
         }
       }
 
