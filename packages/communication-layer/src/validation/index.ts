@@ -18,26 +18,30 @@ export interface ValidationResult {
 }
 
 /**
- * Hallucination pattern matchers
+ * Strict hallucination patterns - Always indicate hallucination
+ * These patterns reliably identify made-up or template content
  */
-const HALLUCINATION_PATTERNS = [
-  // Made-up AWS ARNs
-  /arn:aws:[a-z0-9-]+:[a-z0-9-]*:\d*:[a-z0-9-]+(\/[a-z0-9-]+)*(?!.*\.(md|txt|yml|yaml|json))/i,
+const STRICT_HALLUCINATION_PATTERNS = [
+  { pattern: /lorem ipsum/i, description: 'Lorem ipsum placeholder text' },
+  { pattern: /todo:?\s*replace/i, description: 'TODO replace instruction' },
+  { pattern: /\$\{YOUR_[A-Z_]+\}/i, description: 'Shell variable placeholder (${YOUR_...})' },
+  { pattern: /\[INSERT[_ ]/i, description: 'Insert placeholder ([INSERT ...])' },
+  { pattern: /\[REPLACE[_ ]/i, description: 'Replace placeholder ([REPLACE ...])' },
+  { pattern: /\bplaceholder\b/i, description: 'Word "placeholder"' },
+  // Combination patterns - multiple placeholder indicators together
+  { pattern: /\/path\/to\/your[-_]?[a-z]/i, description: 'Generic path placeholder (/path/to/your-...)' },
+];
 
-  // Suspiciously generic file paths that might not exist
-  /\/tmp\/example/i,
-  /\/path\/to\//i,
-  /your[-_]?file/i,
-
-  // Made-up commands that are too generic
-  /\$\{YOUR_/i,
-  /\[YOUR[-_]/i,
-  /<YOUR[-_]/i,
-
-  // Placeholder text
-  /lorem ipsum/i,
-  /todo:?\s*replace/i,
-  /placeholder/i,
+/**
+ * Warning patterns - Might be legitimate documentation
+ * These generate warnings but don't fail validation
+ * Allow when citing from documentation that contains these patterns
+ */
+const WARNING_PATTERNS = [
+  { pattern: /\/tmp\/example/i, description: '/tmp/example path (common in docs)' },
+  { pattern: /<[a-z-]+-name>/i, description: 'Kubernetes-style placeholder like <deployment-name>' },
+  { pattern: /example\.com/i, description: 'example.com domain (common in docs)' },
+  { pattern: /<namespace>/i, description: 'Kubernetes <namespace> placeholder' },
 ];
 
 /**
@@ -114,18 +118,34 @@ export function detectHallucinations(
   const warnings: string[] = [];
   const detectedPatterns: string[] = [];
 
-  // Check answer text for hallucination patterns
-  for (const pattern of HALLUCINATION_PATTERNS) {
-    if (pattern.test(response.answer)) {
-      detectedPatterns.push(pattern.source);
+  // Check answer text for strict hallucination patterns
+  for (const { pattern, description } of STRICT_HALLUCINATION_PATTERNS) {
+    const match = response.answer.match(pattern);
+    if (match) {
+      const snippet = extractSnippet(response.answer, match.index!, match[0].length);
+      detectedPatterns.push(`${description}: "${snippet}"`);
+    }
+  }
+
+  // Check answer text for warning patterns
+  for (const { pattern, description } of WARNING_PATTERNS) {
+    const match = response.answer.match(pattern);
+    if (match) {
+      const snippet = extractSnippet(response.answer, match.index!, match[0].length);
+      warnings.push(
+        `Potential placeholder detected - ${description}: "${snippet}". ` +
+        `Verify this is quoted from documentation, not a hallucination.`
+      );
     }
   }
 
   // Check source relevance descriptions for suspicious patterns
   for (const source of response.sources) {
-    for (const pattern of HALLUCINATION_PATTERNS) {
-      if (pattern.test(source.relevance)) {
-        detectedPatterns.push(`In source ${source.file} relevance: ${pattern.source}`);
+    for (const { pattern, description } of STRICT_HALLUCINATION_PATTERNS) {
+      const match = source.relevance.match(pattern);
+      if (match) {
+        const snippet = extractSnippet(source.relevance, match.index!, match[0].length);
+        detectedPatterns.push(`In source ${source.file} relevance - ${description}: "${snippet}"`);
       }
     }
 
@@ -187,6 +207,26 @@ export function detectHallucinations(
     errors,
     warnings,
   };
+}
+
+/**
+ * Extract a snippet around a match for debug output
+ */
+function extractSnippet(text: string, matchIndex: number, matchLength: number): string {
+  const contextChars = 40;
+  const start = Math.max(0, matchIndex - contextChars);
+  const end = Math.min(text.length, matchIndex + matchLength + contextChars);
+
+  let snippet = text.substring(start, end);
+
+  // Add ellipsis if we truncated
+  if (start > 0) snippet = '...' + snippet;
+  if (end < text.length) snippet = snippet + '...';
+
+  // Collapse whitespace for readability
+  snippet = snippet.replace(/\s+/g, ' ').trim();
+
+  return snippet;
 }
 
 /**
@@ -323,9 +363,11 @@ export function validateSource(
   }
 
   // Check for hallucination patterns in relevance description
-  for (const pattern of HALLUCINATION_PATTERNS) {
-    if (pattern.test(source.relevance)) {
-      warnings.push(`Potential hallucination pattern detected: ${pattern.source}`);
+  for (const { pattern, description } of STRICT_HALLUCINATION_PATTERNS) {
+    const match = source.relevance.match(pattern);
+    if (match) {
+      const snippet = extractSnippet(source.relevance, match.index!, match[0].length);
+      warnings.push(`Potential hallucination detected - ${description}: "${snippet}"`);
     }
   }
 
