@@ -42,6 +42,7 @@ Commands:
   query <path>      Query a navigator
   update <path>     Update a navigator's documentation
   chat <path>       Interactive conversation with a navigator
+  migrate <path>    Migrate a navigator to latest version
   install [path]    Symlink local skills to global location
   uninstall [path]  Remove global skill symlinks (preserves local)
 
@@ -56,6 +57,7 @@ Examples:
   autonav query ./my-navigator "How do I deploy?"
   autonav update ./my-navigator "I completed feature X. Please document this."
   autonav chat ./my-navigator
+  autonav migrate ./my-navigator
   autonav install ./my-navigator
   autonav uninstall ./my-navigator
 
@@ -64,6 +66,7 @@ For command-specific help:
   autonav query --help
   autonav update --help
   autonav chat --help
+  autonav migrate --help
   autonav install --help
   autonav uninstall --help
 `);
@@ -102,6 +105,9 @@ function main() {
       break;
     case "chat":
       scriptPath = path.join(__dirname, "nav-chat.js");
+      break;
+    case "migrate":
+      scriptPath = path.join(__dirname, "nav-migrate.js");
       break;
     case "install":
       scriptPath = path.join(__dirname, "nav-install.js");

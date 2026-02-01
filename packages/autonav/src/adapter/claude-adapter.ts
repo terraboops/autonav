@@ -65,7 +65,7 @@ async function initializeLangSmith(): Promise<boolean> {
  */
 export interface ClaudeAdapterOptions {
   /**
-   * Claude model to use (defaults to claude-sonnet-4-20250514)
+   * Claude model to use (defaults to claude-sonnet-4-5)
    */
   model?: string;
 
@@ -111,7 +111,7 @@ export interface QueryOptions {
  * @example
  * ```typescript
  * const adapter = new ClaudeAdapter({
- *   model: 'claude-sonnet-4-20250514',
+ *   model: 'claude-sonnet-4-5',
  *   maxTurns: 10
  * });
  *
@@ -129,7 +129,7 @@ export class ClaudeAdapter {
    */
   constructor(options: ClaudeAdapterOptions = {}) {
     this.options = {
-      model: options.model || "claude-sonnet-4-20250514",
+      model: options.model || "claude-sonnet-4-5",
       maxTurns: options.maxTurns || 10,
     };
   }
@@ -360,6 +360,16 @@ export class ClaudeAdapter {
       );
     }
 
+    // Debug logging
+    const debug = process.env.AUTONAV_DEBUG === "1";
+    if (debug) {
+      console.error("\n[DEBUG] Query execution starting");
+      console.error(`[DEBUG] Model: ${this.options.model}`);
+      console.error(`[DEBUG] Max turns: ${maxTurns}`);
+      console.error(`[DEBUG] MCP servers registered: ${Object.keys(mcpServers).join(", ")}`);
+      console.error(`[DEBUG] System prompt length: ${systemPrompt.length} chars`);
+    }
+
     try {
       // Execute query using Claude Agent SDK
       // The SDK handles the agentic loop automatically
@@ -371,8 +381,6 @@ export class ClaudeAdapter {
           systemPrompt,
           cwd: navigator.navigatorPath,
           mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
-          // Don't load user/project settings - we control everything
-          settingSources: [],
           // Allow the SDK to handle permissions
           permissionMode: "bypassPermissions",
         },
@@ -381,21 +389,44 @@ export class ClaudeAdapter {
       // Collect messages and find the result
       let resultMessage: SDKResultMessage | undefined;
       let lastAssistantText = "";
-      let submitAnswerInput: { answer: string; sources: Array<{ file: string; section: string; relevance: string }>; confidence: number } | undefined;
+      let submitAnswerInput: {
+        answer: string;
+        sources: Array<{ file: string; section: string; relevance: string }>;
+        confidence: 'high' | 'medium' | 'low';
+        confidenceReason: string;
+        outOfDomain: boolean;
+      } | undefined;
+      let turnNumber = 0;
 
       for await (const message of queryIterator) {
+        // Debug log each message
+        if (debug && message.type === "assistant") {
+          turnNumber++;
+          console.error(`\n[DEBUG] Turn ${turnNumber}: Assistant message`);
+        }
+
         // Log tool usage for debugging
         if (message.type === "assistant") {
           const content = message.message.content;
           for (const block of content) {
             if (block.type === "tool_use") {
+              if (debug) {
+                console.error(`[DEBUG] Tool called: ${block.name}`);
+              }
               // Check if this is the submit_answer tool
-              if (block.name === SUBMIT_ANSWER_TOOL) {
+              // Note: MCP SDK prefixes tool names with server name: "mcp__autonav-response__submit_answer"
+              if (block.name === SUBMIT_ANSWER_TOOL || block.name.endsWith(`__${SUBMIT_ANSWER_TOOL}`)) {
                 // Extract the structured response from tool input
                 submitAnswerInput = block.input as typeof submitAnswerInput;
+                if (debug) {
+                  console.error("[DEBUG] submit_answer tool called successfully!");
+                }
               }
             } else if (block.type === "text") {
               lastAssistantText = block.text;
+              if (debug) {
+                console.error(`[DEBUG] Text response: ${block.text.substring(0, 100)}...`);
+              }
             }
           }
         }
@@ -403,6 +434,10 @@ export class ClaudeAdapter {
         // Capture the result message
         if (message.type === "result") {
           resultMessage = message;
+          if (debug) {
+            console.error(`\n[DEBUG] Result: ${resultMessage.subtype}`);
+            console.error(`[DEBUG] Total turns: ${turnNumber}`);
+          }
         }
       }
 
@@ -428,7 +463,8 @@ export class ClaudeAdapter {
           answer: submitAnswerInput.answer,
           sources: submitAnswerInput.sources,
           confidence: submitAnswerInput.confidence,
-          timestamp: new Date().toISOString(),
+          confidenceReason: submitAnswerInput.confidenceReason,
+          outOfDomain: submitAnswerInput.outOfDomain,
         });
       } else {
         // Fall back to parsing text response (legacy path)
@@ -536,8 +572,6 @@ Your task: ${message}`;
           maxTurns,
           systemPrompt,
           cwd: navigator.navigatorPath,
-          // Don't load user/project settings - we control everything
-          settingSources: [],
           // Allow file writes in the navigator directory
           permissionMode: "bypassPermissions",
         },
