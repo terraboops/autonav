@@ -1,6 +1,6 @@
 {
   "name": "@autonav/pack-server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Reference HTTP server for distributing Autonav knowledge packs",
   "type": "module",
   "main": "./dist/index.js",
