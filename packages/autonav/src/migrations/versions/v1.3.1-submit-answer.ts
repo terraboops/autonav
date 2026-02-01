@@ -26,7 +26,9 @@ You MUST use the \`submit_answer\` tool to submit your answers. Do NOT respond w
 The submit_answer tool requires:
 - \`answer\`: Your complete answer with inline citations
 - \`sources\`: Array of sources with file, section, and relevance
-- \`confidence\`: Score from 0 to 1 (0.8+ for well-grounded, 0.5-0.8 for partial, <0.5 if uncertain)
+- \`confidence\`: Level - 'high', 'medium', or 'low' (not a number)
+- \`confidenceReason\`: Explanation of why this confidence level (min 10 chars)
+- \`outOfDomain\`: Boolean - is question outside navigator's domain?
 
 Example tool call:
 \`\`\`typescript
@@ -39,7 +41,9 @@ submit_answer({
       relevance: "Explains certificate setup and Terraform configuration"
     }
   ],
-  confidence: 0.95
+  confidence: 'high',
+  confidenceReason: "Direct answer from clear source with specific configuration steps",
+  outOfDomain: false
 })
 \`\`\`
 
@@ -63,7 +67,9 @@ submit_answer({
       relevance: "Provides step-by-step SSL certificate setup instructions"
     }
   ],
-  confidence: 0.95
+  confidence: 'high',
+  confidenceReason: "Information directly stated in dedicated SSL configuration section with step-by-step instructions",
+  outOfDomain: false
 })
 \`\`\`
 
