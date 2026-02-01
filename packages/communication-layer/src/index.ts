@@ -102,9 +102,6 @@ export {
 export {
   type ValidationResult,
   checkSourcesExist,
-  detectHallucinations,
-  validateConfidence,
-  validateContextSize,
   validateResponse,
   validateSource,
 } from './validation/index.js';
@@ -123,3 +120,50 @@ export {
  * Re-export Zod for convenience
  */
 export { z } from 'zod';
+
+// Template generation
+export {
+  // Partials
+  // Note: GROUNDING_RULES already exported above from prompts
+  RESPONSE_FORMAT,
+  NAVIGATOR_AUTHORITY,
+  CONFIDENCE_LEVELS,
+} from './templates/partials/index.js';
+
+export {
+  // Generators
+  generateClaudeMd,
+  generateConfigJson,
+  generatePluginsJson,
+  generateReadme,
+  generateGitignore,
+  type NavigatorVars,
+} from './templates/generators/index.js';
+
+// Skill management
+export {
+  // Types
+  type SkillConfig,
+  type SymlinkResult,
+  // Utilities
+  getGlobalSkillsDir,
+  getLocalSkillsDir,
+  getLocalSkillPath,
+  skillExists,
+  localSkillExists,
+  isSkillSymlink,
+  getSkillSymlinkTarget,
+  getSkillName,
+  getUpdateSkillName,
+  // Generators
+  generateSkillContent,
+  generateUpdateSkillContent,
+  // Management
+  createLocalSkill,
+  createLocalUpdateSkill,
+  symlinkSkillToGlobal,
+  createAndSymlinkSkill,
+  createAndSymlinkUpdateSkill,
+  removeSkillSymlink,
+  discoverLocalSkills,
+} from './skills/index.js';
