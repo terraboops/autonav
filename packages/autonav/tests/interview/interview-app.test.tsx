@@ -68,11 +68,11 @@ describe('Interview TUI Component', () => {
 
     const output = lastFrame();
 
-    // Should show navigator name in header
-    expect(output).toContain('test-nav');
+    // Should show the assistant's first question
+    expect(output).toContain('What is the purpose of this navigator?');
 
-    // Should show instructions
-    expect(output).toContain('Ctrl+C');
+    // Should show input prompt
+    expect(output).toContain('Type your response');
   });
 
   test('displays assistant message after initial load', async () => {

@@ -77,8 +77,10 @@ The claudeMd field should be a complete, personalized CLAUDE.md file based on wh
 - Grounding rules (always cite, never invent, acknowledge uncertainty)
 - Domain-specific scope definition
 - Knowledge organization guidance
-- Response format expectations
+- Response format expectations (MUST use submit_answer tool, NOT plain text/JSON)
 - Self-organization rules based on their autonomy preference
+
+**CRITICAL**: The CLAUDE.md MUST include a "Response Format" section instructing the navigator to use the submit_answer tool for all responses. Never instruct navigators to output raw JSON - they must always use the submit_answer tool with answer, sources, and confidence parameters.
 
 ## Critical Rules
 1. Ask questions conversationally until you have enough information (4-6 exchanges typically)

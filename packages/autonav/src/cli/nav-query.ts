@@ -98,7 +98,7 @@ program
     "--timeout <duration>",
     "Query timeout (e.g., 30s, 1m, 1m30s, or milliseconds)",
     parseDuration,
-    30000
+    300000
   )
   .option("--verbose", "Show additional debug information")
   .action(async (navigator: string, question: string, options: QueryCommandOptions) => {
