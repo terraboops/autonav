@@ -1,13 +1,19 @@
 /**
- * Migration v1.3.1: Add submit_answer Tool Instructions
+ * Migration v1.3.1: Remove submit_answer Tool Instructions from CLAUDE.md
  *
- * This migration updates CLAUDE.md to use the submit_answer tool instead of
- * raw JSON output. The query command expects navigators to call submit_answer
- * to terminate the agent loop, but older templates instructed raw JSON output.
+ * This migration removes submit_answer tool instructions from CLAUDE.md templates.
+ * The submit_answer tool is an MCP tool that only exists when running via `autonav query`,
+ * not when running Claude Code TUI directly. Having these instructions in CLAUDE.md
+ * causes Claude to hallucinate the tool when running in TUI mode.
+ *
+ * The correct design:
+ * - CLAUDE.md: General grounding rules + response format guidelines (no tool mention)
+ * - autonav query prompt: Injects submit_answer requirement (tool only exists here)
  *
  * Changes:
- * - Replaces "Response Format" section with submit_answer tool instructions
- * - Updates examples to show tool calls instead of JSON blocks
+ * - Replaces "Response Format" section to remove submit_answer tool instructions
+ * - Updates section to focus on grounding and citation principles
+ * - Removes tool-specific examples
  */
 
 import * as fs from "node:fs";
@@ -17,88 +23,39 @@ import type { Migration, MigrationCheck, MigrationResult, ConfirmFn } from "../t
 const MIGRATION_VERSION = "1.3.1";
 
 /**
- * The new Response Format section that uses submit_answer tool
+ * The new Response Format section without submit_answer tool mention
  */
 const NEW_RESPONSE_FORMAT_SECTION = `## Response Format
 
-You MUST use the \`submit_answer\` tool to submit your answers. Do NOT respond with plain text or JSON in your message.
+When answering questions, provide clear answers with proper citations:
 
-The submit_answer tool requires:
-- \`answer\`: Your complete answer with inline citations
-- \`sources\`: Array of sources with file, section, and relevance
-- \`confidence\`: Level - 'high', 'medium', or 'low' (not a number)
-- \`confidenceReason\`: Explanation of why this confidence level (min 10 chars)
-- \`outOfDomain\`: Boolean - is question outside navigator's domain?
+1. **Search first**: Use available tools to find relevant information
+2. **Cite sources**: Always reference specific files and sections where you found the information
+3. **Be grounded**: Only claim what's documented in the knowledge base
+4. **Acknowledge uncertainty**: If information is unclear or missing, say so explicitly
 
-Example tool call:
-\`\`\`typescript
-submit_answer({
-  answer: "To configure SSL, update the load balancer settings as described in deployment/ssl-config.md. Set the certificate_arn parameter in the aws_lb_listener resource.",
-  sources: [
-    {
-      file: "deployment/ssl-config.md",
-      section: "SSL Configuration",
-      relevance: "Explains certificate setup and Terraform configuration"
-    }
-  ],
-  confidence: 'high',
-  confidenceReason: "Direct answer from clear source with specific configuration steps",
-  outOfDomain: false
-})
-\`\`\`
+### Source Citation Format
 
-## Good Response Example
+Include inline citations in your answers:
+- Reference specific files: \`[deployment/ssl-config.md: SSL Configuration]\`
+- Quote relevant excerpts when helpful
+- Link conclusions to specific documentation
 
-**Question**: "How do I configure SSL?"
+### Confidence Assessment
 
-**Process**:
-1. Search knowledge base for SSL configuration
-2. Read relevant files
-3. Call submit_answer tool with findings
+When uncertain about an answer:
+- **High confidence**: Information is explicit and well-documented
+- **Medium confidence**: Information requires some interpretation or combining sources
+- **Low confidence**: Information is sparse, unclear, or partially missing
 
-**Tool Call**:
-\`\`\`typescript
-submit_answer({
-  answer: "To configure SSL, you need to update the load balancer settings. According to deployment/ssl-config.md, you should set the certificate ARN in the Terraform configuration.",
-  sources: [
-    {
-      file: "deployment/ssl-config.md",
-      section: "SSL Configuration",
-      relevance: "Provides step-by-step SSL certificate setup instructions"
-    }
-  ],
-  confidence: 'high',
-  confidenceReason: "Information directly stated in dedicated SSL configuration section with step-by-step instructions",
-  outOfDomain: false
-})
-\`\`\`
-
-## Bad Response Example (Don't do this)
-
-**Question**: "How do I configure SSL?"
-
-**Wrong approach**:
-- Responding with plain text instead of using submit_answer tool
-- Not citing specific sources
-- Inventing file paths that don't exist
-
-**Problems**:
-- No submit_answer tool call
-- Vague answer without specifics
-- Claims knowledge without evidence`;
+If your confidence is low, acknowledge the uncertainty and suggest that verification may be needed.`;
 
 /**
- * Detect if CLAUDE.md has the old JSON response format
+ * Detect if CLAUDE.md has old submit_answer tool instructions
  */
-function hasOldResponseFormat(claudeMdContent: string): boolean {
-  // Look for the old JSON schema format markers
-  const hasOldJsonSchema = claudeMdContent.includes('"protocolVersion":') ||
-    claudeMdContent.includes('Always structure your responses as JSON');
-
-  const hasSubmitAnswerTool = claudeMdContent.includes('submit_answer');
-
-  // If it has the old JSON format but not the submit_answer tool, it needs migration
-  return hasOldJsonSchema && !hasSubmitAnswerTool;
+function hasSubmitAnswerInstructions(claudeMdContent: string): boolean {
+  // Check if CLAUDE.md mentions submit_answer tool
+  return claudeMdContent.includes('submit_answer');
 }
 
 /**
@@ -167,16 +124,16 @@ async function check(navPath: string): Promise<MigrationCheck> {
 
   const content = fs.readFileSync(claudeMdPath, "utf-8");
 
-  if (!hasOldResponseFormat(content)) {
+  if (!hasSubmitAnswerInstructions(content)) {
     return {
       needed: false,
-      reason: "CLAUDE.md already uses submit_answer tool or doesn't have old format",
+      reason: "CLAUDE.md already updated (no submit_answer tool instructions)",
     };
   }
 
   return {
     needed: true,
-    reason: "CLAUDE.md uses old JSON response format instead of submit_answer tool",
+    reason: "CLAUDE.md contains submit_answer tool instructions that should be removed",
   };
 }
 
@@ -190,8 +147,14 @@ async function apply(navPath: string, confirm: ConfirmFn): Promise<MigrationResu
   try {
     const content = fs.readFileSync(claudeMdPath, "utf-8");
 
-    // Find the old Response Format section
-    const section = extractSection(content, "## Response Format");
+    // Find the Response Format section and all related sections
+    // Extract from "## Response Format" to "## Remember" (new template) or end of file (old templates)
+    let section = extractSection(content, "## Response Format", "## Remember");
+
+    // If there's no "## Remember" section (old navigator), extract everything from Response Format onward
+    if (!section) {
+      section = extractSection(content, "## Response Format");
+    }
 
     if (!section) {
       return {
@@ -204,8 +167,8 @@ async function apply(navPath: string, confirm: ConfirmFn): Promise<MigrationResu
 
     // Ask for confirmation
     const confirmed = await confirm(
-      "Replace Response Format section in CLAUDE.md",
-      `This will replace the old JSON output format with submit_answer tool instructions.\n\nOld section (${section.content.split('\n').length} lines) will be replaced with the new tool-based format.`
+      "Update Response Format section in CLAUDE.md",
+      `This will remove submit_answer tool instructions from CLAUDE.md.\n\nThe submit_answer tool only exists when running via 'autonav query' and should not be mentioned in CLAUDE.md (which is read by all Claude Code sessions).\n\nOld section (${section.content.split('\n').length} lines) will be replaced with general response format guidelines.`
     );
 
     if (!confirmed) {
@@ -216,7 +179,7 @@ async function apply(navPath: string, confirm: ConfirmFn): Promise<MigrationResu
       };
     }
 
-    // Replace the section (TypeScript knows section is not null here)
+    // Replace the section
     const newContent =
       content.substring(0, section.startPos) +
       NEW_RESPONSE_FORMAT_SECTION +
@@ -253,7 +216,7 @@ async function apply(navPath: string, confirm: ConfirmFn): Promise<MigrationResu
 
 export const migration: Migration = {
   version: MIGRATION_VERSION,
-  description: "Add submit_answer tool instructions to CLAUDE.md",
+  description: "Remove submit_answer tool instructions from CLAUDE.md",
   check,
   apply,
 };

@@ -70,7 +70,8 @@ export interface ClaudeAdapterOptions {
   model?: string;
 
   /**
-   * Maximum turns for agentic loop (defaults to 10)
+   * Maximum turns for agentic loop
+   * If not specified, only timeout will limit the agent loop
    */
   maxTurns?: number;
 }
@@ -97,7 +98,8 @@ export interface QueryOptions {
   enableSelfConfig?: boolean;
 
   /**
-   * Maximum turns for agentic loop (defaults to 10)
+   * Maximum turns for agentic loop
+   * If not specified, only timeout will limit the agent loop
    */
   maxTurns?: number;
 }
@@ -111,8 +113,7 @@ export interface QueryOptions {
  * @example
  * ```typescript
  * const adapter = new ClaudeAdapter({
- *   model: 'claude-sonnet-4-5',
- *   maxTurns: 10
+ *   model: 'claude-sonnet-4-5'
  * });
  *
  * const navigator = adapter.loadNavigator('./my-navigator');
@@ -120,7 +121,7 @@ export interface QueryOptions {
  * ```
  */
 export class ClaudeAdapter {
-  private readonly options: Required<ClaudeAdapterOptions>;
+  private readonly options: { model: string; maxTurns?: number };
 
   /**
    * Create a new Claude Adapter
@@ -130,7 +131,7 @@ export class ClaudeAdapter {
   constructor(options: ClaudeAdapterOptions = {}) {
     this.options = {
       model: options.model || "claude-sonnet-4-5",
-      maxTurns: options.maxTurns || 10,
+      maxTurns: options.maxTurns, // undefined = no limit, rely on timeout
     };
   }
 
@@ -329,7 +330,7 @@ export class ClaudeAdapter {
   ): Promise<NavigatorResponse> {
     const {
       enableSelfConfig = true,
-      maxTurns = this.options.maxTurns,
+      maxTurns = this.options.maxTurns, // undefined = no limit
     } = options;
 
     // Validate inputs
@@ -337,8 +338,16 @@ export class ClaudeAdapter {
       throw new Error('Question cannot be empty');
     }
 
-    // Create the prompt
-    const prompt = createAnswerQuestionPrompt(question);
+    // Create the prompt with Agent Identity Protocol
+    const prompt = createAnswerQuestionPrompt(
+      question,
+      navigator.config.description
+        ? {
+            name: navigator.config.name,
+            description: navigator.config.description,
+          }
+        : undefined
+    );
 
     // Build system prompt with self-config rules if enabled
     let systemPrompt = navigator.systemPrompt;
@@ -365,7 +374,7 @@ export class ClaudeAdapter {
     if (debug) {
       console.error("\n[DEBUG] Query execution starting");
       console.error(`[DEBUG] Model: ${this.options.model}`);
-      console.error(`[DEBUG] Max turns: ${maxTurns}`);
+      console.error(`[DEBUG] Max turns: ${maxTurns ?? 'unlimited (timeout only)'}`);
       console.error(`[DEBUG] MCP servers registered: ${Object.keys(mcpServers).join(", ")}`);
       console.error(`[DEBUG] System prompt length: ${systemPrompt.length} chars`);
     }

@@ -71,10 +71,29 @@ Response: "Here are your current settings: [summarize config]"
 
 /**
  * Template for answering questions
+ *
+ * Implements Agent Identity Protocol for bidirectional identity affirmation.
+ * See: https://terratauri.com/blog/socially-constructed-agent/
  */
-export function createAnswerQuestionPrompt(question: string): string {
+export function createAnswerQuestionPrompt(
+  question: string,
+  navigatorIdentity?: { name: string; description: string }
+): string {
+  // Agent Identity Protocol: Explicit role identification and mutual acknowledgment
+  const identityProtocol = navigatorIdentity
+    ? `## Agent Identity Protocol
+
+Hello ${navigatorIdentity.name}. I am Claude Code, and I need information from your knowledge base.
+
+**Your Role**: ${navigatorIdentity.description}
+
+**My Request**: I'm querying you on behalf of a user who needs an answer to the question below. Please search your knowledge base and provide a grounded response using the submit_answer tool.
+
+`
+    : "";
+
   return `
-You are a knowledge navigator. Answer the following question using ONLY information from the knowledge base.
+${identityProtocol}You are a knowledge navigator. Answer the following question using ONLY information from the knowledge base.
 
 ${GROUNDING_RULES}
 

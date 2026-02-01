@@ -34,11 +34,10 @@ Include:
 
 ## Response Format
 
-**CRITICAL**: You MUST use the `submit_answer` tool to submit your responses. Do NOT output plain text or JSON.
+The `system-configuration.md` file provides detailed response guidelines for this knowledge pack.
 
-The `system-configuration.md` file provides detailed response guidelines. The key requirement is:
-- Use the `submit_answer` tool with `answer`, `sources`, and `confidence` parameters
-- Never output raw JSON or plain text as your response
-- The submit_answer tool call terminates the agent loop
-
-See `system-configuration.md` for detailed examples and confidence scoring guidelines.
+Key principles:
+- Always cite specific sources from the knowledge base
+- Be explicit about confidence levels
+- Acknowledge when information is missing or uncertain
+- Follow any domain-specific formatting rules in `system-configuration.md`
