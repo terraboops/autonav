@@ -115,6 +115,8 @@ The submit_answer tool requires:
 - \`sources\`: Array of sources with file, section, and relevance
 - \`confidence\`: Score from 0 to 1
 
+**CRITICAL**: After calling submit_answer with your complete answer, STOP immediately. Do not perform additional research, analysis, or tool calls after submitting your answer.
+
 **Remember**: Only cite files that exist. Never make up file paths or information.
 `.trim();
 }
