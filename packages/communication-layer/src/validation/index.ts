@@ -54,11 +54,23 @@ export function checkSourcesExist(
   const errors: Error[] = [];
   const warnings: string[] = [];
 
+  // Get navigator root (parent of knowledge base)
+  const navigatorRoot = path.dirname(knowledgeBasePath);
+
   for (const source of response.sources) {
-    const fullPath = path.resolve(knowledgeBasePath, source.file);
+    // Try knowledge base first (for backwards compatibility with knowledge packs)
+    let fullPath = path.resolve(knowledgeBasePath, source.file);
+    let exists = fs.existsSync(fullPath);
+
+    // If not found in knowledge base, try navigator root
+    // This allows navigators like mahdi to cite sources from anywhere in their directory
+    if (!exists) {
+      fullPath = path.resolve(navigatorRoot, source.file);
+      exists = fs.existsSync(fullPath);
+    }
 
     try {
-      if (!fs.existsSync(fullPath)) {
+      if (!exists) {
         errors.push(new SourceNotFoundError(source.file, {
           knowledgeBasePath,
           fullPath,
@@ -291,9 +303,19 @@ export function validateSource(
   const errors: Error[] = [];
   const warnings: string[] = [];
 
-  const fullPath = path.resolve(knowledgeBasePath, source.file);
+  // Get navigator root (parent of knowledge base)
+  const navigatorRoot = path.dirname(knowledgeBasePath);
 
-  if (!fs.existsSync(fullPath)) {
+  // Try knowledge base first, then navigator root
+  let fullPath = path.resolve(knowledgeBasePath, source.file);
+  let exists = fs.existsSync(fullPath);
+
+  if (!exists) {
+    fullPath = path.resolve(navigatorRoot, source.file);
+    exists = fs.existsSync(fullPath);
+  }
+
+  if (!exists) {
     errors.push(new SourceNotFoundError(source.file, {
       knowledgeBasePath,
       fullPath,
