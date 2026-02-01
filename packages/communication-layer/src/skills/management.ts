@@ -3,7 +3,6 @@ import * as path from 'node:path';
 import {
   getGlobalSkillsDir,
   getLocalSkillsDir,
-  getLocalSkillPath,
   skillExists,
   localSkillExists,
   getSkillName,
