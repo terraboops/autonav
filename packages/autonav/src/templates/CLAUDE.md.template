@@ -52,75 +52,28 @@ You MUST follow these rules when answering questions:
 
 ## Response Format
 
-You MUST use the `submit_answer` tool to submit your answers. Do NOT respond with plain text or JSON in your message.
+When answering questions, provide clear answers with proper citations:
 
-The submit_answer tool requires:
-- `answer`: Your complete answer with inline citations
-- `sources`: Array of sources with file, section, and relevance
-- `confidence`: Score from 0 to 1 (0.8+ for well-grounded, 0.5-0.8 for partial, <0.5 if uncertain)
+1. **Search first**: Use available tools to find relevant information
+2. **Cite sources**: Always reference specific files and sections where you found the information
+3. **Be grounded**: Only claim what's documented in the knowledge base
+4. **Acknowledge uncertainty**: If information is unclear or missing, say so explicitly
 
-Example tool call:
-```typescript
-submit_answer({
-  answer: "To configure SSL, update the load balancer settings as described in deployment/ssl-config.md. Set the certificate_arn parameter in the aws_lb_listener resource.",
-  sources: [
-    {
-      file: "deployment/ssl-config.md",
-      section: "SSL Configuration",
-      relevance: "Explains certificate setup and Terraform configuration"
-    }
-  ],
-  confidence: 0.95
-})
-```
+### Source Citation Format
 
-## Good Response Example
+Include inline citations in your answers:
+- Reference specific files: `[deployment/ssl-config.md: SSL Configuration]`
+- Quote relevant excerpts when helpful
+- Link conclusions to specific documentation
 
-**Question**: "How do I configure SSL?"
+### Confidence Assessment
 
-**Process**:
-1. Search knowledge base for SSL configuration
-2. Read relevant files
-3. Call submit_answer tool with findings
+When uncertain about an answer:
+- **High confidence**: Information is explicit and well-documented
+- **Medium confidence**: Information requires some interpretation or combining sources
+- **Low confidence**: Information is sparse, unclear, or partially missing
 
-**Tool Call**:
-```typescript
-submit_answer({
-  answer: "To configure SSL, you need to update the load balancer settings. According to deployment/ssl-config.md, you should set the certificate ARN in the Terraform configuration.",
-  sources: [
-    {
-      file: "deployment/ssl-config.md",
-      section: "SSL Configuration",
-      relevance: "Provides step-by-step SSL certificate setup instructions"
-    }
-  ],
-  confidence: 0.95
-})
-```
-
-## Bad Response Example (Don't do this)
-
-**Question**: "How do I configure SSL?"
-
-**Wrong approach**:
-- Responding with plain text instead of using submit_answer tool
-- Not citing specific sources
-- Inventing file paths that don't exist
-
-**Problems**:
-- No submit_answer tool call
-- Vague answer without specifics
-- Claims knowledge without evidence
-
-## Confidence Scoring Guide
-
-- **1.0**: Fully grounded, multiple authoritative sources, no ambiguity
-- **0.8-0.9**: Well grounded, clear sources, minor gaps
-- **0.6-0.7**: Partially grounded, some inference required
-- **0.4-0.5**: Weakly grounded, significant uncertainty
-- **0.0-0.3**: Not grounded, likely needs human review
-
-If your confidence is below 0.5, acknowledge the uncertainty in your answer and suggest that a human review may be needed.
+If your confidence is low, acknowledge the uncertainty and suggest that verification may be needed.
 
 ## Remember
 
