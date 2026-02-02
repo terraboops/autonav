@@ -4,6 +4,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import * as tar from 'tar';
 
 /**
@@ -168,8 +169,71 @@ export function createMockSourceRepo(tempDir: string): string {
 /**
  * Clean up test directory
  */
+/**
+ * Clean up test skill symlinks by name pattern
+ */
+export function cleanupTestSkills(patterns: string[]): void {
+  const skillsDir = path.join(os.homedir(), '.claude', 'skills');
+  if (!fs.existsSync(skillsDir)) {
+    return;
+  }
+
+  try {
+    const skills = fs.readdirSync(skillsDir);
+    for (const skill of skills) {
+      // Check if skill matches any of the test patterns
+      const matches = patterns.some(pattern =>
+        skill.includes(pattern) || skill.startsWith('ask-') || skill.startsWith('update-')
+      );
+
+      if (matches) {
+        const skillPath = path.join(skillsDir, skill);
+        try {
+          const stats = fs.lstatSync(skillPath);
+          if (stats.isSymbolicLink()) {
+            const target = fs.readlinkSync(skillPath);
+            // Only remove if target is in temp directory or doesn't exist
+            if (target.includes('/tmp/') || target.includes('\\temp\\') || !fs.existsSync(target)) {
+              fs.unlinkSync(skillPath);
+            }
+          }
+        } catch {
+          // Ignore errors reading individual skills
+        }
+      }
+    }
+  } catch {
+    // Ignore errors if skills directory doesn't exist or can't be read
+  }
+}
+
 export function cleanupTestDir(dir: string): void {
   if (fs.existsSync(dir)) {
+    // Clean up any global skill symlinks before removing the directory
+    const skillsDir = path.join(os.homedir(), '.claude', 'skills');
+    if (fs.existsSync(skillsDir)) {
+      try {
+        const skills = fs.readdirSync(skillsDir);
+        for (const skill of skills) {
+          const skillPath = path.join(skillsDir, skill);
+          try {
+            const stats = fs.lstatSync(skillPath);
+            if (stats.isSymbolicLink()) {
+              const target = fs.readlinkSync(skillPath);
+              // If the symlink points to a path inside our test directory, remove it
+              if (target.startsWith(dir)) {
+                fs.unlinkSync(skillPath);
+              }
+            }
+          } catch {
+            // Ignore errors reading individual skills
+          }
+        }
+      } catch {
+        // Ignore errors if skills directory doesn't exist or can't be read
+      }
+    }
+
     fs.rmSync(dir, { recursive: true, force: true });
   }
 }
