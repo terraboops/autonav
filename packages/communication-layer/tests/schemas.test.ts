@@ -369,7 +369,7 @@ describe('Schema Validation', () => {
       expect(config.name).toBe('test');
       expect(config.knowledgeBasePath).toBe('./knowledge');
       expect(config.knowledgePack).toBe(null);
-      expect(config.plugins.configFile).toBe('.claude/plugins.json');
+      expect(config.plugins.configFile).toBe('./.claude/plugins.json');
     });
 
     it('createUserQuery should create valid query', () => {
