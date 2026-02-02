@@ -375,7 +375,7 @@ Here's the answer:
       expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('should warn for low confidence', () => {
+    it('should not warn for low confidence (trust the model)', () => {
       const response: any = {
         protocolVersion: '0.1.0',
         query: 'Test',
@@ -393,7 +393,10 @@ Here's the answer:
       };
 
       const result = adapter.validate(response, navigator.knowledgeBasePath);
-      expect(result.warnings.length).toBeGreaterThan(0);
+      // New validation philosophy: only validate objective facts (source existence)
+      // Trust the model for everything else, including confidence assessment
+      expect(result.valid).toBe(true);
+      expect(result.warnings.length).toBe(0);
     });
   });
 });
