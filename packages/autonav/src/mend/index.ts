@@ -6,8 +6,8 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { NavigatorConfigSchema } from "@autonav/communication-layer";
 import {
+  NavigatorConfigSchema,
   getSkillName,
   getUpdateSkillName,
   localSkillExists,
@@ -16,7 +16,7 @@ import {
   createAndSymlinkSkill,
   createAndSymlinkUpdateSkill,
   type SkillConfig,
-} from "../skill-generator/index.js";
+} from "@autonav/communication-layer";
 
 export interface MendCheckResult {
   check: string;
