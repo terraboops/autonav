@@ -15,12 +15,15 @@ import {
   createMockPack,
   createMockSourceRepo,
   cleanupTestDir,
+  cleanupTestSkills,
 } from './helpers/test-utils.js';
 
 describe('autonav init smoke tests', () => {
   let tempDir: string;
 
   beforeEach(() => {
+    // Clean up any leftover test skill symlinks from previous runs
+    cleanupTestSkills(['test-nav', 'config-test', 'plugins-test', 'claude-test', 'pack-test']);
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'autonav-smoke-'));
   });
 

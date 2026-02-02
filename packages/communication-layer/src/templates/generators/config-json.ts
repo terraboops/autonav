@@ -13,6 +13,8 @@ export function generateConfigJson(vars: NavigatorVars): string {
     createdAt = new Date().toISOString(),
     updatedAt,
     knowledgeBasePath = "./knowledge",
+    packName,
+    packVersion,
   } = vars;
 
   const config: Record<string, unknown> = {
@@ -24,11 +26,25 @@ export function generateConfigJson(vars: NavigatorVars): string {
     knowledgeBasePath,
     instructionsPath: "CLAUDE.md",
     createdAt,
+    plugins: {
+      configFile: "./.claude/plugins.json",
+    },
   };
 
   // Add updated timestamp if provided
   if (updatedAt) {
     config.updatedAt = updatedAt;
+  }
+
+  // Add knowledge pack metadata if provided
+  if (packName && packVersion) {
+    config.knowledgePack = {
+      name: packName,
+      version: packVersion,
+      installedAt: createdAt,
+    };
+  } else {
+    config.knowledgePack = null;
   }
 
   return JSON.stringify(config, null, 2) + "\n";
