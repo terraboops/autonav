@@ -27,13 +27,6 @@ export {
   type SelfConfigResult,
 } from "./tools/index.js";
 
-// Export templates utilities (for programmatic use)
-export {
-  loadTemplates,
-  replaceTemplateVars,
-  type Templates,
-} from "./templates/index.js";
-
 // Export plugin system
 export {
   // Core plugin types
