@@ -64,8 +64,10 @@ describe('autonav init smoke tests', () => {
       // Verify CLAUDE.md exists and has content
       const claudeMdPath = path.join(navPath, 'CLAUDE.md');
       const claudeMd = fs.readFileSync(claudeMdPath, 'utf-8');
-      expect(claudeMd).toContain('# Navigator:');
-      expect(claudeMd).toContain(navName);
+      // New template uses YAML frontmatter and heading with navigator name
+      expect(claudeMd).toContain('---');
+      expect(claudeMd).toContain(`# ${navName}`);
+      expect(claudeMd).toContain('## Grounding Rules');
 
       // Verify README.md exists
       const readmePath = path.join(navPath, 'README.md');
