@@ -27,13 +27,6 @@ export {
   type SelfConfigResult,
 } from "./tools/index.js";
 
-// Export templates utilities (for programmatic use)
-export {
-  loadTemplates,
-  replaceTemplateVars,
-  type Templates,
-} from "./templates/index.js";
-
 // Export plugin system
 export {
   // Core plugin types
@@ -59,3 +52,12 @@ export {
 
 // Export query engine
 export * from "./query-engine/index.js";
+
+// Export mend (health check and repair)
+export {
+  checkNavigatorHealth,
+  autoFixNavigator,
+  mendNavigator,
+  type MendCheckResult,
+  type MendResult,
+} from "./mend/index.js";

@@ -178,7 +178,7 @@ function resolveKnowledgeBasePath(
   navigatorPath: string,
   config: NavigatorConfig
 ): string {
-  return path.join(navigatorPath, config.knowledgeBase);
+  return path.join(navigatorPath, config.knowledgeBasePath);
 }
 
 /**

@@ -10,7 +10,7 @@ describe('ClaudeAdapter', () => {
     // Create a test navigator directory
     testNavigatorPath = path.join(__dirname, 'test-navigator');
     fs.mkdirSync(testNavigatorPath, { recursive: true });
-    fs.mkdirSync(path.join(testNavigatorPath, 'knowledge-base'), {
+    fs.mkdirSync(path.join(testNavigatorPath, 'knowledge'), {
       recursive: true,
     });
 
@@ -19,9 +19,9 @@ describe('ClaudeAdapter', () => {
       version: '1.0.0',
       name: 'test-navigator',
       description: 'Test navigator',
-      created: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
       knowledgePack: null,
-      knowledgeBase: 'knowledge-base',
+      knowledgeBasePath: './knowledge',
       instructionsPath: 'CLAUDE.md',
       confidenceThreshold: 0.7,
       plugins: {
@@ -42,7 +42,7 @@ describe('ClaudeAdapter', () => {
 
     // Create a test knowledge base file
     fs.writeFileSync(
-      path.join(testNavigatorPath, 'knowledge-base', 'test.md'),
+      path.join(testNavigatorPath, 'knowledge', 'test.md'),
       '# Test Document\n\nThis is a test document.'
     );
   });
@@ -91,7 +91,7 @@ describe('ClaudeAdapter', () => {
 
       expect(navigator.config.name).toBe('test-navigator');
       expect(navigator.systemPrompt).toContain('Test Navigator');
-      expect(navigator.knowledgeBasePath).toContain('knowledge-base');
+      expect(navigator.knowledgeBasePath).toContain('knowledge');
     });
 
     it('should throw error if navigator path does not exist', async () => {
@@ -131,16 +131,16 @@ describe('ClaudeAdapter', () => {
     it('should throw error if CLAUDE.md is missing', async () => {
       const invalidPath = path.join(__dirname, 'no-claude-md-navigator');
       fs.mkdirSync(invalidPath, { recursive: true });
-      fs.mkdirSync(path.join(invalidPath, 'knowledge-base'), {
+      fs.mkdirSync(path.join(invalidPath, 'knowledge'), {
         recursive: true,
       });
 
       const config = {
         version: '1.0.0',
         name: 'test',
-        created: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
         knowledgePack: null,
-        knowledgeBase: 'knowledge-base',
+        knowledgeBasePath: './knowledge',
         plugins: {
           configFile: '.claude/plugins.json',
         },
@@ -167,9 +167,9 @@ describe('ClaudeAdapter', () => {
       const config = {
         version: '1.0.0',
         name: 'test',
-        created: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
         knowledgePack: null,
-        knowledgeBase: 'knowledge-base',
+        knowledgeBasePath: './knowledge',
         plugins: {
           configFile: '.claude/plugins.json',
         },
@@ -197,16 +197,16 @@ describe('ClaudeAdapter', () => {
     it('should support custom instructions path', async () => {
       const customPath = path.join(__dirname, 'custom-instructions-navigator');
       fs.mkdirSync(customPath, { recursive: true });
-      fs.mkdirSync(path.join(customPath, 'knowledge-base'), {
+      fs.mkdirSync(path.join(customPath, 'knowledge'), {
         recursive: true,
       });
 
       const config = {
         version: '1.0.0',
         name: 'test',
-        created: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
         knowledgePack: null,
-        knowledgeBase: 'knowledge-base',
+        knowledgeBasePath: './knowledge',
         instructionsPath: 'custom-prompt.md',
         plugins: {
           configFile: '.claude/plugins.json',
@@ -375,7 +375,7 @@ Here's the answer:
       expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('should warn for low confidence', () => {
+    it('should not warn for low confidence (trust the model)', () => {
       const response: any = {
         protocolVersion: '0.1.0',
         query: 'Test',
@@ -393,7 +393,10 @@ Here's the answer:
       };
 
       const result = adapter.validate(response, navigator.knowledgeBasePath);
-      expect(result.warnings.length).toBeGreaterThan(0);
+      // New validation philosophy: only validate objective facts (source existence)
+      // Trust the model for everything else, including confidence assessment
+      expect(result.valid).toBe(true);
+      expect(result.warnings.length).toBe(0);
     });
   });
 });

@@ -4,9 +4,6 @@ import * as path from 'path';
 import * as os from 'os';
 import {
   checkSourcesExist,
-  detectHallucinations,
-  validateConfidence,
-  validateContextSize,
   validateResponse,
   validateSource,
 } from '../src/validation/index.js';
@@ -31,8 +28,7 @@ describe('Validation Utilities', () => {
 
     testConfig = createNavigatorConfig({
       name: 'test-navigator',
-      knowledgeBase: tempDir,
-      confidenceThreshold: 0.7,
+      knowledgeBasePath: tempDir,
     });
   });
 
@@ -86,7 +82,7 @@ describe('Validation Utilities', () => {
     });
   });
 
-  describe('detectHallucinations', () => {
+  describe.skip('detectHallucinations - DEPRECATED (removed in minimal validation refactor)', () => {
     it('should pass for clean response', () => {
       const response = createNavigatorResponse({
         answer: 'The configuration is in doc1.md',
@@ -210,7 +206,7 @@ describe('Validation Utilities', () => {
     });
   });
 
-  describe('validateConfidence', () => {
+  describe.skip('validateConfidence - DEPRECATED (removed in minimal validation refactor)', () => {
     it('should pass when confidence is justified', () => {
       const response = createNavigatorResponse({
         answer: 'Test answer',
@@ -317,7 +313,7 @@ describe('Validation Utilities', () => {
     });
   });
 
-  describe('validateContextSize', () => {
+  describe.skip('validateContextSize - DEPRECATED (removed in minimal validation refactor)', () => {
     it('should return deprecation warning', () => {
       const result = validateContextSize();
       expect(result.valid).toBe(true);
@@ -391,16 +387,17 @@ describe('Validation Utilities', () => {
       expect(result.valid).toBe(false);
     });
 
-    it('should warn about short relevance description', () => {
+    it('should not warn about short relevance (minimal validation)', () => {
       const source = createSource({
         file: 'doc1.md',
         section: 'Test Section',
-        relevance: 'Short', // Too short
+        relevance: 'Short', // Short but acceptable under minimal validation
       });
 
       const result = validateSource(source, tempDir);
-      expect(result.warnings.length).toBeGreaterThan(0);
-      expect(result.warnings[0]).toContain('very short');
+      // Minimal validation only checks file existence, not content quality
+      expect(result.valid).toBe(true);
+      expect(result.warnings.length).toBe(0);
     });
   });
 });

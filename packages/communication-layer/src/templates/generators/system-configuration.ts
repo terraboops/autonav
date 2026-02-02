@@ -1,6 +1,16 @@
-# System Configuration: {{PACK_NAME}}
+/**
+ * Generate system-configuration.md for knowledge pack based navigators
+ */
 
-This is the system configuration file from the {{PACK_NAME}} knowledge pack.
+import type { NavigatorVars } from "./types.js";
+
+export function generateSystemConfiguration(vars: NavigatorVars): string {
+  const packName = vars.packName || "Unknown Pack";
+  const packVersion = vars.packVersion || "0.0.0";
+
+  return `# System Configuration: ${packName}
+
+This is the system configuration file from the ${packName} knowledge pack (v${packVersion}).
 
 ## Domain Description
 
@@ -20,7 +30,7 @@ This navigator does NOT have knowledge about:
 ## Response Guidelines
 
 When answering questions:
-1. Always cite specific files from the `knowledge/` directory
+1. Always cite specific files from the \`knowledge/\` directory
 2. Use exact headings and section references
 3. If information isn't in the knowledge base, say so explicitly
 4. Provide confidence scores based on how well-grounded your answer is
@@ -35,15 +45,15 @@ For every answer, include:
 
 ## Response Structure
 
-You MUST use the `submit_answer` tool to submit your responses. Do NOT output plain text or JSON.
+You MUST use the \`submit_answer\` tool to submit your responses. Do NOT output plain text or JSON.
 
 The submit_answer tool accepts:
-- `answer`: Your detailed answer with inline citations
-- `sources`: Array with file, section, and relevance for each source
-- `confidence`: Score from 0.0 to 1.0
+- \`answer\`: Your detailed answer with inline citations
+- \`sources\`: Array with file, section, and relevance for each source
+- \`confidence\`: Score from 0.0 to 1.0
 
 Example:
-```typescript
+\`\`\`typescript
 submit_answer({
   answer: "detailed answer with inline citations",
   sources: [
@@ -55,7 +65,7 @@ submit_answer({
   ],
   confidence: 0.95
 })
-```
+\`\`\`
 
 ## Confidence Scoring
 
@@ -68,3 +78,5 @@ submit_answer({
 ## Special Instructions
 
 [Add any pack-specific instructions, terminology definitions, or special handling here]
+`;
+}

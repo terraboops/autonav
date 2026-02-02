@@ -13,6 +13,8 @@ npm install @autonav/communication-layer
 - **Schemas** - Zod schemas for responses, configs, queries
 - **Validation** - Source checking, hallucination detection
 - **Errors** - Typed errors for common failure cases
+- **Templates** - CLAUDE.md templates and partials for navigator initialization
+- **Skills** - Built-in skills (mend, commit, etc.) for navigator capabilities
 
 This is protocol-only. No execution logic. For that, see `@autonav/core`.
 
@@ -23,6 +25,8 @@ import {
   NavigatorResponseSchema,
   validateResponse,
   createAnswerQuestionPrompt,
+  generateClaudeMd,
+  getAllSkills,
 } from "@autonav/communication-layer";
 
 // Validate a response
@@ -33,6 +37,16 @@ if (!result.valid) {
 
 // Parse a response
 const parsed = NavigatorResponseSchema.parse(json);
+
+// Generate a CLAUDE.md template
+const claudeMd = generateClaudeMd({
+  name: "my-navigator",
+  domain: "Platform Engineering",
+  knowledgeBase: "./knowledge",
+});
+
+// Get available skills
+const skills = getAllSkills();
 ```
 
 ## Key schemas

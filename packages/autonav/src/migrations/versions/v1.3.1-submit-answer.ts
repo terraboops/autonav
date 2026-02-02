@@ -145,30 +145,16 @@ async function apply(navPath: string, confirm: ConfirmFn): Promise<MigrationResu
   const filesModified: string[] = [];
 
   try {
-    const content = fs.readFileSync(claudeMdPath, "utf-8");
+    let content = fs.readFileSync(claudeMdPath, "utf-8");
 
-    // Find the Response Format section and all related sections
-    // Extract from "## Response Format" to "## Remember" (new template) or end of file (old templates)
-    let section = extractSection(content, "## Response Format", "## Remember");
-
-    // If there's no "## Remember" section (old navigator), extract everything from Response Format onward
-    if (!section) {
-      section = extractSection(content, "## Response Format");
-    }
-
-    if (!section) {
-      return {
-        success: false,
-        message: "Could not find '## Response Format' section in CLAUDE.md",
-        filesModified,
-        errors: ["Missing '## Response Format' section"],
-      };
-    }
+    // Count how many submit_answer references exist
+    const submitAnswerMatches = content.match(/submit_answer/g);
+    const refCount = submitAnswerMatches ? submitAnswerMatches.length : 0;
 
     // Ask for confirmation
     const confirmed = await confirm(
-      "Update Response Format section in CLAUDE.md",
-      `This will remove submit_answer tool instructions from CLAUDE.md.\n\nThe submit_answer tool only exists when running via 'autonav query' and should not be mentioned in CLAUDE.md (which is read by all Claude Code sessions).\n\nOld section (${section.content.split('\n').length} lines) will be replaced with general response format guidelines.`
+      "Remove all submit_answer references from CLAUDE.md",
+      `This will remove all submit_answer tool instructions from CLAUDE.md (${refCount} reference${refCount === 1 ? '' : 's'} found).\n\nThe submit_answer tool only exists when running via 'autonav query' and should not be mentioned in CLAUDE.md (which is read by all Claude Code sessions).\n\nChanges:\n1. Replace Response Format section with general grounding guidelines\n2. Remove any remaining submit_answer mentions throughout the file`
     );
 
     if (!confirmed) {
@@ -179,14 +165,32 @@ async function apply(navPath: string, confirm: ConfirmFn): Promise<MigrationResu
       };
     }
 
-    // Replace the section
-    const newContent =
-      content.substring(0, section.startPos) +
-      NEW_RESPONSE_FORMAT_SECTION +
-      content.substring(section.endPos);
+    // Step 1: Replace the Response Format section (main change)
+    let section = extractSection(content, "## Response Format", "## Remember");
+    if (!section) {
+      section = extractSection(content, "## Response Format");
+    }
+
+    if (section) {
+      content =
+        content.substring(0, section.startPos) +
+        NEW_RESPONSE_FORMAT_SECTION +
+        content.substring(section.endPos);
+    }
+
+    // Step 2: Remove any remaining submit_answer references (global cleanup)
+    // Common patterns to remove:
+    content = content.replace(/\*\*CRITICAL:\s*Always use the submit_answer tool[^*]*\*\*/gi, '');
+    content = content.replace(/submit_answer\([^)]*\)/g, '');
+    content = content.replace(/- Use `submit_answer`[^\n]*/gi, '');
+    content = content.replace(/Use the `submit_answer`[^\n]*/gi, '');
+    content = content.replace(/\s*submit_answer\s*/g, ' ');
+
+    // Clean up any double blank lines created by removals
+    content = content.replace(/\n\n\n+/g, '\n\n');
 
     // Write the updated content
-    fs.writeFileSync(claudeMdPath, newContent, "utf-8");
+    fs.writeFileSync(claudeMdPath, content, "utf-8");
     filesModified.push("CLAUDE.md");
 
     // Update config.json version if it exists
@@ -200,7 +204,7 @@ async function apply(navPath: string, confirm: ConfirmFn): Promise<MigrationResu
 
     return {
       success: true,
-      message: `Successfully updated to v${MIGRATION_VERSION}`,
+      message: `Successfully updated to v${MIGRATION_VERSION} - Removed all ${refCount} submit_answer reference${refCount === 1 ? '' : 's'}`,
       filesModified,
     };
   } catch (error) {

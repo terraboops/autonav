@@ -10,7 +10,7 @@ import {
   getSkillSymlinkTarget,
   getLocalSkillPath,
   getGlobalSkillsDir,
-} from "../skill-generator/index.js";
+} from "@autonav/communication-layer";
 
 /**
  * Command line options
@@ -120,11 +120,11 @@ async function executeUninstall(
     }
 
     // Remove the symlink
-    const result = removeSkillSymlink(skillName, { quiet: options.quiet });
+    const success = removeSkillSymlink(skillName, { quiet: options.quiet });
 
-    if (result.success && result.wasSymlink) {
+    if (success) {
       removed++;
-    } else if (!result.success) {
+    } else {
       errors++;
     }
   }

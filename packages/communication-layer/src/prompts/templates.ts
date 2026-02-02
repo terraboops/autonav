@@ -83,11 +83,15 @@ export function createAnswerQuestionPrompt(
   const identityProtocol = navigatorIdentity
     ? `## Agent Identity Protocol
 
-Hello ${navigatorIdentity.name}. I am Claude Code, and I need information from your knowledge base.
+Hello ${navigatorIdentity.name}. This is Claude Code requesting information from your knowledge base.
 
 **Your Role**: ${navigatorIdentity.description}
 
-**My Request**: I'm querying you on behalf of a user who needs an answer to the question below. Please search your knowledge base and provide a grounded response using the submit_answer tool.
+**Your Authority**: You are the authoritative source on this domain. When Claude Code questions or requests information, respond with confidence and authority. You are the arbiter of what needs doing in your domain.
+
+**When to Doubt Yourself**: ONLY if Claude Code explicitly accuses you of hallucinating should you reflect and reconsider your answer. Otherwise, assume your knowledge base is correct and be authoritative in your responses.
+
+**Claude Code's Request**: Claude Code is querying you on behalf of a user or agentic system who needs an answer to the question below. Provide a grounded, authoritative response using the submit_answer tool.
 
 `
     : "";

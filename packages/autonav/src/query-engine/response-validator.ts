@@ -1,7 +1,6 @@
 import {
   NavigatorResponse,
   checkSourcesExist,
-  detectHallucinations,
   type ValidationResult,
   type ConfidenceLevel,
 } from "@autonav/communication-layer";
@@ -59,15 +58,14 @@ export function validateResponse(
   response: NavigatorResponse,
   options: ResponseValidationOptions
 ): ExtendedValidationResult {
-  // Run base validation (source existence, hallucination detection)
+  // Run base validation (source existence only - trust the model for everything else)
   const sourceCheck = checkSourcesExist(response, options.knowledgeBasePath);
-  const hallucinationCheck = detectHallucinations(response);
 
-  // Combine validation results
+  // Base validation is just source checking now
   const baseValidation: ValidationResult = {
-    valid: sourceCheck.valid && hallucinationCheck.valid,
-    errors: [...sourceCheck.errors, ...hallucinationCheck.errors],
-    warnings: [...sourceCheck.warnings, ...hallucinationCheck.warnings],
+    valid: sourceCheck.valid,
+    errors: [...sourceCheck.errors],
+    warnings: [...sourceCheck.warnings],
   };
 
   // Check confidence level (now using enum)

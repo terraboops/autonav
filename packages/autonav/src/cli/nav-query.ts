@@ -15,6 +15,7 @@ import {
   type OutputFormat,
   type ConfidenceLevel,
 } from "../query-engine/index.js";
+import { HallucinationError } from "@autonav/communication-layer";
 
 /**
  * Command line options
@@ -202,10 +203,19 @@ async function executeQuery(
     // Check if validation failed
     if (!validation.valid) {
       if (format !== "json") {
-        console.error(chalk.red.bold("Validation Failed:"));
+        console.error(chalk.red.bold("❌ Validation Failed:"));
         console.error("");
         for (const error of validation.errors) {
           console.error(formatErrorMessage(error.message));
+
+          // Show detected patterns for hallucination errors
+          if (error instanceof HallucinationError && error.detectedPatterns.length > 0) {
+            console.error("");
+            console.error(chalk.yellow("  Detected hallucination patterns:"));
+            for (const pattern of error.detectedPatterns) {
+              console.error(chalk.dim(`    • ${pattern}`));
+            }
+          }
         }
         console.error("");
 

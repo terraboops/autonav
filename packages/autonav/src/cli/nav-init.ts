@@ -4,7 +4,16 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import * as readline from "node:readline";
-import { loadTemplates, replaceTemplateVars } from "../templates/index.js";
+import {
+  generateClaudeMd,
+  generateConfigJson,
+  generatePluginsJson,
+  generateReadme,
+  generateGitignore,
+  generateSystemConfiguration,
+  createAndSymlinkSkill,
+  type NavigatorVars,
+} from "@autonav/communication-layer";
 import { validateNavigatorName } from "../validation/index.js";
 import { installPack } from "../pack-installer/index.js";
 import {
@@ -26,7 +35,6 @@ import {
   checkFileConflicts,
   type ExistingClaudeMdAction,
 } from "../confirmation/index.js";
-import { createAndSymlinkSkill } from "../skill-generator/index.js";
 
 /**
  * autonav init CLI command
@@ -522,9 +530,6 @@ async function handleImportMode(
       }
     }
 
-    // Load templates
-    const templates = loadTemplates();
-
     // Prepare template variables
     const now = new Date().toISOString();
     const knowledgePathsList = finalAnalysis.suggestedKnowledgePaths
@@ -548,16 +553,15 @@ async function handleImportMode(
       ? `\nFocus on these paths for documentation:\n${knowledgePathsList}\n\n`
       : "\n";
 
-    const vars: Record<string, string> = {
-      NAVIGATOR_NAME: navigatorName,
-      NAVIGATOR_DESCRIPTION: finalAnalysis.purpose,
-      NAVIGATOR_CONTEXT: navigatorContext,
-      KNOWLEDGE_BASE_PATH: options.inPlace ? "." : sourcePath,
-      KNOWLEDGE_PATHS_SECTION: knowledgePathsSection,
-      DOMAIN_SCOPE: finalAnalysis.scope,
-      DATE: now.split("T")[0] || now.substring(0, 10),
-      CREATED_AT: now,
-      UPDATED_AT: now,
+    const vars: NavigatorVars = {
+      navigatorName,
+      description: finalAnalysis.purpose,
+      navigatorContext,
+      knowledgeBasePath: options.inPlace ? "." : sourcePath,
+      knowledgePathsSection,
+      domainScope: finalAnalysis.scope,
+      createdAt: now,
+      updatedAt: now,
     };
 
     // Write CLAUDE.md based on user's choice for existing files
@@ -605,7 +609,7 @@ See \`config.json\` for navigator configuration.
       // Overwrite with full autonav template
       fs.writeFileSync(
         claudeMdPath,
-        replaceTemplateVars(templates.claudeMd, vars)
+        generateClaudeMd(vars)
       );
       if (!options.quiet) {
         console.log("✓ Created CLAUDE.md");
@@ -640,7 +644,7 @@ See \`config.json\` for navigator configuration.
     // Write plugins.json
     const pluginsPath = path.join(navigatorPath, ".claude", "plugins.json");
     if (!fs.existsSync(pluginsPath)) {
-      fs.writeFileSync(pluginsPath, templates.pluginsJson);
+      fs.writeFileSync(pluginsPath, generatePluginsJson());
       if (!options.quiet) {
         console.log("✓ Configured plugins.json");
       }
@@ -650,13 +654,13 @@ See \`config.json\` for navigator configuration.
     if (!options.inPlace) {
       fs.writeFileSync(
         path.join(navigatorPath, ".gitignore"),
-        templates.gitignore
+        generateGitignore()
       );
 
       // Write README.md
       fs.writeFileSync(
         path.join(navigatorPath, "README.md"),
-        replaceTemplateVars(templates.readme, vars)
+        generateReadme(vars)
       );
     }
 
@@ -796,9 +800,6 @@ async function main() {
     if (!options.quiet) {
       console.log("✓ Created directory structure");
     }
-
-    // Load templates
-    const templates = loadTemplates();
 
     // Handle knowledge pack installation FIRST (needed for interview context)
     let packMetadata: { name: string; version: string } | null = null;
@@ -957,27 +958,24 @@ async function main() {
     const now = new Date().toISOString();
     const description = interviewConfig?.purpose || `Knowledge navigator for ${titleCase(navigatorName)}`;
     const scope = interviewConfig?.scope || "[Define what this navigator knows about and what it doesn't]";
-    const vars: Record<string, string> = {
-      NAVIGATOR_NAME: navigatorName,
-      NAVIGATOR_DESCRIPTION: description,
-      NAVIGATOR_CONTEXT: "", // Empty for non-import navigators
-      KNOWLEDGE_BASE_PATH: "./knowledge",
-      KNOWLEDGE_PATHS_SECTION: "\n",
-      DOMAIN_SCOPE: scope,
-      DATE: now.split("T")[0] || now.substring(0, 10), // YYYY-MM-DD
-      CREATED_AT: now,
-      UPDATED_AT: now,
-      PACK_NAME: packMetadata?.name || "",
-      PACK_VERSION: packMetadata?.version || "",
+    const vars: NavigatorVars = {
+      navigatorName,
+      description,
+      version: "0.1.0", // Start new navigators at 0.1.0 for backward compatibility
+      navigatorContext: "", // Empty for non-import navigators
+      knowledgeBasePath: "./knowledge",
+      knowledgePathsSection: "\n",
+      domainScope: scope,
+      createdAt: now,
+      updatedAt: now,
+      packName: packMetadata?.name,
+      packVersion: packMetadata?.version,
     };
 
-    // Write config.json (use pack template if pack was installed)
-    const configTemplate = packMetadata
-      ? templates.configJsonPack
-      : templates.configJson;
+    // Write config.json
     fs.writeFileSync(
       path.join(navigatorPath, "config.json"),
-      replaceTemplateVars(configTemplate, vars)
+      generateConfigJson(vars)
     );
     if (!options.quiet) {
       console.log("✓ Generated config.json");
@@ -989,12 +987,9 @@ async function main() {
     if (interviewConfig?.claudeMd) {
       // Use personalized CLAUDE.md from interview
       claudeMdContent = interviewConfig.claudeMd;
-    } else if (packMetadata) {
-      // Use pack template
-      claudeMdContent = replaceTemplateVars(templates.claudeMdPack, vars);
     } else {
-      // Use default template
-      claudeMdContent = replaceTemplateVars(templates.claudeMd, vars);
+      // Use default template (generator handles pack vs non-pack automatically)
+      claudeMdContent = generateClaudeMd(vars);
     }
     fs.writeFileSync(path.join(navigatorPath, "CLAUDE.md"), claudeMdContent);
     if (!options.quiet) {
@@ -1012,7 +1007,7 @@ async function main() {
     ) {
       fs.writeFileSync(
         path.join(navigatorPath, "system-configuration.md"),
-        replaceTemplateVars(templates.systemConfiguration, vars)
+        generateSystemConfiguration(vars)
       );
       if (!options.quiet) {
         console.log("✓ Created system-configuration.md");
@@ -1022,14 +1017,14 @@ async function main() {
     // Write .claude/plugins.json (if not already created by pack)
     const pluginsPath = path.join(navigatorPath, ".claude", "plugins.json");
     if (!fs.existsSync(pluginsPath)) {
-      fs.writeFileSync(pluginsPath, templates.pluginsJson);
+      fs.writeFileSync(pluginsPath, generatePluginsJson());
     }
     if (!options.quiet) {
       console.log("✓ Configured plugins.json");
     }
 
     // Write .gitignore
-    fs.writeFileSync(path.join(navigatorPath, ".gitignore"), templates.gitignore);
+    fs.writeFileSync(path.join(navigatorPath, ".gitignore"), generateGitignore());
     if (!options.quiet) {
       console.log("✓ Created .gitignore");
     }
@@ -1037,7 +1032,7 @@ async function main() {
     // Write README.md
     fs.writeFileSync(
       path.join(navigatorPath, "README.md"),
-      replaceTemplateVars(templates.readme, vars)
+      generateReadme(vars)
     );
 
     // Create starter README in knowledge/ if no pack was installed
