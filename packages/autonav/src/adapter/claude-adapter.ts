@@ -235,12 +235,12 @@ export class ClaudeAdapter {
     // Validate knowledge base exists
     const knowledgeBasePath = path.join(
       navigatorPath,
-      config.knowledgeBase
+      config.knowledgeBasePath
     );
 
     if (!fs.existsSync(knowledgeBasePath)) {
       throw new Error(
-        `Knowledge base directory not found: ${config.knowledgeBase}\n` +
+        `Knowledge base directory not found: ${config.knowledgeBasePath}\n` +
         `Expected path: ${knowledgeBasePath}\n` +
         `Create the directory and add documentation files for the navigator to search.`
       );
@@ -250,7 +250,7 @@ export class ClaudeAdapter {
     const kbStats = fs.statSync(knowledgeBasePath);
     if (!kbStats.isDirectory()) {
       throw new Error(
-        `Knowledge base path is not a directory: ${config.knowledgeBase}\n` +
+        `Knowledge base path is not a directory: ${config.knowledgeBasePath}\n` +
         `The knowledge base must be a directory containing documentation files.`
       );
     }
