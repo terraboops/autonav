@@ -9,7 +9,7 @@ import {
   getLocalSkillPath,
   symlinkSkillToGlobal,
   type SymlinkResult,
-} from "../skill-generator/index.js";
+} from "@autonav/communication-layer";
 
 /**
  * Command line options
@@ -98,7 +98,7 @@ async function executeInstall(
 
     results.push(result);
 
-    if (!result.success && result.action !== "already_linked") {
+    if (!result.created && result.existed && !options.force) {
       hasErrors = true;
     }
   }
@@ -107,22 +107,14 @@ async function executeInstall(
   if (!options.quiet) {
     console.log("");
 
-    const created = results.filter((r) => r.action === "created").length;
-    const alreadyLinked = results.filter((r) => r.action === "already_linked").length;
-    const conflicts = results.filter((r) => r.action === "conflict").length;
-    const errors = results.filter((r) => r.action === "error").length;
+    const created = results.filter((r) => r.created).length;
+    const alreadyLinked = results.filter((r) => r.existed && !r.created).length;
 
     if (created > 0) {
       console.log(chalk.green(`  ${created} skill(s) installed`));
     }
     if (alreadyLinked > 0) {
       console.log(chalk.dim(`  ${alreadyLinked} skill(s) already linked`));
-    }
-    if (conflicts > 0) {
-      console.log(chalk.yellow(`  ${conflicts} conflict(s) - use --force to overwrite`));
-    }
-    if (errors > 0) {
-      console.log(chalk.red(`  ${errors} error(s)`));
     }
   }
 

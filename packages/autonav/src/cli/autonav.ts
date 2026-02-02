@@ -43,6 +43,7 @@ Commands:
   update <path>     Update a navigator's documentation
   chat <path>       Interactive conversation with a navigator
   migrate <path>    Migrate a navigator to latest version
+  mend <path>       Health check and repair for navigators
   install [path]    Symlink local skills to global location
   uninstall [path]  Remove global skill symlinks (preserves local)
 
@@ -58,6 +59,7 @@ Examples:
   autonav update ./my-navigator "I completed feature X. Please document this."
   autonav chat ./my-navigator
   autonav migrate ./my-navigator
+  autonav mend ./my-navigator --auto-fix
   autonav install ./my-navigator
   autonav uninstall ./my-navigator
 
@@ -67,6 +69,7 @@ For command-specific help:
   autonav update --help
   autonav chat --help
   autonav migrate --help
+  autonav mend --help
   autonav install --help
   autonav uninstall --help
 `);
@@ -108,6 +111,9 @@ function main() {
       break;
     case "migrate":
       scriptPath = path.join(__dirname, "nav-migrate.js");
+      break;
+    case "mend":
+      scriptPath = path.join(__dirname, "nav-mend.js");
       break;
     case "install":
       scriptPath = path.join(__dirname, "nav-install.js");

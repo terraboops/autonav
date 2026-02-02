@@ -1,8 +1,8 @@
 {
   "version": "0.1.0",
-  "name": "{{NAVIGATOR_NAME}}",
-  "description": "{{NAVIGATOR_DESCRIPTION}}",
-  "created": "{{CREATED_AT}}",
+  "name": "mahdi",
+  "description": "Knowledge navigator for Mahdi",
+  "created": "2026-02-01T14:52:45.157Z",
   "knowledgePack": null,
   "knowledgeBase": "./knowledge",
   "plugins": {

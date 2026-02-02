@@ -1,6 +1,6 @@
-# {{NAVIGATOR_NAME}}
+# mahdi
 
-{{NAVIGATOR_DESCRIPTION}}
+Knowledge navigator for Mahdi
 
 ## Setup
 
@@ -9,7 +9,7 @@ This navigator was created using `@autonav/core`.
 ### Directory Structure
 
 ```
-{{NAVIGATOR_NAME}}/
+mahdi/
 ├── config.json          # Navigator configuration
 ├── CLAUDE.md           # System prompt and grounding rules
 ├── knowledge/          # Add your documentation here
@@ -44,7 +44,7 @@ knowledge/
 The simplest way to use your navigator is with Claude Code directly:
 
 ```bash
-cd {{NAVIGATOR_NAME}}
+cd mahdi
 claude
 ```
 
@@ -65,7 +65,7 @@ npx @autonav/core query . "How do I deploy to production?"
 
 Or from the parent directory:
 ```bash
-npx @autonav/core query ./{{NAVIGATOR_NAME}} "Your question here"
+npx @autonav/core query ./mahdi "Your question here"
 ```
 
 ## Response Format
@@ -170,5 +170,5 @@ For issues with the navigator framework:
 
 ---
 
-**Created**: {{CREATED_AT}}
+**Created**: 2026-02-01T14:52:45.157Z
 **Protocol Version**: 1.0.0

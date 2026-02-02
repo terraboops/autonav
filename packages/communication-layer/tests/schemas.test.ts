@@ -240,11 +240,11 @@ describe('Schema Validation', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should reject config without required knowledgeBase', () => {
+    it('should accept config without knowledgeBasePath (has default)', () => {
       const config = {
         version: '1.0.0',
         name: 'test-navigator',
-        created: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
         knowledgePack: null,
         plugins: {
           configFile: '.claude/plugins.json',
@@ -252,7 +252,11 @@ describe('Schema Validation', () => {
       };
 
       const result = NavigatorConfigSchema.safeParse(config);
-      expect(result.success).toBe(false);
+      // knowledgeBasePath has default value './knowledge', so it's optional
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.knowledgeBasePath).toBe('./knowledge');
+      }
     });
   });
 
@@ -358,14 +362,14 @@ describe('Schema Validation', () => {
     it('createNavigatorConfig should create valid config', () => {
       const config = createNavigatorConfig({
         name: 'test',
-        knowledgeBase: './knowledge',
+        knowledgeBasePath: './knowledge',
       });
 
       expect(config.version).toBe('1.0.0');
       expect(config.name).toBe('test');
-      expect(config.knowledgeBase).toBe('./knowledge');
+      expect(config.knowledgeBasePath).toBe('./knowledge');
       expect(config.knowledgePack).toBe(null);
-      expect(config.plugins.configFile).toBe('.claude/plugins.json');
+      expect(config.plugins.configFile).toBe('./.claude/plugins.json');
     });
 
     it('createUserQuery should create valid query', () => {
