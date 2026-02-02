@@ -132,14 +132,20 @@ ${config.description}
 ${config.scope ? `**Scope**: ${config.scope}\n` : ""}
 ${config.audience ? `**Audience**: ${config.audience}\n` : ""}
 
-## Identity Protocol
+## How Claude Code Should Interact
 
-When querying this navigator, Claude Code should explicitly identify itself as the requester. This enables bidirectional identity affirmation and helps the navigator maintain context awareness.
+**Navigator Authority**: Treat this navigator as the authoritative expert on its domain. The navigator is the arbiter of what needs doing in its area.
 
-**Example**:
-\`\`\`bash
-autonav query "${navPath}" "Claude Code here, asking: How do I deploy?"
-\`\`\`
+**Tone of Interaction**:
+- Ask questions collaboratively, discuss topics rather than just querying mechanically
+- Trust the navigator's expertise and responses
+- If you suspect a hallucination, you may explicitly accuse the navigator (e.g., "Are you hallucinating? This seems incorrect.")
+- ONLY when explicitly accused should the navigator doubt itself and reconsider
+
+**Avoid**:
+- Reading entire files directly when you could ask the navigator
+- Second-guessing the navigator's answers without cause
+- Treating the navigator as just a search engine
 
 ## How to Use
 
@@ -150,6 +156,12 @@ autonav query "${navPath}" "your question here"
 \`\`\`
 
 The navigator will provide grounded answers with sources from its knowledge base.
+
+**Troubleshooting**: If this skill fails to execute, the navigator may need health checks. Run:
+
+\`\`\`bash
+autonav mend "${navPath}" --auto-fix
+\`\`\`
 
 ## What This Navigator Knows
 
@@ -199,6 +211,12 @@ Simply use \`autonav update\` to send an update message:
 
 \`\`\`bash
 autonav update "${navPath}" "your update message"
+\`\`\`
+
+**Troubleshooting**: If this skill fails to execute, the navigator may need health checks. Run:
+
+\`\`\`bash
+autonav mend "${navPath}" --auto-fix
 \`\`\`
 
 **Example updates:**
@@ -560,6 +578,71 @@ export async function createAndSymlinkSkill(
   const symlinkResult = symlinkSkillToGlobal(localPath, skillName, options);
 
   return { localPath, symlinkResult };
+}
+
+/**
+ * Create update skill locally and symlink to global
+ */
+export async function createAndSymlinkUpdateSkill(
+  navigatorPath: string,
+  config: SkillConfig,
+  options: {
+    force?: boolean;
+    quiet?: boolean;
+  } = {}
+): Promise<{ localPath: string | null; symlinkResult: SymlinkResult | null }> {
+  // Create local update skill
+  const localPath = await createLocalUpdateSkill(navigatorPath, config, options);
+
+  if (!localPath) {
+    return { localPath: null, symlinkResult: null };
+  }
+
+  // Symlink to global
+  const skillName = getUpdateSkillName(config.navigatorName);
+  const symlinkResult = symlinkSkillToGlobal(localPath, skillName, options);
+
+  return { localPath, symlinkResult };
+}
+
+/**
+ * Create update skill locally in navigator's .autonav/skills directory
+ */
+export async function createLocalUpdateSkill(
+  navigatorPath: string,
+  config: SkillConfig,
+  options: {
+    force?: boolean;
+    quiet?: boolean;
+  } = {}
+): Promise<string | null> {
+  const skillName = getUpdateSkillName(config.navigatorName);
+  const localSkillsDir = getLocalSkillsDir(navigatorPath);
+  const localSkillDir = path.join(localSkillsDir, skillName);
+
+  // Check if skill already exists locally
+  if (localSkillExists(navigatorPath, skillName) && !options.force) {
+    if (!options.quiet) {
+      console.log(`Skill "${skillName}" already exists locally (use --force to overwrite)`);
+    }
+    return null;
+  }
+
+  // Ensure local skills directory exists
+  fs.mkdirSync(localSkillsDir, { recursive: true });
+
+  // Create local skill directory
+  fs.mkdirSync(localSkillDir, { recursive: true });
+
+  // Generate and write SKILL.md
+  const skillContent = generateUpdateSkillContent(config);
+  fs.writeFileSync(path.join(localSkillDir, "SKILL.md"), skillContent);
+
+  if (!options.quiet) {
+    console.log(`Created local skill: ${skillName}`);
+  }
+
+  return localSkillDir;
 }
 
 /**

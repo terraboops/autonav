@@ -9,6 +9,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Migration, MigrationCheck, MigrationResult } from "./types.js";
 import { migration as v1_3_1_submitAnswer } from "./versions/v1.3.1-submit-answer.js";
+import { migration as v1_3_5_navigatorAuthority } from "./versions/v1.3.5-navigator-authority.js";
 import { migration as v1_4_0_agentIdentity } from "./versions/v1.4.0-agent-identity.js";
 
 /**
@@ -16,6 +17,7 @@ import { migration as v1_4_0_agentIdentity } from "./versions/v1.4.0-agent-ident
  */
 const MIGRATIONS: Migration[] = [
   v1_3_1_submitAnswer,
+  v1_3_5_navigatorAuthority,
   v1_4_0_agentIdentity,
 ];
 

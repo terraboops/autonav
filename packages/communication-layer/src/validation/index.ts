@@ -4,7 +4,6 @@ import type { NavigatorResponse } from '../schemas/response.js';
 import type { Source } from '../schemas/source.js';
 import {
   SourceNotFoundError,
-  HallucinationError,
   ValidationError,
 } from '../errors/index.js';
 
@@ -18,34 +17,10 @@ export interface ValidationResult {
 }
 
 /**
- * Strict hallucination patterns - Always indicate hallucination
- * These patterns reliably identify made-up or template content
- */
-const STRICT_HALLUCINATION_PATTERNS = [
-  { pattern: /lorem ipsum/i, description: 'Lorem ipsum placeholder text' },
-  { pattern: /todo:?\s*replace/i, description: 'TODO replace instruction' },
-  { pattern: /\$\{YOUR_[A-Z_]+\}/i, description: 'Shell variable placeholder (${YOUR_...})' },
-  { pattern: /\[INSERT[_ ]/i, description: 'Insert placeholder ([INSERT ...])' },
-  { pattern: /\[REPLACE[_ ]/i, description: 'Replace placeholder ([REPLACE ...])' },
-  { pattern: /\bplaceholder\b/i, description: 'Word "placeholder"' },
-  // Combination patterns - multiple placeholder indicators together
-  { pattern: /\/path\/to\/your[-_]?[a-z]/i, description: 'Generic path placeholder (/path/to/your-...)' },
-];
-
-/**
- * Warning patterns - Might be legitimate documentation
- * These generate warnings but don't fail validation
- * Allow when citing from documentation that contains these patterns
- */
-const WARNING_PATTERNS = [
-  { pattern: /\/tmp\/example/i, description: '/tmp/example path (common in docs)' },
-  { pattern: /<[a-z-]+-name>/i, description: 'Kubernetes-style placeholder like <deployment-name>' },
-  { pattern: /example\.com/i, description: 'example.com domain (common in docs)' },
-  { pattern: /<namespace>/i, description: 'Kubernetes <namespace> placeholder' },
-];
-
-/**
  * Check if cited sources actually exist in the knowledge base
+ *
+ * This is the ONLY validation we perform - it's objective and verifiable.
+ * Philosophy: Trust the model, validate only objective facts (file existence).
  *
  * @param response - The navigator response to validate
  * @param knowledgeBasePath - Path to the knowledge base directory
@@ -106,227 +81,23 @@ export function checkSourcesExist(
 }
 
 /**
- * Detect common hallucination patterns in response
+ * Validate a navigator response
  *
- * @param response - The navigator response to check
- * @returns Validation result
- */
-export function detectHallucinations(
-  response: NavigatorResponse
-): ValidationResult {
-  const errors: Error[] = [];
-  const warnings: string[] = [];
-  const detectedPatterns: string[] = [];
-
-  // Check answer text for strict hallucination patterns
-  for (const { pattern, description } of STRICT_HALLUCINATION_PATTERNS) {
-    const match = response.answer.match(pattern);
-    if (match) {
-      const snippet = extractSnippet(response.answer, match.index!, match[0].length);
-      detectedPatterns.push(`${description}: "${snippet}"`);
-    }
-  }
-
-  // Check answer text for warning patterns
-  for (const { pattern, description } of WARNING_PATTERNS) {
-    const match = response.answer.match(pattern);
-    if (match) {
-      const snippet = extractSnippet(response.answer, match.index!, match[0].length);
-      warnings.push(
-        `Potential placeholder detected - ${description}: "${snippet}". ` +
-        `Verify this is quoted from documentation, not a hallucination.`
-      );
-    }
-  }
-
-  // Check source relevance descriptions for suspicious patterns
-  for (const source of response.sources) {
-    for (const { pattern, description } of STRICT_HALLUCINATION_PATTERNS) {
-      const match = source.relevance.match(pattern);
-      if (match) {
-        const snippet = extractSnippet(source.relevance, match.index!, match[0].length);
-        detectedPatterns.push(`In source ${source.file} relevance - ${description}: "${snippet}"`);
-      }
-    }
-
-    // Check for suspiciously generic or short relevance explanations
-    if (source.relevance.length < 10) {
-      warnings.push(
-        `Very short relevance explanation for ${source.file} - might not provide enough justification`
-      );
-    }
-  }
-
-  // Check if answer has no citations when making specific claims (unless explicitly out of domain)
-  if (response.sources.length === 0 && !response.outOfDomain) {
-    const lowInfoAnswers = [
-      'i don\'t know',
-      'i don\'t have information',
-      'not sure',
-      'cannot find',
-      'no information available',
-    ];
-    const hasLowInfoAnswer = lowInfoAnswers.some(phrase =>
-      response.answer.toLowerCase().includes(phrase)
-    );
-
-    if (!hasLowInfoAnswer) {
-      errors.push(new HallucinationError(
-        'Response has no source citations but makes specific claims',
-        ['NO_SOURCES']
-      ));
-    }
-  }
-
-  // Check for generic "I don't know" answers with high confidence
-  const lowInfoAnswers = [
-    'i don\'t know',
-    'i don\'t have information',
-    'not sure',
-    'cannot find',
-  ];
-  const hasLowInfoAnswer = lowInfoAnswers.some(phrase =>
-    response.answer.toLowerCase().includes(phrase)
-  );
-
-  if (hasLowInfoAnswer && response.confidence === 'high') {
-    warnings.push(
-      'High confidence level with uncertain answer - confidence might be miscalibrated'
-    );
-  }
-
-  if (detectedPatterns.length > 0) {
-    errors.push(new HallucinationError(
-      'Detected potential hallucination patterns in response',
-      detectedPatterns
-    ));
-  }
-
-  return {
-    valid: errors.length === 0,
-    errors,
-    warnings,
-  };
-}
-
-/**
- * Extract a snippet around a match for debug output
- */
-function extractSnippet(text: string, matchIndex: number, matchLength: number): string {
-  const contextChars = 40;
-  const start = Math.max(0, matchIndex - contextChars);
-  const end = Math.min(text.length, matchIndex + matchLength + contextChars);
-
-  let snippet = text.substring(start, end);
-
-  // Add ellipsis if we truncated
-  if (start > 0) snippet = '...' + snippet;
-  if (end < text.length) snippet = snippet + '...';
-
-  // Collapse whitespace for readability
-  snippet = snippet.replace(/\s+/g, ' ').trim();
-
-  return snippet;
-}
-
-/**
- * Validate confidence level is justified
- *
- * @param response - The navigator response to validate
- * @returns Validation result
- */
-export function validateConfidence(
-  response: NavigatorResponse
-): ValidationResult {
-  const errors: Error[] = [];
-  const warnings: string[] = [];
-
-  // Check that confidenceReason is meaningful
-  if (response.confidenceReason.length < 10) {
-    warnings.push(
-      'Confidence reason is very short - should provide more justification'
-    );
-  }
-
-  // Heuristic: confidence should correlate with number of sources
-  const sourceCount = response.sources.length;
-
-  if (response.confidence === 'high' && sourceCount === 0) {
-    warnings.push(
-      'High confidence but no sources cited - confidence might be overestimated'
-    );
-  }
-
-  if (response.confidence === 'low' && sourceCount >= 3) {
-    warnings.push(
-      'Low confidence despite multiple sources - confidence might be underestimated'
-    );
-  }
-
-  // Warn on low confidence responses - they may need manual review
-  if (response.confidence === 'low') {
-    warnings.push(
-      `Low confidence response. Reason: ${response.confidenceReason}. Consider manual review.`
-    );
-  }
-
-  return {
-    valid: errors.length === 0,
-    errors,
-    warnings,
-  };
-}
-
-/**
- * Validate context size is within limits
- *
- * @deprecated Context size is no longer tracked in NavigatorResponse schema
- * This function is kept for backward compatibility but does nothing.
- *
- * @returns Validation result with deprecation warning
- */
-export function validateContextSize(): ValidationResult {
-  const errors: Error[] = [];
-  const warnings: string[] = [];
-
-  // This function is deprecated as contextSize is no longer in the schema
-  // Keeping for backward compatibility but it's a no-op
-  warnings.push(
-    'validateContextSize is deprecated - context size tracking removed from schema'
-  );
-
-  return {
-    valid: errors.length === 0,
-    errors,
-    warnings,
-  };
-}
-
-/**
- * Run all validations on a response
+ * Minimal validation philosophy:
+ * - Only check objective facts (file existence)
+ * - Trust the model for everything else
+ * - Better to allow a hallucination than break user flow
  *
  * @param response - The navigator response to validate
  * @param knowledgeBasePath - Path to knowledge base directory
- * @returns Combined validation result
+ * @returns Validation result
  */
 export function validateResponse(
   response: NavigatorResponse,
   knowledgeBasePath: string
 ): ValidationResult {
-  const results = [
-    checkSourcesExist(response, knowledgeBasePath),
-    detectHallucinations(response),
-    validateConfidence(response),
-  ];
-
-  const allErrors = results.flatMap(r => r.errors);
-  const allWarnings = results.flatMap(r => r.warnings);
-
-  return {
-    valid: allErrors.length === 0,
-    errors: allErrors,
-    warnings: allWarnings,
-  };
+  // Only validate that cited sources exist
+  return checkSourcesExist(response, knowledgeBasePath);
 }
 
 /**
@@ -360,20 +131,6 @@ export function validateSource(
       knowledgeBasePath,
       fullPath,
     }));
-  }
-
-  // Check for hallucination patterns in relevance description
-  for (const { pattern, description } of STRICT_HALLUCINATION_PATTERNS) {
-    const match = source.relevance.match(pattern);
-    if (match) {
-      const snippet = extractSnippet(source.relevance, match.index!, match[0].length);
-      warnings.push(`Potential hallucination detected - ${description}: "${snippet}"`);
-    }
-  }
-
-  // Check that relevance description is meaningful
-  if (source.relevance.length < 10) {
-    warnings.push('Relevance description is very short - should provide more detail');
   }
 
   return {

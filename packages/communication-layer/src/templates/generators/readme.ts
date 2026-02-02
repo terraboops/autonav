@@ -5,9 +5,9 @@
 import type { NavigatorVars } from "./types.js";
 
 export function generateReadme(vars: NavigatorVars): string {
-  const { name, description = "A knowledge navigator" } = vars;
+  const { navigatorName, description = "A knowledge navigator" } = vars;
 
-  return `# ${name}
+  return `# ${navigatorName}
 
 ${description}
 
@@ -23,13 +23,13 @@ ${description}
 Query this navigator using the Autonav CLI:
 
 \`\`\`bash
-autonav query ${name} "your question here"
+autonav query ${navigatorName} "your question here"
 \`\`\`
 
 Or start an interactive chat session:
 
 \`\`\`bash
-autonav chat ${name}
+autonav chat ${navigatorName}
 \`\`\`
 
 ## Adding Knowledge

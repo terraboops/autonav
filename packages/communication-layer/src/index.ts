@@ -137,6 +137,7 @@ export {
   generatePluginsJson,
   generateReadme,
   generateGitignore,
+  generateSystemConfiguration,
   type NavigatorVars,
 } from './templates/generators/index.js';
 
