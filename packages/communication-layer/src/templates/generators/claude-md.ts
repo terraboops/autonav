@@ -11,17 +11,25 @@ import {
 import type { NavigatorVars } from "./types.js";
 
 export function generateClaudeMd(vars: NavigatorVars): string {
-  const { name, description = "A knowledge navigator", version = "1.0.0" } = vars;
+  const {
+    navigatorName,
+    description = "A knowledge navigator",
+    version = "1.0.0",
+    navigatorContext = "",
+    packName,
+  } = vars;
+
+  const packSection = packName ? `\n\n**Knowledge Pack**: ${packName}` : "";
 
   return `---
 version: ${version}
-name: ${name}
+name: ${navigatorName}
 description: ${description}
 ---
 
-# ${name}
+# ${navigatorName}
 
-You are ${name}, ${description}.
+You are ${navigatorName}, ${description}.${packSection}${navigatorContext ? `\n${navigatorContext}` : ""}
 
 ## Your Role
 

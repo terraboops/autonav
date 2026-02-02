@@ -11,3 +11,4 @@ export { generateConfigJson } from "./config-json.js";
 export { generatePluginsJson } from "./plugins-json.js";
 export { generateReadme } from "./readme.js";
 export { generateGitignore } from "./gitignore.js";
+export { generateSystemConfiguration } from "./system-configuration.js";

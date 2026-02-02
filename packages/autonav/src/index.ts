@@ -59,3 +59,12 @@ export {
 
 // Export query engine
 export * from "./query-engine/index.js";
+
+// Export mend (health check and repair)
+export {
+  checkNavigatorHealth,
+  autoFixNavigator,
+  mendNavigator,
+  type MendCheckResult,
+  type MendResult,
+} from "./mend/index.js";

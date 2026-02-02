@@ -542,30 +542,9 @@ export class ClaudeAdapter {
         navigatorResponse = this.parseResponse(finalText, question);
       }
 
-      // Validate the response
-      const validation = this.validate(
-        navigatorResponse,
-        navigator.knowledgeBasePath
-      );
-
-      // Log warnings but don't throw
-      if (validation.warnings.length > 0) {
-        console.warn("⚠️  Validation warnings:");
-        for (const warning of validation.warnings) {
-          console.warn(`  - ${warning}`);
-        }
-      }
-
-      // Throw on errors
-      if (!validation.valid) {
-        console.error("❌ Validation failed:");
-        for (const error of validation.errors) {
-          console.error(`  - ${error.message}`);
-        }
-        throw new Error(
-          "Response validation failed. See errors above for details."
-        );
-      }
+      // NOTE: Validation removed from adapter - happens in CLI/query-engine layer
+      // Adapters should be thin wrappers that just return responses
+      // The calling code (nav-query.ts) handles validation and error display
 
       return navigatorResponse;
     } catch (error) {
