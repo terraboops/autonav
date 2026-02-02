@@ -961,6 +961,7 @@ async function main() {
     const vars: NavigatorVars = {
       navigatorName,
       description,
+      version: "0.1.0", // Start new navigators at 0.1.0 for backward compatibility
       navigatorContext: "", // Empty for non-import navigators
       knowledgeBasePath: "./knowledge",
       knowledgePathsSection: "\n",

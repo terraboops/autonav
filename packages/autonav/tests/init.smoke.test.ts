@@ -48,7 +48,7 @@ describe('autonav init smoke tests', () => {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
       expect(config.name).toBe(navName);
       expect(config.version).toBe('0.1.0');
-      expect(config).toHaveProperty('created');
+      expect(config).toHaveProperty('createdAt');
       expect(config).toHaveProperty('plugins');
 
       // Verify plugins.json content
@@ -56,7 +56,7 @@ describe('autonav init smoke tests', () => {
       const plugins = JSON.parse(fs.readFileSync(pluginsPath, 'utf-8'));
       expect(plugins).toHaveProperty('slack');
       expect(plugins).toHaveProperty('github');
-      expect(plugins).toHaveProperty('file-watcher');
+      expect(plugins).toHaveProperty('fileWatcher');
 
       // Verify CLAUDE.md exists and has content
       const claudeMdPath = path.join(navPath, 'CLAUDE.md');
@@ -308,14 +308,14 @@ describe('autonav init smoke tests', () => {
       expect(config).toHaveProperty('version');
       expect(config).toHaveProperty('name', navName);
       expect(config).toHaveProperty('description');
-      expect(config).toHaveProperty('created');
+      expect(config).toHaveProperty('createdAt');
       expect(config).toHaveProperty('plugins');
 
       // Version format
       expect(config.version).toMatch(/^\d+\.\d+\.\d+$/);
 
       // Date format (ISO 8601)
-      expect(new Date(config.created).toISOString()).toBe(config.created);
+      expect(new Date(config.createdAt).toISOString()).toBe(config.createdAt);
     });
 
     test('plugins.json has valid JSON and expected structure', async () => {
@@ -330,7 +330,7 @@ describe('autonav init smoke tests', () => {
       // Expected plugin configs
       expect(plugins).toHaveProperty('slack');
       expect(plugins).toHaveProperty('github');
-      expect(plugins).toHaveProperty('file-watcher');
+      expect(plugins).toHaveProperty('fileWatcher');
 
       // Slack config structure
       expect(plugins.slack).toHaveProperty('enabled');
