@@ -12,6 +12,7 @@ import {
   generateGitignore,
   generateSystemConfiguration,
   createAndSymlinkSkill,
+  createAndSymlinkUpdateSkill,
   type NavigatorVars,
 } from "@autonav/communication-layer";
 import { validateNavigatorName } from "../validation/index.js";
@@ -664,8 +665,19 @@ See \`config.json\` for navigator configuration.
       );
     }
 
-    // Create local skill and symlink to global for inter-navigator communication
+    // Create local skills and symlink to global for inter-navigator communication
     await createAndSymlinkSkill(
+      navigatorPath,
+      {
+        navigatorName,
+        navigatorPath,
+        description: finalAnalysis.purpose,
+        scope: finalAnalysis.scope,
+        audience: finalAnalysis.audience,
+      },
+      { force: options.force, quiet: options.quiet }
+    );
+    await createAndSymlinkUpdateSkill(
       navigatorPath,
       {
         navigatorName,
@@ -1097,8 +1109,19 @@ This is your knowledge base directory. Add your documentation files here.
       console.log("✓ Created agent identity system");
     }
 
-    // Create local skill and symlink to global for inter-navigator communication
+    // Create local skills and symlink to global for inter-navigator communication
     await createAndSymlinkSkill(
+      navigatorPath,
+      {
+        navigatorName,
+        navigatorPath,
+        description,
+        scope: interviewConfig?.scope,
+        audience: interviewConfig?.audience,
+      },
+      { force: options.force, quiet: options.quiet }
+    );
+    await createAndSymlinkUpdateSkill(
       navigatorPath,
       {
         navigatorName,

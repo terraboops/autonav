@@ -11,6 +11,7 @@ import type { Migration, MigrationCheck, MigrationResult } from "./types.js";
 import { migration as v1_3_1_submitAnswer } from "./versions/v1.3.1-submit-answer.js";
 import { migration as v1_3_5_navigatorAuthority } from "./versions/v1.3.5-navigator-authority.js";
 import { migration as v1_4_0_agentIdentity } from "./versions/v1.4.0-agent-identity.js";
+import { migration as v1_4_1_updateSkill } from "./versions/v1.4.1-update-skill.js";
 import { migration as v1_5_0_rfc2119Skills } from "./versions/v1.5.0-rfc2119-skills.js";
 
 /**
@@ -20,6 +21,7 @@ const MIGRATIONS: Migration[] = [
   v1_3_1_submitAnswer,
   v1_3_5_navigatorAuthority,
   v1_4_0_agentIdentity,
+  v1_4_1_updateSkill,
   v1_5_0_rfc2119Skills,
 ];
 
