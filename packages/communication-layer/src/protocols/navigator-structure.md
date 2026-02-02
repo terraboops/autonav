@@ -85,7 +85,7 @@ Grounding rules and instructions for the navigator. Must include:
 6. **Out-of-domain detection**: How to recognize out-of-scope questions
 7. **Examples**: Good and bad responses
 
-See `templates/claude-md.template` for the canonical template.
+See `templates/generators/claude-md.ts` for the canonical template generator.
 
 ### knowledge/ (Required)
 
