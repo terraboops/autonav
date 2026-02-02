@@ -120,7 +120,7 @@ async function main() {
   }
 
   // Load config
-  let config: { name: string; knowledgeBase: string; instructionsPath?: string };
+  let config: { name: string; knowledgeBasePath: string; instructionsPath?: string };
   try {
     const configContent = fs.readFileSync(configPath, "utf-8");
     config = JSON.parse(configContent);
@@ -142,7 +142,7 @@ async function main() {
   const systemPrompt = fs.readFileSync(instructionsPath, "utf-8");
 
   // Resolve knowledge base path
-  const knowledgeBasePath = path.join(navigatorPath, config.knowledgeBase || "knowledge");
+  const knowledgeBasePath = path.join(navigatorPath, config.knowledgeBasePath || "knowledge");
 
   if (!fs.existsSync(knowledgeBasePath)) {
     console.error(`❌ Error: Knowledge base not found: ${knowledgeBasePath}`);

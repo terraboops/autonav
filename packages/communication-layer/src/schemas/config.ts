@@ -1,28 +1,5 @@
 import { z } from 'zod';
-
-/**
- * Knowledge Pack Metadata Schema
- *
- * Information about an installed knowledge pack
- */
-export const KnowledgePackMetadataSchema = z.object({
-  /**
-   * Name of the knowledge pack
-   */
-  name: z.string().describe('Knowledge pack name'),
-
-  /**
-   * Version of the knowledge pack
-   */
-  version: z.string().describe('Knowledge pack version'),
-
-  /**
-   * When this knowledge pack was installed
-   */
-  installedAt: z.string().describe('Installation timestamp'),
-});
-
-export type KnowledgePackMetadata = z.infer<typeof KnowledgePackMetadataSchema>;
+import { PROTOCOL_VERSION } from '../version.js';
 
 /**
  * Navigator Configuration Schema
@@ -35,7 +12,7 @@ export const NavigatorConfigSchema = z.object({
    * Configuration schema version
    * Follows semantic versioning
    */
-  version: z.string().describe('Config version'),
+  version: z.string().default('1.0.0').describe('Config version'),
 
   /**
    * Unique name for this navigator
@@ -49,53 +26,58 @@ export const NavigatorConfigSchema = z.object({
   description: z.string().optional().describe('Navigator description'),
 
   /**
-   * When this navigator was created
+   * Communication Layer protocol version this navigator is compatible with
+   * Uses npm-style semver range (e.g., "^0.1.0")
    */
-  created: z.string().describe('Creation timestamp'),
+  communicationLayerVersion: z.string().default(`^${PROTOCOL_VERSION}`).describe('Communication layer version'),
 
   /**
-   * Knowledge pack metadata if one is installed
-   * Null if using custom knowledge base
+   * SDK Adapter version required
+   * Uses npm-style semver range
    */
-  knowledgePack: KnowledgePackMetadataSchema.nullable().describe('Installed knowledge pack'),
+  sdkAdapterVersion: z.string().default('^1.0.0').describe('SDK adapter version'),
 
   /**
    * Path to the knowledge base directory
    * Relative to the navigator root directory
    */
-  knowledgeBase: z.string().describe('Knowledge base path'),
+  knowledgeBasePath: z.string().default('./knowledge').describe('Knowledge base path'),
 
   /**
    * Path to the instructions file (CLAUDE.md or custom prompt file)
    * Defaults to "CLAUDE.md" if not specified
    */
-  instructionsPath: z.string().optional(),
+  instructionsPath: z.string().default('CLAUDE.md').describe('Instructions file path'),
 
   /**
-   * Optional path to system configuration file
-   * Used for domain-specific instructions from knowledge packs
+   * When this navigator was created
    */
-  systemConfiguration: z.string().optional().describe('System configuration file path'),
+  createdAt: z.string().datetime().optional().describe('Creation timestamp'),
 
   /**
-   * Minimum confidence threshold for responses (0-1)
-   * Responses below this threshold may trigger warnings
+   * When this navigator was last updated
    */
-  confidenceThreshold: z.number().min(0).max(1).optional(),
+  updatedAt: z.string().datetime().optional().describe('Last update timestamp'),
 
   /**
-   * Plugin configuration settings
+   * Additional configuration options
+   * For future extensions without breaking changes
    */
-  plugins: z.object({
-    /**
-     * Path to the plugins configuration file
-     * Defaults to .claude/plugins.json
-     */
-    configFile: z.string().describe('Plugin config file path'),
-  }).describe('Plugin settings'),
+  metadata: z.record(z.unknown()).optional().describe('Additional metadata'),
 });
 
 export type NavigatorConfig = z.infer<typeof NavigatorConfigSchema>;
+
+/**
+ * Knowledge Pack Metadata Schema (deprecated - kept for backward compatibility)
+ */
+export const KnowledgePackMetadataSchema = z.object({
+  name: z.string().describe('Knowledge pack name'),
+  version: z.string().describe('Knowledge pack version'),
+  installedAt: z.string().describe('Installation timestamp'),
+});
+
+export type KnowledgePackMetadata = z.infer<typeof KnowledgePackMetadataSchema>;
 
 /**
  * Helper to create a navigator config
@@ -103,12 +85,9 @@ export type NavigatorConfig = z.infer<typeof NavigatorConfigSchema>;
 export function createNavigatorConfig(params: {
   name: string;
   description?: string;
-  knowledgeBase: string;
-  knowledgePack?: KnowledgePackMetadata | null;
+  knowledgeBasePath?: string;
   instructionsPath?: string;
-  systemConfiguration?: string;
-  confidenceThreshold?: number;
-  pluginConfigFile?: string;
+  metadata?: Record<string, unknown>;
 }): NavigatorConfig {
   const now = new Date().toISOString();
 
@@ -116,14 +95,12 @@ export function createNavigatorConfig(params: {
     version: '1.0.0',
     name: params.name,
     description: params.description,
-    created: now,
-    knowledgePack: params.knowledgePack ?? null,
-    knowledgeBase: params.knowledgeBase,
-    instructionsPath: params.instructionsPath,
-    systemConfiguration: params.systemConfiguration,
-    confidenceThreshold: params.confidenceThreshold,
-    plugins: {
-      configFile: params.pluginConfigFile ?? '.claude/plugins.json',
-    },
+    communicationLayerVersion: `^${PROTOCOL_VERSION}`,
+    sdkAdapterVersion: '^1.0.0',
+    knowledgeBasePath: params.knowledgeBasePath ?? './knowledge',
+    instructionsPath: params.instructionsPath ?? 'CLAUDE.md',
+    createdAt: now,
+    updatedAt: now,
+    metadata: params.metadata,
   });
 }
