@@ -64,6 +64,23 @@ export const NavigatorConfigSchema = z.object({
    * For future extensions without breaking changes
    */
   metadata: z.record(z.unknown()).optional().describe('Additional metadata'),
+
+  /**
+   * Knowledge pack metadata
+   * null if navigator was not created from a knowledge pack
+   */
+  knowledgePack: z.object({
+    name: z.string().describe('Knowledge pack name'),
+    version: z.string().describe('Knowledge pack version'),
+    installedAt: z.string().describe('Installation timestamp'),
+  }).nullable().optional().describe('Knowledge pack metadata'),
+
+  /**
+   * Plugin configuration
+   */
+  plugins: z.object({
+    configFile: z.string().describe('Path to plugins config file'),
+  }).optional().describe('Plugin configuration'),
 });
 
 export type NavigatorConfig = z.infer<typeof NavigatorConfigSchema>;
@@ -102,5 +119,9 @@ export function createNavigatorConfig(params: {
     createdAt: now,
     updatedAt: now,
     metadata: params.metadata,
+    knowledgePack: null,
+    plugins: {
+      configFile: './.claude/plugins.json',
+    },
   });
 }
