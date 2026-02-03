@@ -656,7 +656,8 @@ export async function runMementoLoop(
       }
 
       // Commit changes - nav will see this in git history on next iteration
-      const commitMessage = `[memento] Iteration ${state.iteration}: ${plan?.summary || "iteration"}`;
+      // Use plan summary directly - navigator should provide conventional commit style
+      const commitMessage = plan?.summary || `memento: iteration ${state.iteration}`;
       const commitHash = commitChanges(commitMessage, { cwd: codeDirectory, verbose });
 
       // Get diff stats from the commit
@@ -715,7 +716,7 @@ ${state.planHistory.map((h) => `- **${h.iteration}**: ${h.summary}`).join("\n")}
         prUrl = createPullRequest({
           cwd: codeDirectory,
           verbose,
-          title: `[memento] ${task.substring(0, 60)}`,
+          title: task.length > 70 ? `${task.substring(0, 67)}...` : task,
           body: prBody,
         });
 

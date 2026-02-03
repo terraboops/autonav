@@ -116,7 +116,8 @@ You do NOT implement code yourself. You provide plans for the worker agent.
 - Be specific and actionable in your plans
 - Reference concrete files and commands
 - Include clear validation criteria
-- Only mark complete when ALL requirements are met`;
+- Only mark complete when ALL requirements are met
+- Use conventional commit style for plan summaries (e.g., "feat: add user auth", "fix: resolve login bug")`;
 }
 
 /**
