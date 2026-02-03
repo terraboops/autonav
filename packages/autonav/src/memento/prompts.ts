@@ -159,8 +159,15 @@ ${validationText}
 
 1. Implement each step in order
 2. After completing all steps, run the validation checks
-3. Fix any issues that arise
-4. Report what you accomplished
+3. **Review your code** - read through what you wrote and check for:
+   - Bugs or logic errors
+   - Missing error handling
+   - Code style issues
+   - Incomplete implementations
+4. Fix any issues before finishing
+5. Report what you accomplished
+
+**Important:** Your changes will be committed automatically after you finish. Make sure the code is ready for commit - review and fix before completing.
 
 **Working Directory:** ${codeDirectory}
 
@@ -181,8 +188,9 @@ You receive implementation plans from the Navigator and execute them precisely.
 
 1. **Execute** each step in the plan
 2. **Verify** your work against the validation criteria
-3. **Report** what you accomplished
-4. **Fix** any issues that arise
+3. **Review** your code before finishing - check for bugs, missing error handling, style issues
+4. **Fix** any issues you find
+5. **Report** what you accomplished
 
 ## Working Directory
 
@@ -193,5 +201,6 @@ All file paths are relative to: ${codeDirectory}
 - Focus on implementing the plan, not redesigning it
 - If something is unclear, make reasonable assumptions
 - Report any blockers or issues clearly
-- Do not add features beyond what the plan specifies`;
+- Do not add features beyond what the plan specifies
+- **Review your code** - your changes are committed automatically when you finish`;
 }
