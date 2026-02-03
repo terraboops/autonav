@@ -17,6 +17,7 @@ import {
   createAndSymlinkUpdateSkill,
   type SkillConfig,
 } from "@autonav/communication-layer";
+import { reviewClaudeMd } from "./llm-review.js";
 
 export interface MendCheckResult {
   check: string;
@@ -102,6 +103,8 @@ export async function checkNavigatorHealth(navPath: string): Promise<MendResult>
 
   // 3. Check CLAUDE.md exists
   const claudeMdPath = path.join(navPath, "CLAUDE.md");
+  let claudeMdContent: string | null = null;
+
   if (!fs.existsSync(claudeMdPath)) {
     checks.push({
       check: "CLAUDE.md",
@@ -111,9 +114,9 @@ export async function checkNavigatorHealth(navPath: string): Promise<MendResult>
     });
   } else {
     // Check for required sections
-    const claudeMdContent = fs.readFileSync(claudeMdPath, "utf-8");
+    claudeMdContent = fs.readFileSync(claudeMdPath, "utf-8");
     const requiredSections = ["## Grounding Rules"];
-    const missingSections = requiredSections.filter(section => !claudeMdContent.includes(section));
+    const missingSections = requiredSections.filter(section => !claudeMdContent!.includes(section));
 
     if (missingSections.length > 0) {
       checks.push({
@@ -128,6 +131,43 @@ export async function checkNavigatorHealth(navPath: string): Promise<MendResult>
         check: "CLAUDE.md",
         status: "pass",
         message: "CLAUDE.md exists with required sections",
+        autoFixable: false,
+      });
+    }
+
+    // 3a. Check CLAUDE.md doesn't have submit_answer instructions
+    // (submit_answer is injected at query-time by createAnswerQuestionPrompt)
+    if (claudeMdContent.includes("submit_answer")) {
+      checks.push({
+        check: "submit_answer in CLAUDE.md",
+        status: "warning",
+        message: "CLAUDE.md contains submit_answer instructions",
+        details: "submit_answer is injected at query-time and should not be in CLAUDE.md. Run 'autonav migrate' to fix, or manually remove the references.",
+        autoFixable: false, // Migration v1.3.1 handles this
+      });
+    } else {
+      checks.push({
+        check: "submit_answer in CLAUDE.md",
+        status: "pass",
+        message: "CLAUDE.md correctly omits submit_answer (injected at query-time)",
+        autoFixable: false,
+      });
+    }
+
+    // 3b. Check CLAUDE.md has autonav mend instruction
+    if (!claudeMdContent.includes("autonav mend")) {
+      checks.push({
+        check: "autonav mend instruction",
+        status: "warning",
+        message: "CLAUDE.md missing 'autonav mend' instruction",
+        details: "Navigators should remind users to run mend after config changes. Consider regenerating CLAUDE.md or adding the instruction manually.",
+        autoFixable: false,
+      });
+    } else {
+      checks.push({
+        check: "autonav mend instruction",
+        status: "pass",
+        message: "CLAUDE.md includes mend instruction",
         autoFixable: false,
       });
     }
@@ -380,6 +420,56 @@ export async function autoFixNavigator(
 }
 
 /**
+ * Run LLM-powered quality review on CLAUDE.md
+ * Uses Claude Opus to check for contradictions, best practices, hallucination risks, etc.
+ */
+export async function reviewNavigatorQuality(navPath: string): Promise<MendCheckResult[]> {
+  const checks: MendCheckResult[] = [];
+  const claudeMdPath = path.join(navPath, "CLAUDE.md");
+
+  if (!fs.existsSync(claudeMdPath)) {
+    return checks; // Skip review if no CLAUDE.md
+  }
+
+  const content = fs.readFileSync(claudeMdPath, "utf-8");
+  const review = await reviewClaudeMd(content);
+
+  if (review.passed && review.issues.length === 0) {
+    checks.push({
+      check: "CLAUDE.md quality review",
+      status: "pass",
+      message: review.summary,
+      autoFixable: false,
+    });
+  } else {
+    // Add a check for each issue
+    for (const issue of review.issues) {
+      checks.push({
+        check: `CLAUDE.md: ${issue.category}`,
+        status: issue.severity === "error" ? "fail" : "warning",
+        message: issue.description,
+        details: issue.suggestion
+          ? `${issue.location ? `Location: ${issue.location}. ` : ""}Suggestion: ${issue.suggestion}`
+          : issue.location,
+        autoFixable: false,
+      });
+    }
+
+    // Add summary as info
+    if (review.summary) {
+      checks.push({
+        check: "CLAUDE.md quality summary",
+        status: review.passed ? "pass" : "warning",
+        message: review.summary,
+        autoFixable: false,
+      });
+    }
+  }
+
+  return checks;
+}
+
+/**
  * Run full mend operation: check health and auto-fix issues
  */
 export async function mendNavigator(
@@ -387,6 +477,7 @@ export async function mendNavigator(
   options: {
     autoFix?: boolean;
     quiet?: boolean;
+    review?: boolean;
   } = {}
 ): Promise<MendResult> {
   // Run health checks
@@ -405,6 +496,15 @@ export async function mendNavigator(
       result.healthy = recheckResult.healthy;
       result.checks = recheckResult.checks;
     }
+  }
+
+  // Run LLM quality review if requested
+  if (options.review) {
+    const reviewChecks = await reviewNavigatorQuality(navPath);
+    result.checks.push(...reviewChecks);
+
+    // Re-evaluate overall health (review errors can affect health)
+    result.healthy = !result.checks.some(c => c.status === "fail");
   }
 
   return result;

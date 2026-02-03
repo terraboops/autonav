@@ -13,8 +13,9 @@ program
   .version("1.0.0")
   .argument("<navigator>", "Path to the navigator directory")
   .option("--auto-fix", "Automatically fix issues when possible")
+  .option("--review", "Run LLM-powered quality review of CLAUDE.md (uses Claude Opus)")
   .option("--no-color", "Disable colored output")
-  .action(async (navigatorPath: string, options: { autoFix?: boolean; noColor?: boolean }) => {
+  .action(async (navigatorPath: string, options: { autoFix?: boolean; review?: boolean; noColor?: boolean }) => {
     if (options.noColor) {
       chalk.level = 0;
     }
@@ -33,9 +34,16 @@ program
       console.log("");
     }
 
+    // Show LLM review notice if enabled
+    if (options.review) {
+      console.log(chalk.cyan("🔍 LLM quality review enabled (uses Claude Opus)"));
+      console.log("");
+    }
+
     const result = await mendNavigator(navPath, {
       autoFix: false, // Always run check-only first
       quiet: false,
+      review: options.review,
     });
 
     // Display check results

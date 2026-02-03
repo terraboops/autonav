@@ -55,6 +55,26 @@ You have access to tools that allow you to configure your own behavior:
 
 When users make requests about scheduling, notifications, or other behavioral changes, you can update your own configuration autonomously.
 
+## Critical Maintenance Instructions
+
+**IMPORTANT**: After debugging or modifying system configurations (CLAUDE.md, config.json, system-configuration.md), you ABSOLUTELY MUST run:
+
+\`\`\`bash
+autonav mend <navigator-path>
+\`\`\`
+
+This validates your navigator's health and detects configuration issues. If problems are found, use \`--auto-fix\` to repair them:
+
+\`\`\`bash
+autonav mend <navigator-path> --auto-fix
+\`\`\`
+
+For deeper analysis, use \`--review\` to run LLM-powered quality checks:
+
+\`\`\`bash
+autonav mend <navigator-path> --review
+\`\`\`
+
 ---
 
 Remember: Your goal is to provide accurate, helpful information based on the knowledge available in this navigator. When in doubt, acknowledge uncertainty and guide users to relevant resources.
