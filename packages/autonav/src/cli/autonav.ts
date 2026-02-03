@@ -8,6 +8,7 @@
  * - autonav query -> nav-query.ts
  * - autonav update -> nav-update.ts
  * - autonav chat -> nav-chat.ts
+ * - autonav memento -> nav-memento.ts
  */
 
 import { spawn } from "node:child_process";
@@ -44,6 +45,7 @@ Commands:
   chat <path>       Interactive conversation with a navigator
   migrate <path>    Migrate a navigator to latest version
   mend <path>       Health check and repair for navigators
+  memento <code> <nav>  Iterative development loop (nav plans, worker implements)
   install [path]    Symlink local skills to global location
   uninstall [path]  Remove global skill symlinks (preserves local)
 
@@ -60,6 +62,7 @@ Examples:
   autonav chat ./my-navigator
   autonav migrate ./my-navigator
   autonav mend ./my-navigator --auto-fix
+  autonav memento ./my-app ./my-nav --task "Add auth" --branch feature/auth
   autonav install ./my-navigator
   autonav uninstall ./my-navigator
 
@@ -70,6 +73,7 @@ For command-specific help:
   autonav chat --help
   autonav migrate --help
   autonav mend --help
+  autonav memento --help
   autonav install --help
   autonav uninstall --help
 `);
@@ -114,6 +118,9 @@ function main() {
       break;
     case "mend":
       scriptPath = path.join(__dirname, "nav-mend.js");
+      break;
+    case "memento":
+      scriptPath = path.join(__dirname, "nav-memento.js");
       break;
     case "install":
       scriptPath = path.join(__dirname, "nav-install.js");
