@@ -13,6 +13,7 @@ import { migration as v1_3_5_navigatorAuthority } from "./versions/v1.3.5-naviga
 import { migration as v1_4_0_agentIdentity } from "./versions/v1.4.0-agent-identity.js";
 import { migration as v1_4_1_updateSkill } from "./versions/v1.4.1-update-skill.js";
 import { migration as v1_5_0_rfc2119Skills } from "./versions/v1.5.0-rfc2119-skills.js";
+import { migration as v1_5_1_mendInstruction } from "./versions/v1.5.1-mend-instruction.js";
 
 /**
  * All available migrations in order
@@ -23,6 +24,7 @@ const MIGRATIONS: Migration[] = [
   v1_4_0_agentIdentity,
   v1_4_1_updateSkill,
   v1_5_0_rfc2119Skills,
+  v1_5_1_mendInstruction,
 ];
 
 /**
