@@ -4,9 +4,9 @@
  * The main loop that coordinates navigator planning and worker implementation
  * in a context-clearing iterative development pattern.
  *
- * Design principle: The NAVIGATOR is the persistent memory. The navigator
- * sees git history as its context for what work has been done. Uncommitted
- * changes are invisible to the navigator, so we warn about them upfront.
+ * Design principle: The WORKER forgets between iterations (memento pattern).
+ * The NAVIGATOR maintains its own memory and knowledge base. We provide git
+ * history as context about what the worker has accomplished so far.
  */
 
 import { query, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
@@ -118,8 +118,9 @@ function promptUser(question: string): Promise<string> {
 /**
  * Handle uncommitted changes in the code directory
  *
- * The navigator's memory is git history - uncommitted changes are invisible
- * to it. We must resolve this before starting the loop.
+ * The memento loop provides git history to the navigator as context about
+ * what the worker has accomplished. Uncommitted changes won't appear in
+ * that summary, which could cause confusion.
  */
 async function handleUncommittedChanges(
   codeDirectory: string,
@@ -131,8 +132,8 @@ async function handleUncommittedChanges(
 
   // Show warning
   console.log("\n⚠️  WARNING: Uncommitted changes detected!\n");
-  console.log("The navigator uses git history as its memory. Uncommitted changes");
-  console.log("will be INVISIBLE to the navigator and may cause confusion.\n");
+  console.log("The memento loop provides git history as context to the navigator.");
+  console.log("Uncommitted changes won't appear in that summary.\n");
 
   if (verbose) {
     const diff = getRecentDiff({ cwd: codeDirectory });
@@ -556,7 +557,7 @@ export async function runMementoLoop(
         console.log(`\nIteration ${state.iteration}...`);
       }
 
-      // Get git log for context - this is the nav's "memory"
+      // Get git log to show the navigator what the worker has accomplished
       const gitLog = getRecentGitLog({ cwd: codeDirectory, count: 20 });
 
       // Create animation with cumulative stats
@@ -651,7 +652,7 @@ export async function runMementoLoop(
         }
       }
 
-      // Commit changes - this becomes part of git history (the nav's memory)
+      // Commit changes - nav will see this in git history on next iteration
       const commitMessage = `[memento] Iteration ${state.iteration}: ${plan?.summary || "iteration"}`;
       const commitHash = commitChanges(commitMessage, { cwd: codeDirectory, verbose });
 

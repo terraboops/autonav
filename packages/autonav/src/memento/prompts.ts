@@ -4,8 +4,9 @@
  * System prompts and user prompts for navigator and worker agents.
  * Uses shared Agent Identity Protocol from communication-layer.
  *
- * Design principle: Git is the only memory. Prompts receive minimal context
- * (iteration number, task, git log) - no persisted state files.
+ * Design principle: The WORKER forgets between iterations (memento pattern).
+ * The NAVIGATOR maintains its own memory and knowledge base - we just provide
+ * git history as context about what the worker has accomplished so far.
  */
 
 import {
@@ -32,7 +33,8 @@ interface NavPromptContext {
  * Build the prompt for the navigator to provide an implementation plan
  *
  * Uses Agent Identity Protocol when navigator identity is available.
- * Git history is the nav's only "memory" of previous iterations.
+ * Git history is provided as context about what the worker has done,
+ * but the navigator maintains its own knowledge and memory.
  */
 export function buildNavPlanPrompt(
   context: NavPromptContext,
@@ -53,7 +55,7 @@ export function buildNavPlanPrompt(
 
   return `${identityProtocol}# Memento Loop - Planning Phase
 
-You are the **Navigator** in a memento loop. Your job is to analyze the current state and provide a clear implementation plan for the worker agent.
+You are the **Navigator** guiding a memento loop. Your job is to provide the next implementation plan for the worker agent.
 
 ## Task
 
@@ -65,7 +67,9 @@ ${context.task}
 - **Code Directory:** ${context.codeDirectory}
 - **Branch:** ${context.branch || "(default branch)"}
 
-## Recent Git History
+## Recent Git History (Worker's Progress)
+
+The worker agent has made the following commits. Use this to understand what has been implemented so far:
 
 \`\`\`
 ${gitLog || "(No commits yet)"}
@@ -73,17 +77,18 @@ ${gitLog || "(No commits yet)"}
 
 ## Instructions
 
-1. **Analyze** the current state based on the git history
+1. **Analyze** the current state - you may explore the codebase, consult your knowledge base, or use any resources you have
 2. **Determine** what work remains to complete the task
-3. **Create** a focused implementation plan for this iteration
+3. **Create** a focused implementation plan for the next iteration
 4. **Use the submit_implementation_plan tool** to submit your plan
 
-### Important Notes
+### About the Memento Loop
 
-- Each iteration starts fresh with no accumulated context
-- The git history is your only memory of previous work
-- Keep plans focused - aim for incremental progress
-- Set \`isComplete: true\` ONLY when the entire task is done
+- The **worker agent forgets** between iterations (it has no memory of previous work)
+- **You** (the navigator) maintain continuity - use your knowledge and judgment
+- The git history shows what the worker has accomplished so far
+- Keep plans focused and incremental - the worker implements one plan at a time
+- Set \`isComplete: true\` when the entire task is done
 - The worker agent will implement your plan, not you
 
 Submit your implementation plan now using the \`submit_implementation_plan\` tool.`;

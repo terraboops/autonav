@@ -4,8 +4,9 @@
  * Core type definitions for the context-clearing iterative development loop
  * that coordinates navigator (planning) and worker (implementation) agents.
  *
- * Design principle: No persisted state. Git is the only memory.
- * All types here are for in-memory use during the loop execution.
+ * Design principle: The WORKER forgets between iterations (memento pattern).
+ * The NAVIGATOR maintains its own memory. Git commits track worker progress.
+ * All types here are for in-memory use during loop execution.
  */
 
 import { z } from "zod";
