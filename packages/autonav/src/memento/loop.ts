@@ -286,8 +286,9 @@ async function queryNavForPlanWithStats(
     }
   }
 
-  // Extract token usage from result
-  const tokensUsed = (resultMessage as any)?.usage?.input_tokens ?? 0;
+  // Extract token usage from result (input + output = total)
+  const usage = (resultMessage as any)?.usage;
+  const tokensUsed = (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0);
 
   if (!resultMessage || resultMessage.subtype !== "success") {
     const errorDetails =
@@ -402,7 +403,9 @@ async function runWorkerAgentWithStats(
     }
   }
 
-  const tokensUsed = (resultMessage as any)?.usage?.input_tokens ?? 0;
+  // Extract token usage (input + output = total)
+  const usage = (resultMessage as any)?.usage;
+  const tokensUsed = (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0);
 
   if (!resultMessage) {
     return {
