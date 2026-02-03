@@ -37,8 +37,11 @@ import { MatrixAnimation } from "./matrix-animation.js";
  * Options for the memento loop
  */
 export interface MementoLoopOptions extends MementoOptions {
-  /** Model to use for agents */
+  /** Model to use for worker agent (default: claude-haiku-4-5) */
   model?: string;
+
+  /** Model to use for navigator agent (default: claude-opus-4-5) */
+  navModel?: string;
 
   /** Maximum turns per agent call */
   maxTurns?: number;
@@ -229,7 +232,8 @@ async function queryNavForPlanWithStats(
   animation: MatrixAnimation,
   verbose: boolean
 ): Promise<NavQueryResult> {
-  const { model = "claude-sonnet-4-5", maxTurns = 50 } = options;
+  // Navigator uses opus by default for better planning
+  const { navModel: model = "claude-opus-4-5", maxTurns = 50 } = options;
 
   // Create MCP server with plan submission tool
   const navProtocol = createNavProtocolMcpServer();
@@ -337,7 +341,8 @@ async function runWorkerAgentWithStats(
   options: { verbose?: boolean; model?: string; maxTurns?: number },
   animation: MatrixAnimation
 ): Promise<WorkerResultWithStats> {
-  const { verbose = false, model = "claude-sonnet-4-5", maxTurns = 50 } = options;
+  // Worker uses haiku by default for faster/cheaper implementation
+  const { verbose = false, model = "claude-haiku-4-5", maxTurns = 50 } = options;
 
   const { buildWorkerPrompt, buildWorkerSystemPrompt } = await import("./prompts.js");
 

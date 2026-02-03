@@ -35,6 +35,7 @@ interface MementoCommandOptions {
   task?: string;
   verbose?: boolean;
   model?: string;
+  navModel?: string;
 }
 
 /**
@@ -77,7 +78,8 @@ program
   .option("--branch <name>", "Git branch name for work")
   .option("--task <text>", "Task description (reads TASK.md if not provided)")
   .option("--verbose", "Show detailed logging")
-  .option("--model <model>", "Claude model to use", "claude-haiku-4-5")
+  .option("--model <model>", "Model for worker agent", "claude-haiku-4-5")
+  .option("--nav-model <model>", "Model for navigator agent", "claude-opus-4-5")
   .action(
     async (
       codeDirectory: string,
@@ -176,6 +178,7 @@ async function executeMemento(
       branch: options.branch,
       verbose,
       model: options.model,
+      navModel: options.navModel,
     });
 
     // Display results
