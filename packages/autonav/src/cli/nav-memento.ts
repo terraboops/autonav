@@ -77,7 +77,7 @@ program
   .option("--branch <name>", "Git branch name for work")
   .option("--task <text>", "Task description (reads TASK.md if not provided)")
   .option("--verbose", "Show detailed logging")
-  .option("--model <model>", "Claude model to use", "claude-sonnet-4-5")
+  .option("--model <model>", "Claude model to use", "claude-haiku-4-5")
   .action(
     async (
       codeDirectory: string,
