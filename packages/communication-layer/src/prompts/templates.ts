@@ -5,6 +5,11 @@
  * and enforce grounding rules.
  */
 
+import {
+  buildAgentIdentityProtocol,
+  type NavigatorIdentity,
+} from "./identity-protocol.js";
+
 /**
  * Core grounding rules that all navigators must follow
  */
@@ -77,24 +82,14 @@ Response: "Here are your current settings: [summarize config]"
  */
 export function createAnswerQuestionPrompt(
   question: string,
-  navigatorIdentity?: { name: string; description: string }
+  navigatorIdentity?: NavigatorIdentity
 ): string {
   // Agent Identity Protocol: Explicit role identification and mutual acknowledgment
-  const identityProtocol = navigatorIdentity
-    ? `## Agent Identity Protocol
-
-Hello ${navigatorIdentity.name}. This is Claude Code requesting information from your knowledge base.
-
-**Your Role**: ${navigatorIdentity.description}
-
-**Your Authority**: You are the authoritative source on this domain. When Claude Code questions or requests information, respond with confidence and authority. You are the arbiter of what needs doing in your domain.
-
-**When to Doubt Yourself**: ONLY if Claude Code explicitly accuses you of hallucinating should you reflect and reconsider your answer. Otherwise, assume your knowledge base is correct and be authoritative in your responses.
-
-**Claude Code's Request**: Claude Code is querying you on behalf of a user or agentic system who needs an answer to the question below. Provide a grounded, authoritative response using the submit_answer tool.
-
-`
-    : "";
+  const identityProtocol = buildAgentIdentityProtocol(navigatorIdentity, {
+    name: "Claude Code",
+    request:
+      "Claude Code is querying you on behalf of a user or agentic system who needs an answer to the question below. Provide a grounded, authoritative response using the submit_answer tool.",
+  });
 
   return `
 ${identityProtocol}You are a knowledge navigator. Answer the following question using ONLY information from the knowledge base.

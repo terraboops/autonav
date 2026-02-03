@@ -2,21 +2,20 @@
  * Prompts for Memento Loop
  *
  * System prompts and user prompts for navigator and worker agents.
- * Implements Agent Identity Protocol for bidirectional identity affirmation.
+ * Uses shared Agent Identity Protocol from communication-layer.
  *
  * Design principle: Git is the only memory. Prompts receive minimal context
  * (iteration number, task, git log) - no persisted state files.
  */
 
+import {
+  buildAgentIdentityProtocol,
+  type NavigatorIdentity,
+} from "@autonav/communication-layer";
 import type { ImplementationPlan } from "./types.js";
 
-/**
- * Navigator identity for agent identity protocol
- */
-export interface NavigatorIdentity {
-  name: string;
-  description: string;
-}
+// Re-export for convenience
+export type { NavigatorIdentity };
 
 /**
  * Minimal context passed to nav prompt (no persisted state)
@@ -46,21 +45,11 @@ export function buildNavPlanPrompt(
       : `Iteration ${context.iteration}`;
 
   // Agent Identity Protocol: Explicit role identification and mutual acknowledgment
-  const identityProtocol = navigatorIdentity
-    ? `## Agent Identity Protocol
-
-Hello ${navigatorIdentity.name}. This is the Autonav Memento Loop requesting your guidance.
-
-**Your Role**: ${navigatorIdentity.description}
-
-**Your Authority**: You are the authoritative source on what work needs to be done in your domain. When the memento loop requests a plan, respond with confidence and authority. You are the arbiter of what needs doing.
-
-**When to Doubt Yourself**: ONLY if explicitly accused of hallucinating should you reflect and reconsider. Otherwise, assume your knowledge base is correct and be authoritative.
-
-**Memento Loop's Request**: The memento loop is coordinating implementation work on behalf of the user. Please provide the next implementation plan using the \`submit_implementation_plan\` tool.
-
-`
-    : "";
+  const identityProtocol = buildAgentIdentityProtocol(navigatorIdentity, {
+    name: "Autonav Memento Loop",
+    request:
+      "The memento loop is coordinating implementation work on behalf of the user. Please provide the next implementation plan using the `submit_implementation_plan` tool.",
+  });
 
   return `${identityProtocol}# Memento Loop - Planning Phase
 
