@@ -108,6 +108,11 @@ export {
 
 // Prompts
 export {
+  // Identity Protocol
+  buildAgentIdentityProtocol,
+  type NavigatorIdentity,
+  type CallerContext,
+  // Templates
   GROUNDING_RULES,
   SELF_CONFIG_RULES,
   createAnswerQuestionPrompt,
