@@ -23,6 +23,7 @@ import { HallucinationError } from "@autonav/communication-layer";
 interface QueryCommandOptions {
   compact?: boolean;
   json?: boolean;
+  raw?: boolean;
   noColor?: boolean;
   validate?: boolean;
   confidence?: ConfidenceLevel;
@@ -88,7 +89,8 @@ program
   .argument("<navigator>", "Path to the navigator directory")
   .argument("<question>", "Question to ask the navigator")
   .option("--compact", "Compact output (answer + minimal sources)")
-  .option("--json", "Raw JSON output")
+  .option("--json", "Full JSON output with all response fields")
+  .option("--raw", "Output only the answer text, nothing else (for agent-to-agent use)")
   .option("--no-color", "Disable colored output")
   .option("--validate", "Enable strict source validation (fail on missing sources)")
   .option(
@@ -119,6 +121,12 @@ async function executeQuery(
     chalk.level = 0;
   }
 
+  // Check for conflicting format options
+  if (options.raw && (options.json || options.compact)) {
+    console.error("Error: --raw cannot be combined with --json or --compact");
+    process.exit(1);
+  }
+
   // Note: No API key check needed - Claude Agent SDK uses Claude Code's OAuth
 
   // Validate confidence level option
@@ -134,18 +142,23 @@ async function executeQuery(
     }
   }
 
-  let spinner: ReturnType<typeof ora> | undefined;
-
-  try {
-    // Determine output format
-    const format: OutputFormat = options.json
+  // Determine output format (needed in both try and catch blocks)
+  const format: OutputFormat = options.raw
+    ? "raw"
+    : options.json
       ? "json"
       : options.compact
         ? "compact"
         : "pretty";
 
-    // Show loading spinner (only in non-JSON mode)
-    if (format !== "json") {
+  // Determine if we should show UI elements (spinners, question echo, etc.)
+  const showUI = format !== "json" && format !== "raw";
+
+  let spinner: ReturnType<typeof ora> | undefined;
+
+  try {
+    // Show loading spinner (only in interactive mode)
+    if (showUI) {
       spinner = ora("Loading navigator...").start();
     }
 
@@ -160,8 +173,8 @@ async function executeQuery(
       console.error(""); // Blank line
     }
 
-    // Show question (only in non-JSON mode)
-    if (format !== "json") {
+    // Show question (only in interactive mode)
+    if (showUI) {
       console.error(chalk.blue("❓") + " Question: " + chalk.italic(question));
       console.error(""); // Blank line
       spinner = ora("Querying Claude...").start();
@@ -192,8 +205,8 @@ async function executeQuery(
       knowledgeBasePath: navigator.knowledgeBasePath,
     });
 
-    // Show warnings (only in non-JSON mode)
-    if (format !== "json" && validation.warnings.length > 0) {
+    // Show warnings (only in interactive mode)
+    if (showUI && validation.warnings.length > 0) {
       for (const warning of validation.warnings) {
         console.error(formatWarningMessage(warning));
       }
@@ -202,7 +215,7 @@ async function executeQuery(
 
     // Check if validation failed
     if (!validation.valid) {
-      if (format !== "json") {
+      if (showUI) {
         console.error(chalk.red.bold("❌ Validation Failed:"));
         console.error("");
         for (const error of validation.errors) {
@@ -242,15 +255,25 @@ async function executeQuery(
 
     console.log(formattedOutput);
 
-    // Success message (only in non-JSON mode)
-    if (format !== "json") {
+    // Success message (only in interactive mode)
+    if (showUI) {
       console.error(""); // Blank line
       console.error(
         chalk.green("✅") +
           ` Query completed successfully! (${response.sources.length} source${response.sources.length !== 1 ? "s" : ""} cited)`
       );
     }
+
+    // Explicitly exit to terminate any lingering SDK/MCP handles
+    process.exit(0);
   } catch (error) {
+    // For raw mode, output minimal error to stderr
+    if (format === "raw") {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Error: ${message}`);
+      process.exit(1);
+    }
+
     if (spinner) {
       spinner.fail("Query failed");
       console.error(""); // Blank line

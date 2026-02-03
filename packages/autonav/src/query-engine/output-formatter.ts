@@ -4,7 +4,7 @@ import { NavigatorResponse, type ConfidenceLevel } from "@autonav/communication-
 /**
  * Output format mode
  */
-export type OutputFormat = "pretty" | "compact" | "json";
+export type OutputFormat = "pretty" | "compact" | "json" | "raw";
 
 /**
  * Output formatting options
@@ -47,6 +47,8 @@ export function formatResponse(
       return formatJSON(response);
     case "compact":
       return formatCompact(response);
+    case "raw":
+      return response.answer;
     case "pretty":
     default:
       return formatPretty(response, options.verbose);
