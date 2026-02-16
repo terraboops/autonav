@@ -63,9 +63,9 @@ async function initializeLangSmith(): Promise<boolean> {
 }
 
 /**
- * Configuration options for Claude Adapter
+ * Configuration options for Navigator Adapter
  */
-export interface ClaudeAdapterOptions {
+export interface NavigatorAdapterOptions {
   /**
    * Claude model to use (defaults to claude-sonnet-4-5)
    */
@@ -135,14 +135,14 @@ export interface QueryOptions {
 }
 
 /**
- * Claude Agent SDK Adapter
+ * Navigator Adapter
  *
  * Bridges Claude Agent SDK to the Communication Layer protocol.
  * Loads navigators, executes queries, and validates responses.
  *
  * @example
  * ```typescript
- * const adapter = new ClaudeAdapter({
+ * const adapter = new NavigatorAdapter({
  *   model: 'claude-sonnet-4-5'
  * });
  *
@@ -150,16 +150,16 @@ export interface QueryOptions {
  * const response = await adapter.query(navigator, 'How do I deploy?');
  * ```
  */
-export class ClaudeAdapter {
+export class NavigatorAdapter {
   private readonly options: { model?: string; maxTurns?: number };
   private readonly harness: Harness;
 
   /**
-   * Create a new Claude Adapter
+   * Create a new Navigator Adapter
    *
    * @param options - Configuration options
    */
-  constructor(options: ClaudeAdapterOptions = {}) {
+  constructor(options: NavigatorAdapterOptions = {}) {
     this.options = {
       // Only set model if explicitly provided — let the harness use its own default otherwise.
       // ClaudeCodeHarness defaults to claude-sonnet-4-5; chibi defaults to free models.
@@ -182,7 +182,7 @@ export class ClaudeAdapter {
    *
    * @example
    * ```typescript
-   * const adapter = new ClaudeAdapter();
+   * const adapter = new NavigatorAdapter();
    * const navigator = await adapter.loadNavigator('./my-navigator');
    * console.log(`Loaded: ${navigator.config.name}`);
    * ```

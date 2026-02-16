@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { ClaudeAdapter, type ClaudeAdapterOptions } from '../src/index.js';
+import { NavigatorAdapter, type NavigatorAdapterOptions } from '../src/index.js';
 
-describe('ClaudeAdapter', () => {
+describe('NavigatorAdapter', () => {
   let testNavigatorPath: string;
 
   beforeAll(() => {
@@ -56,34 +56,34 @@ describe('ClaudeAdapter', () => {
 
   describe('Constructor', () => {
     it('should create adapter with default options', () => {
-      const adapter = new ClaudeAdapter();
-      expect(adapter).toBeInstanceOf(ClaudeAdapter);
+      const adapter = new NavigatorAdapter();
+      expect(adapter).toBeInstanceOf(NavigatorAdapter);
     });
 
     it('should accept custom model option', () => {
-      const options: ClaudeAdapterOptions = {
+      const options: NavigatorAdapterOptions = {
         model: 'claude-opus-4-20250514',
       };
 
-      const adapter = new ClaudeAdapter(options);
-      expect(adapter).toBeInstanceOf(ClaudeAdapter);
+      const adapter = new NavigatorAdapter(options);
+      expect(adapter).toBeInstanceOf(NavigatorAdapter);
     });
 
     it('should accept custom maxTurns option', () => {
-      const options: ClaudeAdapterOptions = {
+      const options: NavigatorAdapterOptions = {
         maxTurns: 20,
       };
 
-      const adapter = new ClaudeAdapter(options);
-      expect(adapter).toBeInstanceOf(ClaudeAdapter);
+      const adapter = new NavigatorAdapter(options);
+      expect(adapter).toBeInstanceOf(NavigatorAdapter);
     });
   });
 
   describe('loadNavigator', () => {
-    let adapter: ClaudeAdapter;
+    let adapter: NavigatorAdapter;
 
     beforeAll(() => {
-      adapter = new ClaudeAdapter();
+      adapter = new NavigatorAdapter();
     });
 
     it('should load a valid navigator', async () => {
@@ -233,10 +233,10 @@ describe('ClaudeAdapter', () => {
   });
 
   describe('parseResponse', () => {
-    let adapter: ClaudeAdapter;
+    let adapter: NavigatorAdapter;
 
     beforeAll(() => {
-      adapter = new ClaudeAdapter();
+      adapter = new NavigatorAdapter();
     });
 
     it('should parse JSON from code block', () => {
@@ -324,11 +324,11 @@ Here's the answer:
   });
 
   describe('validate', () => {
-    let adapter: ClaudeAdapter;
+    let adapter: NavigatorAdapter;
     let navigator: any;
 
     beforeAll(async () => {
-      adapter = new ClaudeAdapter();
+      adapter = new NavigatorAdapter();
       navigator = await adapter.loadNavigator(testNavigatorPath);
     });
 
