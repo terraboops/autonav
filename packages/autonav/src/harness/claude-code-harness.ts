@@ -220,6 +220,8 @@ class ClaudeCodeSession implements HarnessSession {
  * directly to SDK options.
  */
 export class ClaudeCodeHarness implements Harness {
+  readonly displayName = "Claude";
+
   run(config: AgentConfig, prompt: string): HarnessSession {
     return new ClaudeCodeSession(config, prompt);
   }

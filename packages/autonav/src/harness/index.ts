@@ -11,6 +11,7 @@ export type {
   AgentConfig,
   AgentEvent,
   HarnessType,
+  SandboxConfig,
 } from "./types.js";
 
 export { ClaudeCodeHarness } from "./claude-code-harness.js";
@@ -38,3 +39,8 @@ export {
   type EphemeralHome,
   type EphemeralHomeOptions,
 } from "./ephemeral-home.js";
+
+export {
+  isSandboxEnabled,
+  wrapCommand,
+} from "./sandbox.js";

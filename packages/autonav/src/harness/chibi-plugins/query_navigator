@@ -1,0 +1,116 @@
+#!/bin/bash
+# query_navigator chibi plugin
+#
+# Queries another navigator by running chibi-json directly with the
+# target's system prompt in a separate context. Chibi is naturally
+# plural — one instance can be many navigators at once, each in its
+# own context with no knowledge of the others.
+#
+# Flow: set_system_prompt → send_prompt → extract last assistant message → destroy_context
+# Cycle detection via AUTONAV_QUERY_DEPTH env var (max 3).
+
+set -euo pipefail
+
+if [[ "${1:-}" == "--schema" ]]; then
+  cat <<'EOF'
+{
+  "name": "query_navigator",
+  "description": "Ask another navigator a question. Use this when you need information from a different navigator's knowledge base. The target navigator will search its own knowledge and return an answer.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "navigator": { "type": "string", "description": "Path to the target navigator directory (relative to cwd or absolute)" },
+      "question": { "type": "string", "description": "The question to ask the target navigator" }
+    },
+    "required": ["navigator", "question"]
+  }
+}
+EOF
+  exit 0
+fi
+
+# Read JSON args from stdin
+input=$(cat)
+navigator=$(echo "$input" | jq -r '.navigator // empty')
+question=$(echo "$input" | jq -r '.question // empty')
+
+if [[ -z "$navigator" || -z "$question" ]]; then
+  echo '{"success": false, "error": "Missing required fields: navigator and question"}'
+  exit 0
+fi
+
+# Cycle detection
+depth="${AUTONAV_QUERY_DEPTH:-0}"
+if [[ "$depth" -ge 3 ]]; then
+  echo '{"success": false, "error": "Query depth limit reached (max 3). Cannot query another navigator from this depth."}'
+  exit 0
+fi
+export AUTONAV_QUERY_DEPTH=$(( depth + 1 ))
+
+# Validate navigator directory
+if [[ ! -d "$navigator" ]]; then
+  jq -n --arg p "$navigator" '{"success": false, "error": ("Navigator directory not found: " + $p)}'
+  exit 0
+fi
+
+config_file="$navigator/config.json"
+if [[ ! -f "$config_file" ]]; then
+  echo '{"success": false, "error": "Navigator config.json not found."}'
+  exit 0
+fi
+
+nav_name=$(jq -r '.name // "unknown"' "$config_file")
+instructions_path=$(jq -r '.instructionsPath // "CLAUDE.md"' "$config_file")
+
+prompt_file="$navigator/$instructions_path"
+if [[ ! -f "$prompt_file" ]]; then
+  jq -n --arg f "$instructions_path" '{"success": false, "error": ("Navigator instructions file not found: " + $f)}'
+  exit 0
+fi
+
+system_prompt=$(cat "$prompt_file")
+
+# Unique context for this sub-query (PID + random for collision avoidance)
+ctx="autonav-xnav-$$-$(head -c 4 /dev/urandom | xxd -p)"
+
+cleanup() {
+  # Destroy sub-query context (best-effort)
+  jq -n --arg ctx "$ctx" \
+    '{command: {destroy_context: {name: $ctx}}, context: $ctx}' \
+    | chibi-json 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# 1. Set system prompt on the sub-query context
+jq -n \
+  --arg prompt "$system_prompt" \
+  --arg ctx "$ctx" \
+  --arg root "$navigator" \
+  '{command: {set_system_prompt: {prompt: $prompt}}, context: $ctx, project_root: $root}' \
+  | chibi-json 2>/dev/null || true
+
+# 2. Send the question, capture JSONL output
+response_jsonl=$(
+  jq -n \
+    --arg prompt "$question" \
+    --arg ctx "$ctx" \
+    --arg root "$navigator" \
+    '{command: {send_prompt: {prompt: $prompt}}, context: $ctx, project_root: $root}' \
+  | chibi-json 2>/dev/null
+) || true
+
+# 3. Extract the last assistant message from JSONL
+response=""
+if [[ -n "$response_jsonl" ]]; then
+  response=$(echo "$response_jsonl" \
+    | jq -rs '[.[] | select(.entry_type == "message" and .from != "user") | .content] | last // ""')
+fi
+
+# 4. Return structured result (cleanup runs via trap)
+if [[ -n "$response" && "$response" != "null" && "$response" != '""' ]]; then
+  jq -n --arg nav "$nav_name" --arg resp "$response" \
+    '{"success": true, "navigator": $nav, "response": $resp}'
+else
+  jq -n --arg nav "$nav_name" \
+    '{"success": false, "navigator": $nav, "error": "Navigator returned empty response."}'
+fi
