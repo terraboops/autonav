@@ -427,6 +427,9 @@ export class ClaudeAdapter {
         mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
         permissionMode: "bypassPermissions",
         stderr: debug ? (data: string) => process.stderr.write(`[harness] ${data}`) : undefined,
+        sandbox: {
+          readPaths: [navigator.navigatorPath],
+        },
       },
       prompt
     );
@@ -546,7 +549,7 @@ export class ClaudeAdapter {
         const finalText = resultEvent.text || lastAssistantText;
 
         if (!finalText) {
-          throw new Error("No response received from Claude. Expected submit_answer tool call or text response.");
+          throw new Error(`${this.harness.displayName} finished without answering — no submit_answer call or text response.`);
         }
 
         // Parse the response from text
@@ -563,7 +566,7 @@ export class ClaudeAdapter {
         throw error;
       }
       throw new Error(
-        `Failed to query Claude: ${error instanceof Error ? error.message : String(error)}`
+        `${this.harness.displayName} ran into trouble: ${error instanceof Error ? error.message : String(error)}`
       );
     } finally {
       await session.close();
@@ -580,7 +583,7 @@ export class ClaudeAdapter {
    * @param navigator - Loaded navigator to update
    * @param message - Update message or report
    * @param options - Query options (maxTurns)
-   * @returns Text response from Claude describing what was updated
+   * @returns Text response from the agent describing what was updated
    * @throws {Error} If API call fails or update fails
    *
    * @example
@@ -626,6 +629,9 @@ Your task: ${message}`;
         systemPrompt,
         cwd: navigator.navigatorPath,
         permissionMode: "bypassPermissions",
+        sandbox: {
+          writePaths: [navigator.navigatorPath],
+        },
       },
       message
     );
@@ -660,7 +666,7 @@ Your task: ${message}`;
         throw error;
       }
       throw new Error(
-        `Failed to update navigator: ${error instanceof Error ? error.message : String(error)}`
+        `${this.harness.displayName} couldn't complete the update: ${error instanceof Error ? error.message : String(error)}`
       );
     } finally {
       await session.close();
@@ -673,7 +679,7 @@ Your task: ${message}`;
    * Extracts JSON from the response text (either from code blocks or raw JSON)
    * and validates it against the NavigatorResponseSchema.
    *
-   * @param rawResponse - Raw text response from Claude
+   * @param rawResponse - Raw text response from the agent
    * @param query - Original query (used to populate missing query field)
    * @returns Parsed and validated NavigatorResponse
    * @throws {Error} If JSON cannot be extracted or schema validation fails

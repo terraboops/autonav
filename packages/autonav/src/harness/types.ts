@@ -17,6 +17,27 @@ import type { ToolDefinition } from "./tool-server.js";
 export type HarnessType = "claude-code" | "chibi";
 
 /**
+ * Sandbox configuration for process isolation.
+ *
+ * Only applies to harnesses that spawn subprocesses (chibi, opencode).
+ * Claude Code SDK has built-in sandboxing and ignores this config.
+ *
+ * Uses nono.sh for kernel-enforced sandboxing (Landlock on Linux,
+ * Seatbelt on macOS). Falls back to running unsandboxed if nono
+ * is not available.
+ */
+export interface SandboxConfig {
+  /** Explicitly enable/disable. Default: auto-detect nono on PATH. AUTONAV_SANDBOX=0 to disable. */
+  enabled?: boolean;
+  /** Paths with read-only access */
+  readPaths?: string[];
+  /** Paths with read+write access */
+  writePaths?: string[];
+  /** Block all network access */
+  blockNetwork?: boolean;
+}
+
+/**
  * Configuration for an agent session.
  *
  * Each harness translates this into its runtime's native config format.
@@ -55,6 +76,13 @@ export interface AgentConfig {
 
   /** Stderr handler for diagnostic output */
   stderr?: (data: string) => void;
+
+  /**
+   * Sandbox configuration for process isolation.
+   * Only applies to harnesses that spawn subprocesses (chibi, opencode).
+   * Claude Code SDK has built-in sandboxing and ignores this config.
+   */
+  sandbox?: SandboxConfig;
 }
 
 /**
@@ -121,6 +149,9 @@ export interface HarnessSession extends AsyncIterable<AgentEvent> {
  * to its runtime's native options and translates events back to AgentEvent.
  */
 export interface Harness {
+  /** Display name for error messages and diagnostics */
+  readonly displayName: string;
+
   /** Start a new agent session with the given config and initial prompt */
   run(config: AgentConfig, prompt: string): HarnessSession;
 

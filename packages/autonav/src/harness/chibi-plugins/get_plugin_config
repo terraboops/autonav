@@ -1,0 +1,66 @@
+#!/bin/bash
+# get_plugin_config chibi plugin
+#
+# Reads $AUTONAV_PLUGINS_PATH and returns plugin configuration.
+
+set -euo pipefail
+
+if [[ "${1:-}" == "--schema" ]]; then
+  cat <<'EOF'
+{
+  "name": "get_plugin_config",
+  "description": "Read your current plugin configuration. Use this to check what plugins are enabled, see notification settings, or verify your current schedule.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "plugin": {
+        "type": "string",
+        "enum": ["slack", "signal", "github", "email", "all"],
+        "description": "The plugin to read configuration for, or 'all' for everything"
+      }
+    },
+    "required": ["plugin"]
+  }
+}
+EOF
+  exit 0
+fi
+
+# Read JSON args from stdin
+input=$(cat)
+plugin=$(echo "$input" | jq -r '.plugin // empty')
+
+if [[ -z "$plugin" ]]; then
+  echo '{"success": false, "error": "Missing required field: plugin"}'
+  exit 0
+fi
+
+# Check env var
+config_path="${AUTONAV_PLUGINS_PATH:-}"
+if [[ -z "$config_path" ]]; then
+  echo '{"success": false, "error": "AUTONAV_PLUGINS_PATH not set. Plugin configuration unavailable."}'
+  exit 0
+fi
+
+if [[ ! -f "$config_path" ]]; then
+  echo '{"success": false, "error": "Plugin configuration file not found."}'
+  exit 0
+fi
+
+# Read and return config
+config=$(cat "$config_path")
+
+if [[ "$plugin" == "all" ]]; then
+  jq -n --argjson config "$config" \
+    '{"success": true, "plugin": "all", "config": $config}'
+else
+  # Extract specific plugin section
+  section=$(echo "$config" | jq --arg p "$plugin" '.[$p] // null')
+  if [[ "$section" == "null" ]]; then
+    jq -n --arg p "$plugin" \
+      '{"success": true, "plugin": $p, "config": {"enabled": false, "config": {}}}'
+  else
+    jq -n --arg p "$plugin" --argjson section "$section" \
+      '{"success": true, "plugin": $p, "config": $section}'
+  fi
+fi

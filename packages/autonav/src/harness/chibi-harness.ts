@@ -26,9 +26,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as readline from "node:readline";
 import { fileURLToPath } from "node:url";
-import type { Harness, HarnessSession, AgentConfig, AgentEvent } from "./types.js";
+import type { Harness, HarnessSession, AgentConfig, AgentEvent, SandboxConfig } from "./types.js";
 import type { ToolDefinition } from "./tool-server.js";
 import { createEphemeralHome, type EphemeralHome } from "./ephemeral-home.js";
+import { wrapCommand, isSandboxEnabled } from "./sandbox.js";
 
 const CHIBI_TOOL_MARKER = "__chibi_tools__" as const;
 
@@ -60,11 +61,16 @@ function buildInput(
 /**
  * Run a chibi-json command synchronously (for commands with no streaming output like set_system_prompt).
  */
-function runSync(inputJson: string): void {
-  execFileSync("chibi-json", [], {
+function runSync(
+  inputJson: string,
+  opts?: { env?: Record<string, string>; sandboxConfig?: SandboxConfig },
+): void {
+  const { command, args } = wrapCommand("chibi-json", [], opts?.sandboxConfig);
+  execFileSync(command, args, {
     input: inputJson,
     stdio: ["pipe", "pipe", "pipe"],
     timeout: 10_000,
+    env: opts?.env ? { ...process.env, ...opts.env } : undefined,
   });
 }
 
@@ -143,29 +149,81 @@ class ChibiSession implements HarnessSession {
   private closed = false;
   private registeredTools: Map<string, ToolDefinition> = new Map();
   private ephemeralHome: EphemeralHome | null = null;
+  private sandboxConfig: SandboxConfig | undefined;
+  private extraEnv: Record<string, string> = {};
+  private sandboxDenials: string[] = [];
 
   constructor(config: AgentConfig, initialPrompt: string) {
     this.config = { ...config };
     this.contextName = `autonav-${crypto.randomUUID().slice(0, 8)}`;
 
-    // Create ephemeral home with submit_answer plugin
+    // Create ephemeral home with all chibi plugins
     this.ephemeralHome = createEphemeralHome({
       harness: "chibi",
       setup: (home) => {
-        // Inherit user config if it exists
+        // Copy user config if it exists (copy, not symlink — nono/Seatbelt
+        // follows symlinks and would require --read on the target directory)
         const userConfig = path.join(os.homedir(), ".chibi", "config.toml");
         if (fs.existsSync(userConfig)) {
-          fs.symlinkSync(userConfig, path.join(home, "config.toml"));
+          fs.copyFileSync(userConfig, path.join(home, "config.toml"));
         }
 
-        // Install submit_answer plugin
+        // Install all chibi plugins from the plugins directory
         const pluginsDir = path.join(home, "plugins");
         fs.mkdirSync(pluginsDir);
-        const src = fileURLToPath(new URL("./chibi-plugins/submit_answer", import.meta.url));
-        fs.copyFileSync(src, path.join(pluginsDir, "submit_answer"));
-        fs.chmodSync(path.join(pluginsDir, "submit_answer"), 0o755);
+        const srcDir = fileURLToPath(new URL("./chibi-plugins", import.meta.url));
+        if (fs.existsSync(srcDir)) {
+          for (const file of fs.readdirSync(srcDir)) {
+            const srcPath = path.join(srcDir, file);
+            if (fs.statSync(srcPath).isFile()) {
+              fs.copyFileSync(srcPath, path.join(pluginsDir, file));
+              fs.chmodSync(path.join(pluginsDir, file), 0o755);
+            }
+          }
+        }
       },
     });
+
+    // Build extra env vars for plugin scripts
+    if (config.cwd) {
+      // Resolve plugins.json path relative to navigator directory
+      const pluginsPath = path.join(config.cwd, ".claude", "plugins.json");
+      if (fs.existsSync(pluginsPath)) {
+        this.extraEnv.AUTONAV_PLUGINS_PATH = pluginsPath;
+      }
+    }
+    // Cycle detection depth for cross-nav queries
+    const currentDepth = process.env.AUTONAV_QUERY_DEPTH || "0";
+    this.extraEnv.AUTONAV_QUERY_DEPTH = currentDepth;
+
+    // Build sandbox config from AgentConfig.sandbox + defaults
+    if (config.sandbox) {
+      this.sandboxConfig = { ...config.sandbox };
+      // Chibi makes its own API calls — never block network
+      this.sandboxConfig.blockNetwork = false;
+
+      // Merge paths: navigator dir (at least read), ephemeral home (always write)
+      const writeSet = new Set(this.sandboxConfig.writePaths || []);
+      if (this.ephemeralHome) writeSet.add(this.ephemeralHome.homePath);
+      this.sandboxConfig.writePaths = [...writeSet];
+
+      // Only add cwd to readPaths if it's not already in writePaths (write implies read)
+      const readSet = new Set(this.sandboxConfig.readPaths || []);
+      if (config.cwd && !writeSet.has(config.cwd)) readSet.add(config.cwd);
+      this.sandboxConfig.readPaths = [...readSet];
+
+      // Debug: log sandbox status
+      if (process.env.AUTONAV_DEBUG === "1" && config.stderr) {
+        const active = isSandboxEnabled(this.sandboxConfig);
+        config.stderr(
+          `[chibi] Sandbox: ${active ? "enabled (nono)" : "disabled"}\n`,
+        );
+        if (active) {
+          const { command, args } = wrapCommand("chibi-json", [], this.sandboxConfig);
+          config.stderr(`[chibi] Sandbox cmd: ${command} ${args.join(" ")}\n`);
+        }
+      }
+    }
 
     // Extract chibi tool servers from mcpServers config
     if (config.mcpServers) {
@@ -192,7 +250,7 @@ class ChibiSession implements HarnessSession {
         this.ephemeralHome.homePath,
       );
       try {
-        runSync(input);
+        runSync(input, { env: this.extraEnv, sandboxConfig: this.sandboxConfig });
       } catch (error) {
         // Log but don't fail — system prompt is best-effort
         const msg = error instanceof Error ? error.message : String(error);
@@ -218,20 +276,29 @@ class ChibiSession implements HarnessSession {
       this.ephemeralHome?.homePath,
     );
 
-    const child = spawn("chibi-json", [], {
+    const { command, args } = wrapCommand("chibi-json", [], this.sandboxConfig);
+    const child = spawn(command, args, {
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env },
+      env: { ...process.env, ...this.extraEnv },
     });
 
     // Write the single JSON input and close stdin
     child.stdin?.write(inputJson);
     child.stdin?.end();
 
-    // Handle stderr
-    if (child.stderr && this.config.stderr) {
+    // Handle stderr — always capture sandbox denials, forward rest to debug handler
+    if (child.stderr) {
       const stderrHandler = this.config.stderr;
+      const sandboxActive = isSandboxEnabled(this.sandboxConfig);
       child.stderr.on("data", (data: Buffer) => {
-        stderrHandler(data.toString());
+        const text = data.toString();
+        if (stderrHandler) {
+          stderrHandler(text);
+        }
+        // Surface sandbox denials as events even outside debug mode
+        if (sandboxActive && text.includes("nono:")) {
+          this.sandboxDenials.push(text.trim());
+        }
       });
     }
 
@@ -272,6 +339,13 @@ class ChibiSession implements HarnessSession {
         yield event;
       }
     }
+
+    // Surface sandbox denials so callers see what nono blocked
+    // These are informational — the process exit code determines success/failure
+    for (const denial of this.sandboxDenials) {
+      yield { type: "error", message: `[sandbox] ${denial}` };
+    }
+    this.sandboxDenials = [];
 
     // Emit a synthetic result event based on process exit
     if (!hasResult) {
@@ -341,7 +415,7 @@ class ChibiSession implements HarnessSession {
         undefined,
         this.ephemeralHome?.homePath,
       );
-      runSync(destroyInput);
+      runSync(destroyInput, { env: this.extraEnv, sandboxConfig: this.sandboxConfig });
     } catch {
       // Best-effort cleanup
     }
@@ -359,6 +433,8 @@ class ChibiSession implements HarnessSession {
  * Each command is a separate process; context names provide multi-turn continuity.
  */
 export class ChibiHarness implements Harness {
+  readonly displayName = "chibi";
+
   run(config: AgentConfig, prompt: string): HarnessSession {
     return new ChibiSession(config, prompt);
   }
