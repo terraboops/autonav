@@ -15,6 +15,7 @@ import { runConversationTUI, isInteractiveTerminal } from "../conversation/index
 
 interface ChatOptions {
   verbose?: boolean;
+  harness?: string;
 }
 
 function printUsage() {
@@ -64,6 +65,8 @@ function parseArgs(args: string[]): {
 
     if (arg === "--verbose") {
       options.verbose = true;
+    } else if (arg === "--harness" && i + 1 < args.length) {
+      options.harness = args[++i];
     } else if (arg === "--help" || arg === "-h") {
       printUsage();
       process.exit(0);

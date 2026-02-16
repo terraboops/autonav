@@ -29,6 +29,7 @@ interface QueryCommandOptions {
   confidence?: ConfidenceLevel;
   timeout?: number;
   verbose?: boolean;
+  harness?: string;
 }
 
 /**
@@ -104,6 +105,7 @@ program
     300000
   )
   .option("--verbose", "Show additional debug information")
+  .option("--harness <type>", "Agent runtime to use (claude-code|chibi)")
   .action(async (navigator: string, question: string, options: QueryCommandOptions) => {
     await executeQuery(navigator, question, options);
   });

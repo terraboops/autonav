@@ -30,6 +30,7 @@ import {
 } from "../interview/index.js";
 import { scanRepository } from "../repo-scanner/index.js";
 import { analyzeRepository, type AnalysisResult } from "../repo-analyzer/index.js";
+import { ClaudeCodeHarness } from "../harness/index.js";
 import {
   confirmAnalysis,
   promptExistingClaudeMd,
@@ -456,7 +457,7 @@ async function handleImportMode(
     }
 
     // Phase 2: Analyze with Claude
-    const analysis = await analyzeRepository(scanResult);
+    const analysis = await analyzeRepository(scanResult, new ClaudeCodeHarness());
 
     if (!options.quiet) {
       console.log("✓ Analysis complete");

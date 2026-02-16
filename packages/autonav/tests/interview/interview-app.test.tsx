@@ -15,26 +15,35 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { InterviewApp } from '../../src/interview/App.js';
 import type { NavigatorConfig } from '../../src/interview/prompts.js';
+import type { Harness, HarnessSession, AgentConfig, AgentEvent } from '../../src/harness/types.js';
+import type { ToolDefinition } from '../../src/harness/tool-server.js';
 
-// Mock the Claude Agent SDK
-vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
-  query: vi.fn(() => ({
-    [Symbol.asyncIterator]: async function* () {
-      yield {
-        type: 'assistant',
-        message: {
-          content: [
-            {
-              type: 'text',
-              text: 'What is the purpose of this navigator?',
-            },
-          ],
+/**
+ * Create a mock harness that yields the given events from run().
+ */
+function createMockHarness(events: AgentEvent[]): Harness {
+  return {
+    run(_config: AgentConfig, _prompt: string): HarnessSession {
+      return {
+        async *[Symbol.asyncIterator]() {
+          for (const event of events) {
+            yield event;
+          }
         },
+        send() {
+          return {
+            async *[Symbol.asyncIterator]() {},
+          };
+        },
+        updateConfig() {},
+        async close() {},
       };
-      yield { type: 'result', subtype: 'success' };
     },
-  })),
-}));
+    createToolServer(name: string, tools: ToolDefinition[]) {
+      return { server: { name, tools } };
+    },
+  };
+}
 
 describe('Interview TUI Component', () => {
   let tempDir: string;
@@ -55,11 +64,17 @@ describe('Interview TUI Component', () => {
   test('renders initial greeting and header', async () => {
     const mockComplete = vi.fn();
 
+    const mockHarness = createMockHarness([
+      { type: 'text', text: 'What is the purpose of this navigator?' },
+      { type: 'result', success: true },
+    ]);
+
     const { lastFrame } = render(
       <InterviewApp
         name="test-nav"
         navigatorPath={navigatorPath}
         onComplete={mockComplete}
+        harness={mockHarness}
       />
     );
 
@@ -78,11 +93,17 @@ describe('Interview TUI Component', () => {
   test('displays assistant message after initial load', async () => {
     const mockComplete = vi.fn();
 
+    const mockHarness = createMockHarness([
+      { type: 'text', text: 'What is the purpose of this navigator?' },
+      { type: 'result', success: true },
+    ]);
+
     const { lastFrame } = render(
       <InterviewApp
         name="test-nav"
         navigatorPath={navigatorPath}
         onComplete={mockComplete}
+        harness={mockHarness}
       />
     );
 

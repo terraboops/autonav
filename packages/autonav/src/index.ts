@@ -61,3 +61,19 @@ export {
   type MendCheckResult,
   type MendResult,
 } from "./mend/index.js";
+
+// Export harness (agent runtime adapter)
+export {
+  type Harness,
+  type HarnessSession,
+  type AgentConfig,
+  type AgentEvent,
+  type HarnessType,
+  ClaudeCodeHarness,
+  resolveHarnessType,
+  createHarness,
+  resolveAndCreateHarness,
+  collectText,
+  collectResult,
+  type CollectedResult,
+} from "./harness/index.js";
