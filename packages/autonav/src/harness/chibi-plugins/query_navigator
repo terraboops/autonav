@@ -12,20 +12,18 @@
 set -euo pipefail
 
 if [[ "${1:-}" == "--schema" ]]; then
-  cat <<'EOF'
-{
-  "name": "query_navigator",
-  "description": "Ask another navigator a question. Use this when you need information from a different navigator's knowledge base. The target navigator will search its own knowledge and return an answer.",
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "navigator": { "type": "string", "description": "Path to the target navigator directory (relative to cwd or absolute)" },
-      "question": { "type": "string", "description": "The question to ask the target navigator" }
-    },
-    "required": ["navigator", "question"]
-  }
-}
-EOF
+  printf '%s\n' '{' \
+    '  "name": "query_navigator",' \
+    '  "description": "Ask another navigator a question. Use this when you need information from a different navigator'\''s knowledge base. The target navigator will search its own knowledge and return an answer.",' \
+    '  "parameters": {' \
+    '    "type": "object",' \
+    '    "properties": {' \
+    '      "navigator": { "type": "string", "description": "Path to the target navigator directory (relative to cwd or absolute)" },' \
+    '      "question": { "type": "string", "description": "The question to ask the target navigator" }' \
+    '    },' \
+    '    "required": ["navigator", "question"]' \
+    '  }' \
+    '}'
   exit 0
 fi
 

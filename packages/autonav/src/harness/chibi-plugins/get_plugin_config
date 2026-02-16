@@ -6,23 +6,21 @@
 set -euo pipefail
 
 if [[ "${1:-}" == "--schema" ]]; then
-  cat <<'EOF'
-{
-  "name": "get_plugin_config",
-  "description": "Read your current plugin configuration. Use this to check what plugins are enabled, see notification settings, or verify your current schedule.",
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "plugin": {
-        "type": "string",
-        "enum": ["slack", "signal", "github", "email", "all"],
-        "description": "The plugin to read configuration for, or 'all' for everything"
-      }
-    },
-    "required": ["plugin"]
-  }
-}
-EOF
+  printf '%s\n' '{' \
+    '  "name": "get_plugin_config",' \
+    '  "description": "Read your current plugin configuration. Use this to check what plugins are enabled, see notification settings, or verify your current schedule.",' \
+    '  "parameters": {' \
+    '    "type": "object",' \
+    '    "properties": {' \
+    '      "plugin": {' \
+    '        "type": "string",' \
+    '        "enum": ["slack", "signal", "github", "email", "all"],' \
+    '        "description": "The plugin to read configuration for, or '\''all'\'' for everything"' \
+    '      }' \
+    '    },' \
+    '    "required": ["plugin"]' \
+    '  }' \
+    '}'
   exit 0
 fi
 

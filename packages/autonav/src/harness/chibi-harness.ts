@@ -161,8 +161,8 @@ class ChibiSession implements HarnessSession {
     this.ephemeralHome = createEphemeralHome({
       harness: "chibi",
       setup: (home) => {
-        // Copy user config if it exists (copy, not symlink — nono/Seatbelt
-        // follows symlinks and would require --read on the target directory)
+        // home_override IS the chibi_dir in AppState::load — files go at root level.
+        // Copy user config so chibi can authenticate with the LLM API.
         const userConfig = path.join(os.homedir(), ".chibi", "config.toml");
         if (fs.existsSync(userConfig)) {
           fs.copyFileSync(userConfig, path.join(home, "config.toml"));
