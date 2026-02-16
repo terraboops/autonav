@@ -418,21 +418,20 @@ export class ClaudeAdapter {
       console.error(`[DEBUG] System prompt length: ${systemPrompt.length} chars`);
     }
 
-    try {
-      // Execute query via harness
-      const session = this.harness.run(
-        {
-          model: this.options.model,
-          maxTurns,
-          systemPrompt,
-          cwd: navigator.navigatorPath,
-          mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
-          permissionMode: "bypassPermissions",
-          stderr: debug ? (data: string) => process.stderr.write(`[harness] ${data}`) : undefined,
-        },
-        prompt
-      );
+    const session = this.harness.run(
+      {
+        model: this.options.model,
+        maxTurns,
+        systemPrompt,
+        cwd: navigator.navigatorPath,
+        mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
+        permissionMode: "bypassPermissions",
+        stderr: debug ? (data: string) => process.stderr.write(`[harness] ${data}`) : undefined,
+      },
+      prompt
+    );
 
+    try {
       // Collect events and find the result
       let lastAssistantText = "";
       let submitAnswerInput: {
@@ -566,6 +565,8 @@ export class ClaudeAdapter {
       throw new Error(
         `Failed to query Claude: ${error instanceof Error ? error.message : String(error)}`
       );
+    } finally {
+      await session.close();
     }
   }
 
@@ -618,19 +619,18 @@ When updating documentation:
 
 Your task: ${message}`;
 
-    try {
-      // Execute update via harness with write permissions
-      const session = this.harness.run(
-        {
-          model: this.options.model,
-          maxTurns,
-          systemPrompt,
-          cwd: navigator.navigatorPath,
-          permissionMode: "bypassPermissions",
-        },
-        message
-      );
+    const session = this.harness.run(
+      {
+        model: this.options.model,
+        maxTurns,
+        systemPrompt,
+        cwd: navigator.navigatorPath,
+        permissionMode: "bypassPermissions",
+      },
+      message
+    );
 
+    try {
       // Collect the result
       let lastAssistantText = "";
       let resultEvent: Extract<import("../harness/index.js").AgentEvent, { type: "result" }> | undefined;
@@ -662,6 +662,8 @@ Your task: ${message}`;
       throw new Error(
         `Failed to update navigator: ${error instanceof Error ? error.message : String(error)}`
       );
+    } finally {
+      await session.close();
     }
   }
 
