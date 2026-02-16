@@ -8,303 +8,223 @@
 /_/  |_\____/ /_/  \____/_/ |_/_/  |_|  |___/
 ```
 
-  <h3>Navigators for the AI age</h3>
+  <h3>Cultivate context, grow understanding</h3>
 
   [![npm version](https://img.shields.io/npm/v/@autonav/core)](https://www.npmjs.com/package/@autonav/core)
   [![downloads](https://img.shields.io/npm/dm/@autonav/core)](https://www.npmjs.com/package/@autonav/core)
   [![license](https://img.shields.io/npm/l/@autonav/core)](./LICENSE)
-  [![CI](https://img.shields.io/github/actions/workflow/status/terraboops/platform-ai/ci.yml?branch=main)](https://github.com/terraboops/platform-ai/actions)
+  [![CI](https://img.shields.io/github/actions/workflow/status/terraboops/autonav/ci.yml?branch=main)](https://github.com/terraboops/autonav/actions)
   [![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue?logo=typescript)](https://www.typescriptlang.org/)
 
 </div>
 
 ---
 
-## Table of Contents
-- [The Problem](#the-problem)
-- [Quick Start](#quick-start)
-- [How It Works](#how-it-works)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Knowledge Packs](#knowledge-packs)
-- [Plugins](#plugins)
-- [Architecture](#architecture)
-- [Development](#development)
-- [Contributing](#contributing)
-- [License](#license)
+## What Is a Navigator?
+
+LLMs are powerful, but they hallucinate without context and forget between sessions. Building useful agents means solving two problems: **systematically curating context over time** so responses are grounded in real knowledge, and **scaling agent collaboration** so multiple agents can coordinate without drifting apart.
+
+A navigator is an autonomous agent that engineers its own context to gain deeper insight about a topic — through conversations, shared knowledge, and iterative refinement. Concretely, it's a directory of text files (system prompt, knowledge base, configuration) with a framework around it that makes responses grounded, citeable, and trustworthy.
+
+Autonav makes and manages navigators. Think of it as cultivating a software garden: you plant navigators with curated knowledge, they grow smarter through experience, and over time they become autonomous coworkers that produce real work. You're not commanding assembly-line machines — you're cultivating conditions for emergence.
 
 ---
 
-## The Problem
+## See It In Action
 
-LLMs are great at answering questions, but they hallucinate.
-Feed them your docs and they still make things up.
+<!-- TODO: Replace with asciinema recording -->
+```bash
+$ autonav init platform-nav --pack platform-engineering
+  ✔ Knowledge pack installed: platform-engineering v0.1.0
+  ✔ Navigator created: platform-nav/
 
-Autonav reduces this with **grounded responses**:
-- Answers cite specific source files
-- Sources get validated against the knowledge base
-- Confidence scores are explicit
-- Makes hallucinations easier to catch
+$ autonav query platform-nav "How do I debug a failing deployment?"
+  Answer: Based on your deployment runbooks, start by checking...
+  Confidence: 0.87
+  Sources: knowledge/troubleshooting.md (lines 45-78), knowledge/deployment.md (lines 12-30)
+
+$ autonav memento ./my-app ./platform-nav --branch feat/monitoring --task "Add health checks"
+  ⣾ Iteration 1: Navigator planning... → Worker implementing...
+  ✔ Committed: feat: add /health and /ready endpoints
+  ⣾ Iteration 2: Navigator planning... → Worker implementing...
+  ✔ Committed: test: add health check integration tests
+  ✔ Complete (2 iterations, $0.08)
+```
 
 ---
 
 ## Quick Start
 
 ```bash
-# Install
+# 1. Install
 npm install -g @autonav/core
 
-# Create a navigator
-autonav init my-docs
+# 2. Create a navigator
+autonav init my-assistant
 
-# Add your docs
-cp -r ~/docs/* my-docs/knowledge/
+# 3. (Optional) Add knowledge — markdown files about your domain
+cp -r ~/my-docs/* my-assistant/knowledge/
 
-# Query it
-autonav query my-docs "How do I deploy?"
+# 4. Query it
+autonav query my-assistant "How do I deploy?"
+
+# 5. Or chat interactively
+autonav chat my-assistant
 ```
 
----
-
-## How It Works
-
-1. **You create a navigator** - A directory with your docs and a CLAUDE.md
-2. **Claude Code reads it** - CLAUDE.md becomes the system prompt
-3. **Questions get grounded** - Every answer cites specific files
-4. **Hallucinations get caught** - Validation checks that sources exist
-
-Two ways to use it:
-- **Claude Code TUI**: `cd my-docs && claude` (interactive)
-- **CLI queries**: `autonav query my-docs "question"` (scripting)
+Want the full walkthrough? See the **[Getting Started guide](docs/getting-started.md)**.
 
 ---
 
-## Installation
+## What Can You Do?
 
-### npm (recommended)
+### Autonomous Development Loops
+**Memento**: A navigator plans, a worker implements, git is the only persistent memory. Each iteration starts fresh — the navigator reviews the git log, plans the next step, and a worker agent executes it. Runs unattended, produces commits.
+**Standup**: Multiple navigators sync in parallel — status reports, blocker resolution, cross-domain coordination. Like real standups, but your agents never skip them.
+
+### Your Personal Interface Layer
+A navigator that knows you — your preferences, projects, and working style. It adapts to how you communicate and what you need. Start by chatting manually, refine the knowledge over time, eventually delegate real work.
+
+### Domain-Specific Agents on the Fly
+Create any expert: Terraform, Kubernetes, your team's component library. Just text files — git it, PR it, collaboratively refine the knowledge. Specialists and generalists both have their place, but a well-scoped navigator dramatically outperforms a broad one.
+
+### Agent-to-Agent Communication
+Navigators query each other using the Agent Identity Protocol. Domain authority stays clear. Drift gets caught. The whole is greater than the sum of its parts.
+
+**[Explore all use cases →](docs/use-cases.md)**
+
+---
+
+## Install
+
 ```bash
 npm install -g @autonav/core
 ```
 
-### From source
-```bash
-git clone https://github.com/terraboops/platform-ai
-cd platform-ai
-npm install && npm run build
-npm link -w packages/autonav
-```
-
----
-
-## Usage
-
-### Interactive Mode (Claude Code)
-```bash
-cd my-navigator
-claude
-# Have a conversation grounded in your docs
-```
-
-### Query Mode (Scripting)
-```bash
-autonav query ./my-navigator "How do I configure SSL?"
-```
-
-### Update Navigator
-```bash
-autonav update ./my-navigator
-# Update navigator to latest version
-```
-
-### With Knowledge Packs
-```bash
-# Start with pre-built docs
-autonav init my-nav --pack platform-engineering
-
-# Or install from GitHub
-autonav init my-nav --pack github:user/repo
-
-# Or from a local directory
-autonav init my-nav --pack /path/to/pack
-```
+Requires Node.js >= 18 and Claude Code. See the **[Install guide](docs/install.md)** for details, troubleshooting, and alternative methods.
 
 ---
 
 ## Knowledge Packs
 
-Starter packs for common domains - think of them as curated documentation collections that configure navigators for specific use cases.
+### Why Knowledge Packs?
 
-**What's included:**
-- Pre-written documentation and guides
-- Configured CLAUDE.md system prompt
-- Plugin configurations (Slack, GitHub, etc.)
-- Ready-to-use knowledge base
+Unlike skills, commands, or AGENTS.md files, autonav constructs exactly the right context from a knowledge base to answer a given query. A knowledge pack stitches together skills, commands, system prompts, and curated documentation into a cohesive agent — one that retrieves only the relevant context for each problem.
 
-**Available packs:**
-- `platform-engineering` - DevOps, infrastructure, deployment workflows
-- Community packs (create and share your own!)
+This makes knowledge packs a powerful way to share domain expertise across your team. Instead of writing documentation that sits in a wiki, you build a navigator that actively uses that knowledge to answer questions, guide decisions, and produce work.
 
-**Creating your own pack:**
+### Creating Your Own
+
+Any directory with a `metadata.json` and either `system-configuration.md` or a `knowledge/` directory is a valid pack:
+
 ```
 my-pack/
-├── system-configuration.md   # Required - navigator configuration
-├── knowledge/                # Your documentation
-│   ├── deployment.md
-│   └── troubleshooting.md
-└── .claude/                  # Optional plugin configs
-    └── plugins.json
+├── metadata.json              # Name, version, description
+├── system-configuration.md    # Navigator grounding configuration
+├── knowledge/                 # Domain documentation
+│   └── *.md
+└── plugins.json               # Optional plugin config
 ```
 
-[Learn more about the Knowledge Pack Protocol →](./docs/KNOWLEDGE_PACK_PROTOCOL.md)
+Git it, share it with your team, or publish it for the community. See the **[Knowledge Pack Protocol](docs/KNOWLEDGE_PACK_PROTOCOL.md)** for hosting and distribution details.
 
----
+### Installing Packs
 
-## Plugins
+```bash
+# From the default pack server
+autonav init my-nav --pack platform-engineering
 
-Built-in integrations:
+# From GitHub
+autonav init my-nav --pack github:owner/repo/packs/my-pack
 
-### Slack
-Monitor channels, post messages, respond to threads:
-```json
-{
-  "slack": {
-    "enabled": true,
-    "workspace": "my-workspace",
-    "channels": ["platform-team", "alerts"],
-    "threadNotifications": true,
-    "summaryFrequency": "daily"
-  }
-}
+# From a local tarball
+autonav init my-nav --pack-file ./my-pack-0.1.0.tar.gz
 ```
 
-### GitHub
-Watch issues and PRs, auto-respond, create summaries:
-```json
-{
-  "github": {
-    "enabled": true,
-    "repositories": ["org/repo"],
-    "issueLabels": ["platform", "infrastructure"],
-    "autoRespond": true
-  }
-}
-```
-
-### FileWatcher
-React to file system changes:
-```json
-{
-  "fileWatcher": {
-    "enabled": true,
-    "patterns": ["docs/**/*.md", "config/**/*.yaml"],
-    "ignorePatterns": ["**/node_modules/**"]
-  }
-}
-```
-
-### Signal _(coming soon)_
-Personal notifications and scheduled check-ins:
-```json
-{
-  "signal": {
-    "enabled": true,
-    "phoneNumber": "+1234567890",
-    "checkInSchedule": "daily",
-    "checkInTime": "09:00"
-  }
-}
-```
-
-**Self-Configuration**: Navigators can modify their own plugin configs based on conversations. Ask your navigator to "check in with me tomorrow at 3pm" and it updates its own schedule.
+**Available packs:**
+- `platform-engineering` — Kubernetes, monitoring, incident response, deployment
+- Community packs — [create and share your own](docs/KNOWLEDGE_PACK_PROTOCOL.md)
 
 ---
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────┐
-│ Navigator Directory                         │
-├─────────────────────────────────────────────┤
-│ CLAUDE.md          → System prompt          │
-│ config.json        → Navigator config       │
-│ knowledge/         → Your documentation     │
-│ .claude/           → Plugin configs         │
-└─────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────┐
-│ Autonav CLI                                 │
-├─────────────────────────────────────────────┤
-│ init    → Create navigator                  │
-│ query   → Ask questions                     │
-│ update  → Update to new version             │
-└─────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────┐
-│ Claude Code SDK                             │
-├─────────────────────────────────────────────┤
-│ • Agentic search (Grep, Read, Bash)        │
-│ • Tool use and structured outputs           │
-│ • Multi-turn conversations                  │
-└─────────────────────────────────────────────┘
+```mermaid
+graph TD
+    User([User / CI / Script]) --> CLI
+
+    subgraph Autonav["Autonav Framework"]
+        CLI["CLI Commands<br/><i>init, query, chat, update,<br/>memento, standup, mend</i>"]
+        CL["Communication Layer<br/><i>schemas, grounding rules,<br/>identity protocol, validation</i>"]
+        Plugins["Plugins<br/><i>Slack, GitHub, FileWatcher</i>"]
+        CLI --> CL
+        CLI --> Plugins
+    end
+
+    CLI --> HA
+
+    subgraph HA["Harness Adapter"]
+        CC["Claude Code SDK<br/><i>(default)</i>"]
+        Chibi["Chibi<br/><i>(alternative)</i>"]
+    end
+
+    HA --> Nav1["Navigator A<br/><i>CLAUDE.md + knowledge/</i>"]
+    HA --> Nav2["Navigator B<br/><i>CLAUDE.md + knowledge/</i>"]
+
+    subgraph Orchestration["Orchestration"]
+        Memento["Memento Loop<br/><i>Nav plans → Worker implements<br/>→ git commit → repeat</i>"]
+        Standup["Standup<br/><i>Parallel reports →<br/>Sequential blocker sync</i>"]
+    end
+
+    CLI --> Orchestration
+    Orchestration --> HA
 ```
 
 **Three Components:**
-1. **Autonav Framework** - CLI, plugin system, configuration management
-2. **Communication Layer** - Response schemas, validation, grounding rules
-3. **Knowledge Packs** - HTTP-distributed community content
+
+1. **Autonav Framework** — CLI commands, plugin system, memento loops, standup orchestration
+2. **Communication Layer** — Response schemas, grounding rules, identity protocol, validation
+3. **Knowledge Packs** — HTTP-distributed community content, domain expertise
+
+The **harness adapter** contains the SDK dependency behind a universal interface, making autonav runtime-agnostic. Claude Code SDK is the default; Chibi is an alternative runtime that uses OpenRouter for model access.
 
 ---
 
 ## Development
 
 ```bash
-# Clone and install
-git clone https://github.com/terraboops/platform-ai
-cd platform-ai
-npm install
-
-# Build all packages
-npm run build
-
-# Run tests
+git clone https://github.com/terraboops/autonav.git
+cd autonav
+npm install && npm run build
 npm test
-
-# Type checking
-npm run typecheck
 ```
 
-### Debug Mode
 ```bash
-AUTONAV_DEBUG=1 autonav query my-nav "question"
+npm run dev                          # Watch mode
+npm run typecheck                    # Type checking
+AUTONAV_DEBUG=1 autonav query ...   # Debug logging
+AUTONAV_METRICS=1 autonav query ... # Metrics collection
 ```
 
-### Metrics Collection
-```bash
-AUTONAV_METRICS=1 autonav query my-nav "question"
+**Project structure:**
 ```
-
-### Project Structure
-```
-platform-ai/
+autonav/
 ├── packages/
-│   ├── autonav/              # Main CLI and framework
-│   └── communication-layer/  # Schemas and validation
+│   ├── autonav/                # Main CLI and framework
+│   └── communication-layer/    # Schemas, validation, templates
 ├── packs/
-│   └── platform-engineering/ # Example knowledge pack
-├── docs/                     # Documentation
-└── examples/                 # Example navigators
+│   └── platform-engineering/   # Example knowledge pack
+└── docs/                       # Documentation
 ```
 
 ---
 
 ## Contributing
 
-PRs welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md).
+PRs welcome. See **[CONTRIBUTING.md](./CONTRIBUTING.md)** for development workflow, code style, and PR guidelines.
 
 **Help wanted:**
-- Creating knowledge packs for popular domains (Kubernetes, AWS, etc.)
+- Knowledge packs for popular domains (Kubernetes, AWS, Terraform, etc.)
 - Documentation improvements
 - Bug reports and feature requests
 
@@ -312,11 +232,13 @@ PRs welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Philosophy
 
-**Stochastic Parrots as Feature**: LLMs don't create knowledge - they organize existing knowledge exceptionally well. Autonav embraces this by focusing on context management rather than fighting hallucinations.
+**Cultivating a Software Garden.** Autonav treats multi-agent development like gardening, not manufacturing. Agents are autonomous coworkers, not assembly-line machines. You cultivate the conditions — curated knowledge, clear scope, grounding rules — and the system grows through emergence. Navigators get smarter over time through collaboration, shared knowledge, and iterative refinement.
 
-**Navs as LLM Abstraction**: Just as containers are the abstraction for deploying software, navigators are the abstraction for interacting with LLMs. Self-contained, version-controlled, shareable.
+**Stochastic Parrots as Feature.** LLMs don't create knowledge — they organize existing knowledge exceptionally well. Autonav embraces this by making context engineering the first-class concern, not fighting hallucinations after the fact.
 
-**Community-Driven Knowledge**: Knowledge packs enable anyone to curate and share domain expertise without package coordination complexity. HTTP distribution means zero gatekeeping.
+**Navigators as LLM Abstraction.** Just as containers are the abstraction for deploying software, navigators are the abstraction for interacting with LLMs. Self-contained, version-controlled, shareable, composable.
+
+**Community-Driven Knowledge.** Knowledge packs let anyone curate and share domain expertise. HTTP distribution means no gatekeeping, no package coordination. The best knowledge rises through use.
 
 ---
 
@@ -330,9 +252,8 @@ Apache-2.0 © [Terra Tauri](https://terratauri.com)
 
 | Resource | Description |
 |----------|-------------|
-| [The Navigator Pattern](https://terratauri.com/blog/navigator-pattern/) | Introduction to the navigator pattern and philosophy |
-| [Knowledge Pack Protocol](docs/KNOWLEDGE_PACK_PROTOCOL.md) | Create and distribute your own knowledge packs |
-| [Autonav CLI](packages/autonav/README.md) | CLI commands and NavigatorAdapter API |
-| [Communication Layer](packages/communication-layer/README.md) | Response schemas and validation |
-| [Navigator Structure](packages/communication-layer/src/protocols/navigator-structure.md) | What files make up a navigator |
-| [CLAUDE.md Guide](./CLAUDE.md) | Full development guide and project context |
+| **[Getting Started](docs/getting-started.md)** | Create your first navigator, step by step |
+| **[Install Guide](docs/install.md)** | Installation, configuration, troubleshooting |
+| **[Use Cases](docs/use-cases.md)** | Personal agents, domain experts, autonomous dev loops |
+| **[Knowledge Pack Protocol](docs/KNOWLEDGE_PACK_PROTOCOL.md)** | Create and distribute your own packs |
+| **[CONTRIBUTING.md](./CONTRIBUTING.md)** | Development workflow and contribution guide |
