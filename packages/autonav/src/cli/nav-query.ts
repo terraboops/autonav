@@ -3,7 +3,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
-import { ClaudeAdapter } from "../adapter/index.js";
+import { NavigatorAdapter } from "../adapter/index.js";
 import {
   loadNavigator,
   validateResponse,
@@ -16,6 +16,7 @@ import {
   type ConfidenceLevel,
 } from "../query-engine/index.js";
 import { HallucinationError } from "@autonav/communication-layer";
+import { resolveAndCreateHarness } from "../harness/index.js";
 
 /**
  * Command line options
@@ -175,15 +176,16 @@ async function executeQuery(
       console.error(""); // Blank line
     }
 
+    // Initialize adapter with resolved harness
+    const harness = await resolveAndCreateHarness(options.harness);
+    const adapter = new NavigatorAdapter({ harness });
+
     // Show question (only in interactive mode)
     if (showUI) {
       console.error(chalk.blue("❓") + " Question: " + chalk.italic(question));
       console.error(""); // Blank line
-      spinner = ora("Querying Claude...").start();
+      spinner = ora(`Asking ${harness.displayName}...`).start();
     }
-
-    // Initialize adapter
-    const adapter = new ClaudeAdapter();
 
     // Execute query with timeout
     const queryPromise = adapter.query(navigator, question);

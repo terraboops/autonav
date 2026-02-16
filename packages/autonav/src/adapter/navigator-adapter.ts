@@ -8,7 +8,9 @@ import {
   createAnswerQuestionPrompt,
   validateResponse,
   SELF_CONFIG_RULES,
+  scoreToConfidence,
   type ValidationResult,
+  type ConfidenceLevel,
 } from "@autonav/communication-layer";
 import { createPluginManager, PluginManager, PluginConfigFileSchema } from "../plugins/index.js";
 import { sanitizeError } from "../plugins/utils/security.js";
@@ -61,9 +63,9 @@ async function initializeLangSmith(): Promise<boolean> {
 }
 
 /**
- * Configuration options for Claude Adapter
+ * Configuration options for Navigator Adapter
  */
-export interface ClaudeAdapterOptions {
+export interface NavigatorAdapterOptions {
   /**
    * Claude model to use (defaults to claude-sonnet-4-5)
    */
@@ -85,6 +87,12 @@ export interface ClaudeAdapterOptions {
    * @default 50
    */
   maxTurns?: number;
+
+  /**
+   * Pre-created harness instance. If provided, this harness is used directly.
+   * If omitted, defaults to ClaudeCodeHarness.
+   */
+  harness?: Harness;
 }
 
 /**
@@ -127,14 +135,14 @@ export interface QueryOptions {
 }
 
 /**
- * Claude Agent SDK Adapter
+ * Navigator Adapter
  *
  * Bridges Claude Agent SDK to the Communication Layer protocol.
  * Loads navigators, executes queries, and validates responses.
  *
  * @example
  * ```typescript
- * const adapter = new ClaudeAdapter({
+ * const adapter = new NavigatorAdapter({
  *   model: 'claude-sonnet-4-5'
  * });
  *
@@ -142,21 +150,23 @@ export interface QueryOptions {
  * const response = await adapter.query(navigator, 'How do I deploy?');
  * ```
  */
-export class ClaudeAdapter {
-  private readonly options: { model: string; maxTurns?: number };
+export class NavigatorAdapter {
+  private readonly options: { model?: string; maxTurns?: number };
   private readonly harness: Harness;
 
   /**
-   * Create a new Claude Adapter
+   * Create a new Navigator Adapter
    *
    * @param options - Configuration options
    */
-  constructor(options: ClaudeAdapterOptions = {}) {
+  constructor(options: NavigatorAdapterOptions = {}) {
     this.options = {
-      model: options.model || "claude-sonnet-4-5",
+      // Only set model if explicitly provided — let the harness use its own default otherwise.
+      // ClaudeCodeHarness defaults to claude-sonnet-4-5; chibi defaults to free models.
+      model: options.model || (options.harness ? undefined : "claude-sonnet-4-5"),
       maxTurns: options.maxTurns ?? 50, // Default: 50 turns max (prevents runaway execution)
     };
-    this.harness = new ClaudeCodeHarness();
+    this.harness = options.harness ?? new ClaudeCodeHarness();
   }
 
   /**
@@ -172,7 +182,7 @@ export class ClaudeAdapter {
    *
    * @example
    * ```typescript
-   * const adapter = new ClaudeAdapter();
+   * const adapter = new NavigatorAdapter();
    * const navigator = await adapter.loadNavigator('./my-navigator');
    * console.log(`Loaded: ${navigator.config.name}`);
    * ```
@@ -408,20 +418,23 @@ export class ClaudeAdapter {
       console.error(`[DEBUG] System prompt length: ${systemPrompt.length} chars`);
     }
 
-    try {
-      // Execute query via harness
-      const session = this.harness.run(
-        {
-          model: this.options.model,
-          maxTurns,
-          systemPrompt,
-          cwd: navigator.navigatorPath,
-          mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
-          permissionMode: "bypassPermissions",
+    const session = this.harness.run(
+      {
+        model: this.options.model,
+        maxTurns,
+        systemPrompt,
+        cwd: navigator.navigatorPath,
+        mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
+        permissionMode: "bypassPermissions",
+        stderr: debug ? (data: string) => process.stderr.write(`[harness] ${data}`) : undefined,
+        sandbox: {
+          readPaths: [navigator.navigatorPath],
         },
-        prompt
-      );
+      },
+      prompt
+    );
 
+    try {
       // Collect events and find the result
       let lastAssistantText = "";
       let submitAnswerInput: {
@@ -450,6 +463,12 @@ export class ClaudeAdapter {
               console.error(`[DEBUG] submit_answer tool called successfully!`);
             }
           }
+        } else if (event.type === "error") {
+          if (debug) {
+            console.error(`[DEBUG] Error: ${event.message}`);
+          }
+          // Capture error message so it surfaces in the result
+          lastAssistantText = event.message;
         } else if (event.type === "text") {
           lastAssistantText = event.text;
           if (debug) {
@@ -506,12 +525,22 @@ export class ClaudeAdapter {
       let navigatorResponse: NavigatorResponse;
 
       if (submitAnswerInput) {
+        // Normalize confidence: accept enum strings ("high"), numeric strings ("0.9"), or numbers (0.9)
+        const rawConf = submitAnswerInput.confidence;
+        let confidence: ConfidenceLevel;
+        if (rawConf === "high" || rawConf === "medium" || rawConf === "low") {
+          confidence = rawConf;
+        } else {
+          const n = Number(rawConf);
+          confidence = !isNaN(n) ? scoreToConfidence(n) : "medium";
+        }
+
         // Use structured output from tool call (preferred)
         navigatorResponse = NavigatorResponseSchema.parse({
           query: question,
           answer: submitAnswerInput.answer,
           sources: submitAnswerInput.sources,
-          confidence: submitAnswerInput.confidence,
+          confidence,
           confidenceReason: submitAnswerInput.confidenceReason,
           outOfDomain: submitAnswerInput.outOfDomain,
         });
@@ -520,7 +549,7 @@ export class ClaudeAdapter {
         const finalText = resultEvent.text || lastAssistantText;
 
         if (!finalText) {
-          throw new Error("No response received from Claude. Expected submit_answer tool call or text response.");
+          throw new Error(`${this.harness.displayName} finished without answering — no submit_answer call or text response.`);
         }
 
         // Parse the response from text
@@ -537,8 +566,10 @@ export class ClaudeAdapter {
         throw error;
       }
       throw new Error(
-        `Failed to query Claude: ${error instanceof Error ? error.message : String(error)}`
+        `${this.harness.displayName} ran into trouble: ${error instanceof Error ? error.message : String(error)}`
       );
+    } finally {
+      await session.close();
     }
   }
 
@@ -552,7 +583,7 @@ export class ClaudeAdapter {
    * @param navigator - Loaded navigator to update
    * @param message - Update message or report
    * @param options - Query options (maxTurns)
-   * @returns Text response from Claude describing what was updated
+   * @returns Text response from the agent describing what was updated
    * @throws {Error} If API call fails or update fails
    *
    * @example
@@ -591,19 +622,21 @@ When updating documentation:
 
 Your task: ${message}`;
 
-    try {
-      // Execute update via harness with write permissions
-      const session = this.harness.run(
-        {
-          model: this.options.model,
-          maxTurns,
-          systemPrompt,
-          cwd: navigator.navigatorPath,
-          permissionMode: "bypassPermissions",
+    const session = this.harness.run(
+      {
+        model: this.options.model,
+        maxTurns,
+        systemPrompt,
+        cwd: navigator.navigatorPath,
+        permissionMode: "bypassPermissions",
+        sandbox: {
+          writePaths: [navigator.navigatorPath],
         },
-        message
-      );
+      },
+      message
+    );
 
+    try {
       // Collect the result
       let lastAssistantText = "";
       let resultEvent: Extract<import("../harness/index.js").AgentEvent, { type: "result" }> | undefined;
@@ -633,8 +666,10 @@ Your task: ${message}`;
         throw error;
       }
       throw new Error(
-        `Failed to update navigator: ${error instanceof Error ? error.message : String(error)}`
+        `${this.harness.displayName} couldn't complete the update: ${error instanceof Error ? error.message : String(error)}`
       );
+    } finally {
+      await session.close();
     }
   }
 
@@ -644,7 +679,7 @@ Your task: ${message}`;
    * Extracts JSON from the response text (either from code blocks or raw JSON)
    * and validates it against the NavigatorResponseSchema.
    *
-   * @param rawResponse - Raw text response from Claude
+   * @param rawResponse - Raw text response from the agent
    * @param query - Original query (used to populate missing query field)
    * @returns Parsed and validated NavigatorResponse
    * @throws {Error} If JSON cannot be extracted or schema validation fails

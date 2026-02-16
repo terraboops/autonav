@@ -1,15 +1,15 @@
 /**
  * Platform AI Autonav
  *
- * CLI tools and Claude SDK Adapter for building and querying navigators
+ * CLI tools and Navigator Adapter for building and querying navigators
  *
  * @packageDocumentation
  */
 
 // Export adapter
 export {
-  ClaudeAdapter,
-  type ClaudeAdapterOptions,
+  NavigatorAdapter,
+  type NavigatorAdapterOptions,
   type LoadedNavigator,
   type QueryOptions,
 } from "./adapter/index.js";

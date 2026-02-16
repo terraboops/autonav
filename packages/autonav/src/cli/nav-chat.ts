@@ -3,6 +3,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { runConversationTUI, isInteractiveTerminal } from "../conversation/index.js";
+import { resolveAndCreateHarness } from "../harness/index.js";
 
 /**
  * autonav chat CLI command
@@ -168,11 +169,15 @@ async function main() {
       console.log("");
     }
 
+    // Resolve harness from CLI flag, env var, or default
+    const harness = await resolveAndCreateHarness(options.harness);
+
     await runConversationTUI({
       navigatorName: config.name,
       navigatorPath,
       navigatorSystemPrompt: systemPrompt,
       knowledgeBasePath,
+      harness,
     });
 
     console.log("\n👋 Conversation ended.\n");

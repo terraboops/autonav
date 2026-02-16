@@ -65,7 +65,7 @@ Do NOT respond with plain text - always use this tool to submit your answer.`,
       // Validate against the full schema (adds protocolVersion, timestamp, etc.)
       const response = NavigatorResponseSchema.parse({
         protocolVersion: PROTOCOL_VERSION,
-        query: "", // Will be populated by ClaudeAdapter
+        query: "", // Will be populated by NavigatorAdapter
         answer: args.answer,
         sources: args.sources,
         confidence: args.confidence,
@@ -73,7 +73,7 @@ Do NOT respond with plain text - always use this tool to submit your answer.`,
         outOfDomain: args.outOfDomain,
       });
 
-      // Return success - the ClaudeAdapter will extract the response
+      // Return success - the NavigatorAdapter will extract the response
       return {
         content: [
           {
@@ -94,6 +94,6 @@ Do NOT respond with plain text - always use this tool to submit your answer.`,
 }
 
 /**
- * Tool name constant for detection in ClaudeAdapter
+ * Tool name constant for detection in NavigatorAdapter
  */
 export const SUBMIT_ANSWER_TOOL = "submit_answer";

@@ -1,12 +1,12 @@
 /**
- * Claude SDK Adapter
+ * Navigator Adapter
  *
- * Execution engine that bridges Claude API to Communication Layer protocol
+ * Execution engine that bridges agent harnesses to Communication Layer protocol
  */
 
 export {
-  ClaudeAdapter,
-  type ClaudeAdapterOptions,
+  NavigatorAdapter,
+  type NavigatorAdapterOptions,
   type LoadedNavigator,
   type QueryOptions,
-} from "./claude-adapter.js";
+} from "./navigator-adapter.js";

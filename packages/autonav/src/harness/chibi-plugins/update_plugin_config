@@ -1,0 +1,91 @@
+#!/bin/bash
+# update_plugin_config chibi plugin
+#
+# Reads plugins.json, merges updates into a plugin's config section,
+# and writes back. Requires AUTONAV_PLUGINS_PATH and jq.
+
+set -euo pipefail
+
+if [[ "${1:-}" == "--schema" ]]; then
+  printf '%s\n' '{' \
+    '  "name": "update_plugin_config",' \
+    '  "description": "Update your own plugin configuration. Use this to schedule check-ins, change notification settings, enable/disable plugins, update channel preferences, or modify any plugin behavior.",' \
+    '  "parameters": {' \
+    '    "type": "object",' \
+    '    "properties": {' \
+    '      "plugin": {' \
+    '        "type": "string",' \
+    '        "enum": ["slack", "signal", "github", "email"],' \
+    '        "description": "The plugin to configure"' \
+    '      },' \
+    '      "updates": {' \
+    '        "type": "object",' \
+    '        "description": "Config key-value pairs to merge into the plugin'\''s config section"' \
+    '      },' \
+    '      "reason": {' \
+    '        "type": "string",' \
+    '        "description": "Brief explanation of why you'\''re making this change"' \
+    '      }' \
+    '    },' \
+    '    "required": ["plugin", "updates", "reason"]' \
+    '  }' \
+    '}'
+  exit 0
+fi
+
+# jq is required for this plugin (merge logic)
+if ! command -v jq &>/dev/null; then
+  echo '{"success": false, "error": "jq is required for update_plugin_config but was not found on PATH."}'
+  exit 0
+fi
+
+# Read JSON args from stdin
+input=$(cat)
+plugin=$(echo "$input" | jq -r '.plugin // empty')
+updates=$(echo "$input" | jq '.updates // empty')
+reason=$(echo "$input" | jq -r '.reason // empty')
+
+if [[ -z "$plugin" || "$updates" == "empty" || "$updates" == "" || -z "$reason" ]]; then
+  echo '{"success": false, "error": "Missing required fields: plugin, updates, and reason"}'
+  exit 0
+fi
+
+# Validate plugin name
+case "$plugin" in
+  slack|signal|github|email) ;;
+  *)
+    jq -n --arg p "$plugin" \
+      '{"success": false, "error": ("Unknown plugin: " + $p + ". Valid: slack, signal, github, email")}'
+    exit 0
+    ;;
+esac
+
+# Check env var
+config_path="${AUTONAV_PLUGINS_PATH:-}"
+if [[ -z "$config_path" ]]; then
+  echo '{"success": false, "error": "AUTONAV_PLUGINS_PATH not set. Plugin configuration unavailable."}'
+  exit 0
+fi
+
+if [[ ! -f "$config_path" ]]; then
+  echo '{"success": false, "error": "Plugin configuration file not found."}'
+  exit 0
+fi
+
+# Read current config
+current=$(cat "$config_path")
+
+# Merge updates into the plugin's config section
+# If the plugin section doesn't exist, create it with enabled: false
+updated=$(echo "$current" | jq --arg p "$plugin" --argjson u "$updates" '
+  if .[$p] == null then
+    .[$p] = {"enabled": false, "config": {}}
+  else . end
+  | .[$p].config = (.[$p].config // {} | . * $u)
+')
+
+# Write back
+echo "$updated" > "$config_path"
+
+jq -n --arg p "$plugin" --arg r "$reason" --argjson u "$updates" \
+  '{"success": true, "plugin": $p, "message": ("Updated " + $p + " config: " + $r), "changes": $u}'
