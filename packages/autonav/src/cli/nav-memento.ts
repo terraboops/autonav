@@ -36,6 +36,7 @@ interface MementoCommandOptions {
   verbose?: boolean;
   model?: string;
   navModel?: string;
+  harness?: string;
 }
 
 /**
@@ -80,6 +81,7 @@ program
   .option("--verbose", "Show detailed logging")
   .option("--model <model>", "Model for worker agent", "claude-haiku-4-5")
   .option("--nav-model <model>", "Model for navigator agent", "claude-opus-4-5")
+  .option("--harness <type>", "Agent runtime to use (claude-code|chibi)")
   .action(
     async (
       codeDirectory: string,
@@ -179,6 +181,7 @@ async function executeMemento(
       verbose,
       model: options.model,
       navModel: options.navModel,
+      harness: options.harness,
     });
 
     // Display results

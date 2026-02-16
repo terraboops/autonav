@@ -16,6 +16,7 @@ import {
 interface UpdateCommandOptions {
   timeout?: number;
   verbose?: boolean;
+  harness?: string;
 }
 
 /**
@@ -82,6 +83,7 @@ program
     120000 // 2 minutes default (longer than query since it may need to write files)
   )
   .option("--verbose", "Show additional debug information")
+  .option("--harness <type>", "Agent runtime to use (claude-code|chibi)")
   .action(async (navigator: string, message: string, options: UpdateCommandOptions) => {
     await executeUpdate(navigator, message, options);
   });

@@ -1,5 +1,5 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { ScanResult } from "../repo-scanner/index.js";
+import { type Harness, collectText } from "../harness/index.js";
 
 /**
  * Repository Analyzer
@@ -150,30 +150,21 @@ export function validateAnalysisResult(
  * Analyze a scanned repository using Claude
  */
 export async function analyzeRepository(
-  scanResult: ScanResult
+  scanResult: ScanResult,
+  harness: Harness
 ): Promise<AnalysisResult> {
   const prompt = buildAnalysisPrompt(scanResult);
 
   try {
-    const queryInstance = query({
-      prompt,
-      options: {
-        model: ANALYSIS_MODEL,
-        permissionMode: "bypassPermissions",
-      },
-    });
-
-    let responseText = "";
-
-    for await (const message of queryInstance) {
-      if (message.type === "assistant") {
-        const content = message.message.content;
-        const textBlocks = content.filter(
-          (b): b is Extract<typeof b, { type: "text" }> => b.type === "text"
-        );
-        responseText = textBlocks.map((b) => b.text).join("\n");
-      }
-    }
+    const responseText = await collectText(
+      harness.run(
+        {
+          model: ANALYSIS_MODEL,
+          permissionMode: "bypassPermissions",
+        },
+        prompt
+      )
+    );
 
     const result = parseAnalysisResponse(responseText);
 

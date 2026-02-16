@@ -11,6 +11,7 @@ import { InterviewApp } from "./App.js";
 import type { NavigatorConfig, PackContext } from "./prompts.js";
 import type { AnalysisResult } from "../repo-analyzer/index.js";
 import type { InterviewProgress } from "./progress.js";
+import { ClaudeCodeHarness } from "../harness/index.js";
 
 export type { NavigatorConfig, PackContext } from "./prompts.js";
 export type { InterviewProgress } from "./progress.js";
@@ -89,6 +90,7 @@ export function runInterviewTUI(
         analysisContext: options.analysisContext,
         initialMessages: options.savedProgress?.messages,
         onComplete: handleComplete,
+        harness: new ClaudeCodeHarness(),
       })
     );
 

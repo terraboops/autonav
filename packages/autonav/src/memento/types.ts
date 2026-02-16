@@ -75,6 +75,9 @@ export interface MementoOptions {
 
   /** Show detailed logging */
   verbose?: boolean;
+
+  /** Agent runtime harness type (defaults to claude-code) */
+  harness?: string;
 }
 
 /**

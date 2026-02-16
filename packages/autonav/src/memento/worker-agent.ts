@@ -1,12 +1,12 @@
 /**
  * Worker Agent for Memento Loop
  *
- * Executes implementation plans using the Claude Agent SDK.
+ * Executes implementation plans via the harness adapter.
  */
 
-import { query, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { ImplementationPlan, WorkerResult } from "./types.js";
 import { buildWorkerPrompt, buildWorkerSystemPrompt } from "./prompts.js";
+import { type Harness, ClaudeCodeHarness } from "../harness/index.js";
 
 /**
  * Minimal context for worker (no persisted state)
@@ -28,6 +28,9 @@ export interface WorkerAgentOptions {
 
   /** Maximum turns for worker agent */
   maxTurns?: number;
+
+  /** Harness to use (defaults to ClaudeCodeHarness) */
+  harness?: Harness;
 }
 
 /**
@@ -43,6 +46,7 @@ export async function runWorkerAgent(
     verbose = false,
     model = "claude-sonnet-4-5",
     maxTurns = 50,
+    harness = new ClaudeCodeHarness(),
   } = options;
 
   const prompt = buildWorkerPrompt(context.codeDirectory, plan);
@@ -56,76 +60,59 @@ export async function runWorkerAgent(
 
   const filesModified: string[] = [];
   let lastAssistantText = "";
-  let resultMessage: SDKResultMessage | undefined;
 
   try {
-    const queryIterator = query({
-      prompt,
-      options: {
+    const session = harness.run(
+      {
         model,
         maxTurns,
         systemPrompt,
         cwd: context.codeDirectory,
         permissionMode: "bypassPermissions",
       },
-    });
+      prompt
+    );
 
-    for await (const message of queryIterator) {
-      if (message.type === "assistant") {
-        const content = message.message.content;
-        for (const block of content) {
-          if (block.type === "tool_use") {
-            // Track file operations
-            if (verbose) {
-              console.log(`[Worker] Tool: ${block.name}`);
-            }
+    let success = false;
+    let resultText = "";
+    let errorText = "";
 
-            // Extract file paths from common tools
-            if (
-              block.name === "Write" ||
-              block.name === "Edit" ||
-              block.name === "str_replace_based_edit_tool"
-            ) {
-              const input = block.input as Record<string, unknown>;
-              const filePath = input.file_path || input.path;
-              if (typeof filePath === "string" && !filesModified.includes(filePath)) {
-                filesModified.push(filePath);
-              }
-            }
-          } else if (block.type === "text") {
-            lastAssistantText = block.text;
+    for await (const event of session) {
+      if (event.type === "tool_use") {
+        if (verbose) {
+          console.log(`[Worker] Tool: ${event.name}`);
+        }
+
+        // Extract file paths from common tools
+        if (
+          event.name === "Write" ||
+          event.name === "Edit" ||
+          event.name === "str_replace_based_edit_tool"
+        ) {
+          const filePath = event.input.file_path || event.input.path;
+          if (typeof filePath === "string" && !filesModified.includes(filePath)) {
+            filesModified.push(filePath);
           }
         }
-      }
-
-      if (message.type === "result") {
-        resultMessage = message;
+      } else if (event.type === "text") {
+        lastAssistantText = event.text;
+      } else if (event.type === "result") {
+        success = event.success;
+        resultText = event.text || "";
+        if (!event.success) {
+          errorText = event.text || "Unknown error";
+        }
       }
     }
 
     const durationMs = Date.now() - startTime;
 
-    if (!resultMessage) {
+    if (!success) {
       return {
         success: false,
-        summary: "No result message received from worker agent",
+        summary: errorText || "Worker failed",
         filesModified,
-        errors: ["No result message received"],
-        durationMs,
-      };
-    }
-
-    if (resultMessage.subtype !== "success") {
-      const errorDetails =
-        "errors" in resultMessage
-          ? resultMessage.errors.join(", ")
-          : "Unknown error";
-
-      return {
-        success: false,
-        summary: `Worker failed: ${resultMessage.subtype}`,
-        filesModified,
-        errors: [errorDetails],
+        errors: [errorText || "Unknown error"],
         durationMs,
       };
     }
@@ -137,7 +124,7 @@ export async function runWorkerAgent(
 
     return {
       success: true,
-      summary: resultMessage.result || lastAssistantText || "Implementation completed",
+      summary: resultText || lastAssistantText || "Implementation completed",
       filesModified,
       durationMs,
     };

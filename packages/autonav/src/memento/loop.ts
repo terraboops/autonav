@@ -9,7 +9,6 @@
  * history as context about what the worker has accomplished so far.
  */
 
-import { query, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as readline from "node:readline";
@@ -32,6 +31,10 @@ import {
 import { createNavProtocolMcpServer } from "./nav-protocol.js";
 import { buildNavPlanPrompt, buildNavSystemPrompt, type NavigatorIdentity } from "./prompts.js";
 import { MatrixAnimation } from "./matrix-animation.js";
+import {
+  type Harness,
+  resolveAndCreateHarness,
+} from "../harness/index.js";
 
 /**
  * Options for the memento loop
@@ -230,13 +233,14 @@ async function queryNavForPlanWithStats(
   gitLog: string,
   options: MementoLoopOptions,
   animation: MatrixAnimation,
-  verbose: boolean
+  verbose: boolean,
+  harness: Harness
 ): Promise<NavQueryResult> {
   // Navigator uses opus by default for better planning
   const { navModel: model = "claude-opus-4-5", maxTurns = 50 } = options;
 
   // Create MCP server with plan submission tool
-  const navProtocol = createNavProtocolMcpServer();
+  const navProtocol = createNavProtocolMcpServer(harness);
 
   const prompt = buildNavPlanPrompt(
     { codeDirectory, task, iteration, maxIterations, branch: options.branch },
@@ -249,9 +253,8 @@ async function queryNavForPlanWithStats(
     console.log("\n[Nav] Querying navigator for plan...");
   }
 
-  const queryIterator = query({
-    prompt,
-    options: {
+  const session = harness.run(
+    {
       model,
       maxTurns,
       systemPrompt,
@@ -261,45 +264,39 @@ async function queryNavForPlanWithStats(
       },
       permissionMode: "bypassPermissions",
     },
-  });
+    prompt
+  );
 
-  let resultMessage: SDKResultMessage | undefined;
   let lastTool: string | undefined;
+  let tokensUsed = 0;
+  let success = false;
+  let errorText = "";
 
-  for await (const message of queryIterator) {
-    if (message.type === "assistant") {
-      const content = message.message.content;
-      for (const block of content) {
-        if (block.type === "tool_use") {
-          const toolName = block.name.split("__").pop() || block.name;
-          lastTool = toolName;
+  for await (const event of session) {
+    if (event.type === "tool_use") {
+      const toolName = event.name.split("__").pop() || event.name;
+      lastTool = toolName;
 
-          if (verbose) {
-            console.log(`[Nav] Tool: ${toolName}`);
-          }
-
-          // Update animation
-          animation.setMessage(`Navigator: ${toolName}...`);
-          animation.setLastTool(toolName);
-        }
+      if (verbose) {
+        console.log(`[Nav] Tool: ${toolName}`);
       }
+
+      // Update animation
+      animation.setMessage(`Navigator: ${toolName}...`);
+      animation.setLastTool(toolName);
     }
 
-    if (message.type === "result") {
-      resultMessage = message;
+    if (event.type === "result") {
+      success = event.success;
+      tokensUsed = (event.usage?.inputTokens ?? 0) + (event.usage?.outputTokens ?? 0);
+      if (!event.success) {
+        errorText = event.text || "Unknown error";
+      }
     }
   }
 
-  // Extract token usage from result (input + output = total)
-  const usage = (resultMessage as any)?.usage;
-  const tokensUsed = (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0);
-
-  if (!resultMessage || resultMessage.subtype !== "success") {
-    const errorDetails =
-      resultMessage && "errors" in resultMessage
-        ? resultMessage.errors.join(", ")
-        : "Unknown error";
-    throw new Error(`Navigator query failed: ${errorDetails}`);
+  if (!success) {
+    throw new Error(`Navigator query failed: ${errorText}`);
   }
 
   // Get the captured plan from the MCP server
@@ -339,7 +336,8 @@ async function runWorkerAgentWithStats(
   context: { codeDirectory: string; task: string },
   plan: ImplementationPlan,
   options: { verbose?: boolean; model?: string; maxTurns?: number },
-  animation: MatrixAnimation
+  animation: MatrixAnimation,
+  harness: Harness
 ): Promise<WorkerResultWithStats> {
   // Worker uses haiku by default for faster/cheaper implementation
   const { verbose = false, model = "claude-haiku-4-5", maxTurns = 50 } = options;
@@ -353,85 +351,67 @@ async function runWorkerAgentWithStats(
     console.log("\n[Worker] Starting implementation...");
   }
 
-  const queryIterator = query({
-    prompt,
-    options: {
+  const session = harness.run(
+    {
       model,
       maxTurns,
       systemPrompt,
       cwd: context.codeDirectory,
       permissionMode: "bypassPermissions",
     },
-  });
+    prompt
+  );
 
   const filesModified: string[] = [];
   let lastAssistantText = "";
-  let resultMessage: SDKResultMessage | undefined;
   let lastTool: string | undefined;
+  let tokensUsed = 0;
+  let success = false;
+  let resultText = "";
+  let errorText = "";
 
-  for await (const message of queryIterator) {
-    if (message.type === "assistant") {
-      const content = message.message.content;
-      for (const block of content) {
-        if (block.type === "tool_use") {
-          const toolName = block.name;
-          lastTool = toolName;
+  for await (const event of session) {
+    if (event.type === "tool_use") {
+      const toolName = event.name;
+      lastTool = toolName;
 
-          if (verbose) {
-            console.log(`[Worker] Tool: ${toolName}`);
-          }
+      if (verbose) {
+        console.log(`[Worker] Tool: ${toolName}`);
+      }
 
-          // Update animation
-          animation.setMessage(`Worker: ${toolName}...`);
-          animation.setLastTool(toolName);
+      // Update animation
+      animation.setMessage(`Worker: ${toolName}...`);
+      animation.setLastTool(toolName);
 
-          // Track file operations
-          if (
-            toolName === "Write" ||
-            toolName === "Edit" ||
-            toolName === "str_replace_based_edit_tool"
-          ) {
-            const input = block.input as Record<string, unknown>;
-            const filePath = input.file_path || input.path;
-            if (typeof filePath === "string" && !filesModified.includes(filePath)) {
-              filesModified.push(filePath);
-            }
-          }
-        } else if (block.type === "text") {
-          lastAssistantText = block.text;
+      // Track file operations
+      if (
+        toolName === "Write" ||
+        toolName === "Edit" ||
+        toolName === "str_replace_based_edit_tool"
+      ) {
+        const filePath = event.input.file_path || event.input.path;
+        if (typeof filePath === "string" && !filesModified.includes(filePath)) {
+          filesModified.push(filePath);
         }
       }
-    }
-
-    if (message.type === "result") {
-      resultMessage = message;
+    } else if (event.type === "text") {
+      lastAssistantText = event.text;
+    } else if (event.type === "result") {
+      success = event.success;
+      resultText = event.text || "";
+      tokensUsed = (event.usage?.inputTokens ?? 0) + (event.usage?.outputTokens ?? 0);
+      if (!event.success) {
+        errorText = event.text || "Unknown error";
+      }
     }
   }
 
-  // Extract token usage (input + output = total)
-  const usage = (resultMessage as any)?.usage;
-  const tokensUsed = (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0);
-
-  if (!resultMessage) {
+  if (!success) {
     return {
       success: false,
-      summary: "No result message received",
+      summary: errorText || "Worker failed",
       filesModified,
-      errors: ["No result message received"],
-      tokensUsed,
-      lastTool,
-    };
-  }
-
-  if (resultMessage.subtype !== "success") {
-    const errorDetails =
-      "errors" in resultMessage ? resultMessage.errors.join(", ") : "Unknown error";
-
-    return {
-      success: false,
-      summary: `Worker failed: ${resultMessage.subtype}`,
-      filesModified,
-      errors: [errorDetails],
+      errors: [errorText || "Unknown error"],
       tokensUsed,
       lastTool,
     };
@@ -439,7 +419,7 @@ async function runWorkerAgentWithStats(
 
   return {
     success: true,
-    summary: resultMessage.result || lastAssistantText || "Implementation completed",
+    summary: resultText || lastAssistantText || "Implementation completed",
     filesModified,
     tokensUsed,
     lastTool,
@@ -520,6 +500,9 @@ export async function runMementoLoop(
   // Load navigator config and system prompt
   const navIdentity = loadNavConfig(navDirectory);
   const navSystemPrompt = loadNavSystemPrompt(navDirectory);
+
+  // Resolve harness (agent runtime)
+  const harness = await resolveAndCreateHarness(options.harness);
 
   // In-memory state
   const state: LoopState = {
@@ -603,7 +586,8 @@ export async function runMementoLoop(
           gitLog,
           options,
           animation,
-          verbose
+          verbose,
+          harness
         );
         plan = navResult.plan;
         iterationTokens += navResult.tokensUsed;
@@ -638,7 +622,8 @@ export async function runMementoLoop(
             model: options.model,
             maxTurns: options.maxTurns,
           },
-          animation
+          animation,
+          harness
         );
 
         iterationTokens += workerResult.tokensUsed;
