@@ -4,7 +4,7 @@
  * Memento Command CLI
  *
  * Context-clearing iterative development loop that coordinates
- * a navigator (for planning) and a worker (for implementation).
+ * a navigator (for planning) and an implementer (for implementation).
  *
  * Design principle: Git is the only persistent memory. No state files.
  * Each iteration starts fresh with only git history as context.
@@ -59,7 +59,7 @@ const program = new Command();
 program
   .name("autonav memento")
   .description(
-    "Context-clearing iterative development loop coordinating navigator and worker agents"
+    "Context-clearing iterative development loop coordinating navigator and implementer agents"
   )
   .version("1.0.0")
   .argument("<code-directory>", "Directory containing code to modify")
@@ -78,7 +78,7 @@ program
   .option("--branch <name>", "Git branch name for work")
   .option("--task <text>", "Task description (reads TASK.md if not provided)")
   .option("--verbose", "Show detailed logging")
-  .option("--model <model>", "Model for worker agent", "claude-haiku-4-5")
+  .option("--model <model>", "Model for implementer agent", "claude-haiku-4-5")
   .option("--nav-model <model>", "Model for navigator agent", "claude-opus-4-5")
   .action(
     async (
@@ -237,5 +237,7 @@ function formatDuration(ms: number): string {
   return `${minutes}m ${seconds}s`;
 }
 
-// Parse and execute
-program.parse(process.argv);
+/** Run this command with the given args (called by dispatcher) */
+export async function run(args: string[]): Promise<void> {
+  await program.parseAsync(args, { from: "user" });
+}

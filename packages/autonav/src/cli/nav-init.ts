@@ -719,8 +719,8 @@ See \`config.json\` for navigator configuration.
   }
 }
 
-async function main() {
-  const args = process.argv.slice(2);
+/** Run this command with the given args (called by dispatcher) */
+export async function run(args: string[]): Promise<void> {
 
   // Handle --help
   if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
@@ -1165,4 +1165,3 @@ This is your knowledge base directory. Add your documentation files here.
   }
 }
 
-main();

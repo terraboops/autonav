@@ -37,7 +37,7 @@ export function createNavProtocolMcpServer() {
     `Submit your implementation plan for the current iteration. You MUST use this tool to provide your plan.
 
 This tool allows you to:
-1. Define concrete implementation steps for the worker agent
+1. Define concrete implementation steps for the implementer agent
 2. Specify validation criteria to verify the implementation
 3. Signal when the overall task is complete
 
@@ -88,7 +88,7 @@ Do NOT respond with plain text - always use this tool to submit your plan.`,
               success: true,
               message: plan.isComplete
                 ? "Task marked as complete. Memento loop will end."
-                : `Plan submitted with ${plan.steps.length} steps. Worker will implement this.`,
+                : `Plan submitted with ${plan.steps.length} steps. Implementer will implement this.`,
               plan,
             }),
           },

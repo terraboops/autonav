@@ -1,43 +1,43 @@
 /**
- * Worker Agent for Memento Loop
+ * Implementer Agent for Memento Loop
  *
  * Executes implementation plans using the Claude Agent SDK.
  */
 
 import { query, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { ImplementationPlan, WorkerResult } from "./types.js";
-import { buildWorkerPrompt, buildWorkerSystemPrompt } from "./prompts.js";
+import type { ImplementationPlan, ImplementerResult } from "./types.js";
+import { buildImplementerPrompt, buildImplementerSystemPrompt } from "./prompts.js";
 
 /**
- * Minimal context for worker (no persisted state)
+ * Minimal context for implementer (no persisted state)
  */
-interface WorkerContext {
+interface ImplementerContext {
   codeDirectory: string;
   task: string;
 }
 
 /**
- * Options for worker agent execution
+ * Options for implementer agent execution
  */
-export interface WorkerAgentOptions {
+export interface ImplementerAgentOptions {
   /** Show detailed logging */
   verbose?: boolean;
 
   /** Model to use (defaults to claude-sonnet-4-5) */
   model?: string;
 
-  /** Maximum turns for worker agent */
+  /** Maximum turns for implementer agent */
   maxTurns?: number;
 }
 
 /**
- * Run the worker agent to implement a plan
+ * Run the implementer agent to implement a plan
  */
-export async function runWorkerAgent(
-  context: WorkerContext,
+export async function runImplementerAgent(
+  context: ImplementerContext,
   plan: ImplementationPlan,
-  options: WorkerAgentOptions = {}
-): Promise<WorkerResult> {
+  options: ImplementerAgentOptions = {}
+): Promise<ImplementerResult> {
   const startTime = Date.now();
   const {
     verbose = false,
@@ -45,13 +45,13 @@ export async function runWorkerAgent(
     maxTurns = 50,
   } = options;
 
-  const prompt = buildWorkerPrompt(context.codeDirectory, plan);
-  const systemPrompt = buildWorkerSystemPrompt(context.codeDirectory);
+  const prompt = buildImplementerPrompt(context.codeDirectory, plan);
+  const systemPrompt = buildImplementerSystemPrompt(context.codeDirectory);
 
   if (verbose) {
-    console.log("\n[Worker] Starting implementation...");
-    console.log(`[Worker] Plan: ${plan.summary}`);
-    console.log(`[Worker] Steps: ${plan.steps.length}`);
+    console.log("\n[Implementer] Starting implementation...");
+    console.log(`[Implementer] Plan: ${plan.summary}`);
+    console.log(`[Implementer] Steps: ${plan.steps.length}`);
   }
 
   const filesModified: string[] = [];
@@ -77,7 +77,7 @@ export async function runWorkerAgent(
           if (block.type === "tool_use") {
             // Track file operations
             if (verbose) {
-              console.log(`[Worker] Tool: ${block.name}`);
+              console.log(`[Implementer] Tool: ${block.name}`);
             }
 
             // Extract file paths from common tools
@@ -108,7 +108,7 @@ export async function runWorkerAgent(
     if (!resultMessage) {
       return {
         success: false,
-        summary: "No result message received from worker agent",
+        summary: "No result message received from implementer agent",
         filesModified,
         errors: ["No result message received"],
         durationMs,
@@ -123,7 +123,7 @@ export async function runWorkerAgent(
 
       return {
         success: false,
-        summary: `Worker failed: ${resultMessage.subtype}`,
+        summary: `Implementer failed: ${resultMessage.subtype}`,
         filesModified,
         errors: [errorDetails],
         durationMs,
@@ -131,8 +131,8 @@ export async function runWorkerAgent(
     }
 
     if (verbose) {
-      console.log(`[Worker] Completed in ${durationMs}ms`);
-      console.log(`[Worker] Files modified: ${filesModified.length}`);
+      console.log(`[Implementer] Completed in ${durationMs}ms`);
+      console.log(`[Implementer] Files modified: ${filesModified.length}`);
     }
 
     return {
@@ -147,7 +147,7 @@ export async function runWorkerAgent(
 
     return {
       success: false,
-      summary: `Worker error: ${errorMessage}`,
+      summary: `Implementer error: ${errorMessage}`,
       filesModified,
       errors: [errorMessage],
       durationMs,

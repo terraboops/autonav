@@ -123,5 +123,7 @@ async function executeInstall(
   }
 }
 
-// Parse and execute
-program.parse(process.argv);
+/** Run this command with the given args (called by dispatcher) */
+export async function run(args: string[]): Promise<void> {
+  await program.parseAsync(args, { from: "user" });
+}
