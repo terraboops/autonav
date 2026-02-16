@@ -32,3 +32,9 @@ export {
   type ToolDefinition,
   type ToolResult,
 } from "./tool-server.js";
+
+export {
+  createEphemeralHome,
+  type EphemeralHome,
+  type EphemeralHomeOptions,
+} from "./ephemeral-home.js";

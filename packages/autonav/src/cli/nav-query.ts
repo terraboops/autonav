@@ -16,6 +16,7 @@ import {
   type ConfidenceLevel,
 } from "../query-engine/index.js";
 import { HallucinationError } from "@autonav/communication-layer";
+import { resolveAndCreateHarness } from "../harness/index.js";
 
 /**
  * Command line options
@@ -182,8 +183,9 @@ async function executeQuery(
       spinner = ora("Querying Claude...").start();
     }
 
-    // Initialize adapter
-    const adapter = new ClaudeAdapter();
+    // Initialize adapter with resolved harness
+    const harness = await resolveAndCreateHarness(options.harness);
+    const adapter = new ClaudeAdapter({ harness });
 
     // Execute query with timeout
     const queryPromise = adapter.query(navigator, question);
