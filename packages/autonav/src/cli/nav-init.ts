@@ -30,7 +30,7 @@ import {
 } from "../interview/index.js";
 import { scanRepository } from "../repo-scanner/index.js";
 import { analyzeRepository, type AnalysisResult } from "../repo-analyzer/index.js";
-import { ClaudeCodeHarness } from "../harness/index.js";
+import { resolveAndCreateHarness } from "../harness/index.js";
 import {
   confirmAnalysis,
   promptExistingClaudeMd,
@@ -457,7 +457,8 @@ async function handleImportMode(
     }
 
     // Phase 2: Analyze with Claude
-    const analysis = await analyzeRepository(scanResult, new ClaudeCodeHarness());
+    const harness = await resolveAndCreateHarness();
+    const analysis = await analyzeRepository(scanResult, harness);
 
     if (!options.quiet) {
       console.log("✓ Analysis complete");
@@ -484,6 +485,7 @@ async function handleImportMode(
       const interviewConfig = await runInterviewTUI(navigatorName, {
         navigatorPath,
         analysisContext: analysis,
+        harness,
       });
 
       // Convert interview config to analysis result format
@@ -925,10 +927,12 @@ async function main() {
             }
           }
 
+          const interviewHarness = await resolveAndCreateHarness();
           interviewConfig = await runInterviewTUI(navigatorName, {
             navigatorPath,
             packContext,
             savedProgress,
+            harness: interviewHarness,
           });
           if (!options.quiet) {
             console.log("\n✓ Interview completed");

@@ -8,6 +8,7 @@
 import React from "react";
 import { render } from "ink";
 import { ConversationApp } from "./App.js";
+import type { Harness } from "../harness/index.js";
 
 export { buildConversationSystemPrompt } from "./prompts.js";
 
@@ -30,6 +31,7 @@ export interface ConversationOptions {
   navigatorPath: string;
   navigatorSystemPrompt: string;
   knowledgeBasePath: string;
+  harness?: Harness;
 }
 
 /**

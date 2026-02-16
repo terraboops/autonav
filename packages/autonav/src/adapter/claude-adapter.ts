@@ -8,7 +8,9 @@ import {
   createAnswerQuestionPrompt,
   validateResponse,
   SELF_CONFIG_RULES,
+  scoreToConfidence,
   type ValidationResult,
+  type ConfidenceLevel,
 } from "@autonav/communication-layer";
 import { createPluginManager, PluginManager, PluginConfigFileSchema } from "../plugins/index.js";
 import { sanitizeError } from "../plugins/utils/security.js";
@@ -85,6 +87,12 @@ export interface ClaudeAdapterOptions {
    * @default 50
    */
   maxTurns?: number;
+
+  /**
+   * Pre-created harness instance. If provided, this harness is used directly.
+   * If omitted, defaults to ClaudeCodeHarness.
+   */
+  harness?: Harness;
 }
 
 /**
@@ -143,7 +151,7 @@ export interface QueryOptions {
  * ```
  */
 export class ClaudeAdapter {
-  private readonly options: { model: string; maxTurns?: number };
+  private readonly options: { model?: string; maxTurns?: number };
   private readonly harness: Harness;
 
   /**
@@ -153,10 +161,12 @@ export class ClaudeAdapter {
    */
   constructor(options: ClaudeAdapterOptions = {}) {
     this.options = {
-      model: options.model || "claude-sonnet-4-5",
+      // Only set model if explicitly provided — let the harness use its own default otherwise.
+      // ClaudeCodeHarness defaults to claude-sonnet-4-5; chibi defaults to free models.
+      model: options.model || (options.harness ? undefined : "claude-sonnet-4-5"),
       maxTurns: options.maxTurns ?? 50, // Default: 50 turns max (prevents runaway execution)
     };
-    this.harness = new ClaudeCodeHarness();
+    this.harness = options.harness ?? new ClaudeCodeHarness();
   }
 
   /**
@@ -418,6 +428,7 @@ export class ClaudeAdapter {
           cwd: navigator.navigatorPath,
           mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
           permissionMode: "bypassPermissions",
+          stderr: debug ? (data: string) => process.stderr.write(`[harness] ${data}`) : undefined,
         },
         prompt
       );
@@ -450,6 +461,12 @@ export class ClaudeAdapter {
               console.error(`[DEBUG] submit_answer tool called successfully!`);
             }
           }
+        } else if (event.type === "error") {
+          if (debug) {
+            console.error(`[DEBUG] Error: ${event.message}`);
+          }
+          // Capture error message so it surfaces in the result
+          lastAssistantText = event.message;
         } else if (event.type === "text") {
           lastAssistantText = event.text;
           if (debug) {
@@ -506,12 +523,22 @@ export class ClaudeAdapter {
       let navigatorResponse: NavigatorResponse;
 
       if (submitAnswerInput) {
+        // Normalize confidence: accept enum strings ("high"), numeric strings ("0.9"), or numbers (0.9)
+        const rawConf = submitAnswerInput.confidence;
+        let confidence: ConfidenceLevel;
+        if (rawConf === "high" || rawConf === "medium" || rawConf === "low") {
+          confidence = rawConf;
+        } else {
+          const n = Number(rawConf);
+          confidence = !isNaN(n) ? scoreToConfidence(n) : "medium";
+        }
+
         // Use structured output from tool call (preferred)
         navigatorResponse = NavigatorResponseSchema.parse({
           query: question,
           answer: submitAnswerInput.answer,
           sources: submitAnswerInput.sources,
-          confidence: submitAnswerInput.confidence,
+          confidence,
           confidenceReason: submitAnswerInput.confidenceReason,
           outOfDomain: submitAnswerInput.outOfDomain,
         });

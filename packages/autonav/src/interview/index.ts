@@ -11,7 +11,7 @@ import { InterviewApp } from "./App.js";
 import type { NavigatorConfig, PackContext } from "./prompts.js";
 import type { AnalysisResult } from "../repo-analyzer/index.js";
 import type { InterviewProgress } from "./progress.js";
-import { ClaudeCodeHarness } from "../harness/index.js";
+import type { Harness } from "../harness/index.js";
 
 export type { NavigatorConfig, PackContext } from "./prompts.js";
 export type { InterviewProgress } from "./progress.js";
@@ -35,6 +35,8 @@ export interface InterviewOptions {
   analysisContext?: AnalysisResult;
   /** Optional saved progress to resume from */
   savedProgress?: InterviewProgress;
+  /** Harness instance for LLM communication */
+  harness: Harness;
 }
 
 /**
@@ -90,7 +92,7 @@ export function runInterviewTUI(
         analysisContext: options.analysisContext,
         initialMessages: options.savedProgress?.messages,
         onComplete: handleComplete,
-        harness: new ClaudeCodeHarness(),
+        harness: options.harness,
       })
     );
 

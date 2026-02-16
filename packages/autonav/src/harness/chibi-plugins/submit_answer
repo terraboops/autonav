@@ -1,0 +1,40 @@
+#!/bin/bash
+# submit_answer chibi plugin
+#
+# Provides the submit_answer tool to chibi so the LLM can call it with
+# structured args. The adapter captures the tool_call event from JSONL
+# output — this script just needs to exist and declare the schema.
+
+if [[ "$1" == "--schema" ]]; then
+  cat <<'EOF'
+{
+  "name": "submit_answer",
+  "description": "Submit your final answer. You MUST use this tool to provide your response with proper source citations.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "answer": { "type": "string", "description": "Your complete answer grounded in the knowledge base." },
+      "sources": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "file": { "type": "string" },
+            "section": { "type": "string" },
+            "relevance": { "type": "string" }
+          },
+          "required": ["file", "section", "relevance"]
+        }
+      },
+      "confidence": { "type": "number", "minimum": 0, "maximum": 1, "description": "Confidence score from 0.0 (no confidence) to 1.0 (fully confident). 0.9+ = high, 0.45-0.89 = medium, below 0.45 = low." },
+      "confidenceReason": { "type": "string" },
+      "outOfDomain": { "type": "boolean" }
+    },
+    "required": ["answer", "sources", "confidence", "confidenceReason", "outOfDomain"]
+  }
+}
+EOF
+  exit 0
+fi
+
+echo "Answer submitted successfully."

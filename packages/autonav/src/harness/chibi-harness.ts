@@ -1,30 +1,35 @@
 /**
  * Chibi Harness
  *
- * Adapts the chibi-json subprocess into the universal Harness interface.
- * Spawns chibi-json, communicates via JSONL (stdin/stdout), and translates
- * chibi transcript entries into AgentEvent.
+ * Adapts chibi-json into the universal Harness interface.
  *
- * Key behaviors:
- * - Sets system prompt via set_system_prompt command
- * - Writes local.toml for model/tool config
- * - Adds anthropic/ prefix to model names if needed
- * - Chibi contexts persist on disk, enabling multi-turn continuity
+ * chibi-json is stateless per invocation: each call reads ONE JSON object
+ * from stdin, executes the command, outputs JSONL to stdout, and exits.
+ * Multi-turn continuity comes from the named `context` — chibi persists
+ * conversation history on disk keyed by context name.
+ *
+ * Protocol (from `chibi-json --json-schema`):
+ *   Input:  { command: Command, context: string, project_root?: string, flags?: ExecutionFlags }
+ *   Output: JSONL lines — transcript entries (entry_type: "message"|"tool_call"|"tool_result")
+ *           and error objects (type: "error", message: string)
+ *
+ * Session lifecycle:
+ *   1. set_system_prompt (separate invocation, no output)
+ *   2. send_prompt (separate invocation, streams JSONL output)
+ *   3. For multi-turn: send_prompt again with same context name
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import * as os from "node:os";
+import * as path from "node:path";
 import * as readline from "node:readline";
+import { fileURLToPath } from "node:url";
 import type { Harness, HarnessSession, AgentConfig, AgentEvent } from "./types.js";
 import type { ToolDefinition } from "./tool-server.js";
+import { createEphemeralHome, type EphemeralHome } from "./ephemeral-home.js";
 
-/**
- * Marker for chibi tool server sentinel objects.
- * ChibiSession inspects mcpServers for objects with this marker
- * and extracts tool definitions for JSONL interception.
- */
 const CHIBI_TOOL_MARKER = "__chibi_tools__" as const;
 
 interface ChibiToolServer {
@@ -34,44 +39,47 @@ interface ChibiToolServer {
 }
 
 /**
- * Ensure model name has the anthropic/ prefix for chibi
+ * Build the chibi-json input object for a command.
  */
-function normalizeModelName(model: string): string {
-  if (model.startsWith("anthropic/")) return model;
-  if (model.startsWith("claude-")) return `anthropic/${model}`;
-  return model;
+function buildInput(
+  command: Record<string, unknown> | string,
+  context: string,
+  projectRoot?: string,
+  home?: string,
+): string {
+  const input: Record<string, unknown> = { command, context };
+  if (projectRoot) {
+    input.project_root = projectRoot;
+  }
+  if (home) {
+    input.home = home;
+  }
+  return JSON.stringify(input);
 }
 
 /**
- * Generate a local.toml configuration for chibi
+ * Run a chibi-json command synchronously (for commands with no streaming output like set_system_prompt).
  */
-function generateLocalToml(config: AgentConfig): string {
-  const lines: string[] = [];
-
-  if (config.model) {
-    lines.push(`model = "${normalizeModelName(config.model)}"`);
-  }
-
-  if (config.maxTurns !== undefined) {
-    lines.push(`fuel = ${config.maxTurns}`);
-  }
-
-  // Tool filtering
-  if (config.allowedTools && config.allowedTools.length > 0) {
-    lines.push("");
-    lines.push("[tools]");
-    lines.push(`include = [${config.allowedTools.map((t) => `"${t}"`).join(", ")}]`);
-  } else if (config.disallowedTools && config.disallowedTools.length > 0) {
-    lines.push("");
-    lines.push("[tools]");
-    lines.push(`exclude = [${config.disallowedTools.map((t) => `"${t}"`).join(", ")}]`);
-  }
-
-  return lines.join("\n") + "\n";
+function runSync(inputJson: string): void {
+  execFileSync("chibi-json", [], {
+    input: inputJson,
+    stdio: ["pipe", "pipe", "pipe"],
+    timeout: 10_000,
+  });
 }
 
 /**
- * Parse a chibi JSONL line into AgentEvents
+ * Parse a chibi JSONL output line into AgentEvents.
+ *
+ * Chibi transcript entries have:
+ *   - entry_type: "message" | "tool_call" | "tool_result"
+ *   - from: sender name
+ *   - to: context name
+ *   - content: string (for messages) or structured data
+ *
+ * Error objects have:
+ *   - type: "error"
+ *   - message: string
  */
 function parseChibiLine(line: string): AgentEvent[] {
   const events: AgentEvent[] = [];
@@ -79,15 +87,33 @@ function parseChibiLine(line: string): AgentEvent[] {
   try {
     const data = JSON.parse(line);
 
-    // Transcript entry
-    if (data.entry_type === "message" && data.content) {
-      events.push({ type: "text", text: data.content });
+    // Error object
+    if (data.type === "error") {
+      events.push({
+        type: "error",
+        message: data.message || "Unknown chibi error",
+      });
+      return events;
+    }
+
+    // Transcript entries (from chibi's conversation log)
+    if (data.entry_type === "message") {
+      // Skip user messages (from="user"), only emit assistant responses
+      if (data.from !== "user" && data.content) {
+        events.push({ type: "text", text: data.content });
+      }
     } else if (data.entry_type === "tool_call") {
+      let input: Record<string, unknown> = {};
+      try {
+        input = typeof data.content === "string" ? JSON.parse(data.content) : (data.content || {});
+      } catch {
+        // content wasn't valid JSON — leave input empty
+      }
       events.push({
         type: "tool_use",
-        name: data.tool_name || data.name || "unknown",
-        id: data.id || "",
-        input: data.input || data.arguments || {},
+        name: data.to || "unknown",
+        id: data.tool_call_id || data.id || "",
+        input,
       });
     } else if (data.entry_type === "tool_result") {
       events.push({
@@ -97,49 +123,8 @@ function parseChibiLine(line: string): AgentEvent[] {
         isError: data.is_error === true,
       });
     }
-
-    // Result message
-    if (data.type === "result") {
-      events.push({
-        type: "result",
-        success: data.success !== false,
-        text: data.text || data.content || "",
-        usage: data.usage
-          ? {
-              inputTokens: data.usage.input_tokens || 0,
-              outputTokens: data.usage.output_tokens || 0,
-            }
-          : undefined,
-        costUsd: data.cost_usd,
-      });
-    }
-
-    // Text content (direct format)
-    if (data.type === "text" && data.text) {
-      events.push({ type: "text", text: data.text });
-    }
-
-    // Assistant message (alternate format)
-    if (data.role === "assistant" && data.content) {
-      if (typeof data.content === "string") {
-        events.push({ type: "text", text: data.content });
-      } else if (Array.isArray(data.content)) {
-        for (const block of data.content) {
-          if (block.type === "text") {
-            events.push({ type: "text", text: block.text });
-          } else if (block.type === "tool_use") {
-            events.push({
-              type: "tool_use",
-              name: block.name || "unknown",
-              id: block.id || "",
-              input: block.input || {},
-            });
-          }
-        }
-      }
-    }
   } catch {
-    // Not valid JSON — could be raw text output, ignore
+    // Not valid JSON — ignore
   }
 
   return events;
@@ -148,17 +133,39 @@ function parseChibiLine(line: string): AgentEvent[] {
 /**
  * Chibi harness session.
  *
- * Manages a chibi-json subprocess and translates JSONL events.
+ * Each prompt is a separate chibi-json invocation. The named context
+ * provides conversation continuity across invocations.
  */
 class ChibiSession implements HarnessSession {
   private config: AgentConfig;
-  private contextDir: string;
+  private contextName: string;
   private child: ChildProcess | null = null;
   private closed = false;
   private registeredTools: Map<string, ToolDefinition> = new Map();
+  private ephemeralHome: EphemeralHome | null = null;
 
   constructor(config: AgentConfig, initialPrompt: string) {
     this.config = { ...config };
+    this.contextName = `autonav-${crypto.randomUUID().slice(0, 8)}`;
+
+    // Create ephemeral home with submit_answer plugin
+    this.ephemeralHome = createEphemeralHome({
+      harness: "chibi",
+      setup: (home) => {
+        // Inherit user config if it exists
+        const userConfig = path.join(os.homedir(), ".chibi", "config.toml");
+        if (fs.existsSync(userConfig)) {
+          fs.symlinkSync(userConfig, path.join(home, "config.toml"));
+        }
+
+        // Install submit_answer plugin
+        const pluginsDir = path.join(home, "plugins");
+        fs.mkdirSync(pluginsDir);
+        const src = fileURLToPath(new URL("./chibi-plugins/submit_answer", import.meta.url));
+        fs.copyFileSync(src, path.join(pluginsDir, "submit_answer"));
+        fs.chmodSync(path.join(pluginsDir, "submit_answer"), 0o755);
+      },
+    });
 
     // Extract chibi tool servers from mcpServers config
     if (config.mcpServers) {
@@ -176,52 +183,51 @@ class ChibiSession implements HarnessSession {
       }
     }
 
-    // Create a context directory for this session
-    this.contextDir = fs.mkdtempSync(path.join(os.tmpdir(), "chibi-ctx-"));
+    // Set system prompt (separate synchronous invocation)
+    if (config.systemPrompt) {
+      const input = buildInput(
+        { set_system_prompt: { prompt: config.systemPrompt } },
+        this.contextName,
+        config.cwd,
+        this.ephemeralHome.homePath,
+      );
+      try {
+        runSync(input);
+      } catch (error) {
+        // Log but don't fail — system prompt is best-effort
+        const msg = error instanceof Error ? error.message : String(error);
+        if (config.stderr) {
+          config.stderr(`[chibi] Failed to set system prompt: ${msg}`);
+        }
+      }
+    }
 
-    // Write local.toml config
-    const tomlContent = generateLocalToml(this.config);
-    fs.writeFileSync(path.join(this.contextDir, "local.toml"), tomlContent);
-
-    // Start chibi-json process
-    this.child = this.spawnChibi(initialPrompt);
+    // Start the prompt invocation
+    this.child = this.spawnPrompt(initialPrompt);
   }
 
-  private spawnChibi(prompt: string): ChildProcess {
-    const args: string[] = [];
+  /**
+   * Spawn a chibi-json process for a send_prompt command.
+   * Returns the child process whose stdout streams JSONL events.
+   */
+  private spawnPrompt(prompt: string): ChildProcess {
+    const inputJson = buildInput(
+      { send_prompt: { prompt } },
+      this.contextName,
+      this.config.cwd,
+      this.ephemeralHome?.homePath,
+    );
 
-    // Set project root
-    if (this.config.cwd) {
-      args.push("--project-root", this.config.cwd);
-    }
-
-    // Set context directory
-    args.push("--context-dir", this.contextDir);
-
-    const child = spawn("chibi-json", args, {
+    const child = spawn("chibi-json", [], {
       stdio: ["pipe", "pipe", "pipe"],
-      env: {
-        ...process.env,
-      },
+      env: { ...process.env },
     });
 
-    // Set system prompt first, then send the prompt
-    if (this.config.systemPrompt) {
-      const setSystemPrompt = JSON.stringify({
-        type: "set_system_prompt",
-        content: this.config.systemPrompt,
-      });
-      child.stdin?.write(setSystemPrompt + "\n");
-    }
+    // Write the single JSON input and close stdin
+    child.stdin?.write(inputJson);
+    child.stdin?.end();
 
-    // Send the prompt
-    const sendPrompt = JSON.stringify({
-      type: "send_prompt",
-      content: prompt,
-    });
-    child.stdin?.write(sendPrompt + "\n");
-
-    // Handle stderr for diagnostics
+    // Handle stderr
     if (child.stderr && this.config.stderr) {
       const stderrHandler = this.config.stderr;
       child.stderr.on("data", (data: Buffer) => {
@@ -243,48 +249,31 @@ class ChibiSession implements HarnessSession {
     });
 
     let hasResult = false;
+    let lastText = "";
+    let hadError = false;
 
     for await (const line of rl) {
       if (!line.trim()) continue;
 
       const events = parseChibiLine(line);
       for (const event of events) {
-        if (event.type === "result") {
-          hasResult = true;
+        if (event.type === "error") {
+          hadError = true;
+        }
+        if (event.type === "text") {
+          lastText = event.text;
         }
 
         // Intercept tool_use events for registered tools
-        if (event.type === "tool_use" && this.registeredTools.has(event.name)) {
-          const toolDef = this.registeredTools.get(event.name)!;
-          try {
-            const result = await toolDef.handler(event.input);
-            // Send tool_result back via stdin JSONL
-            const resultMsg = JSON.stringify({
-              type: "tool_result",
-              tool_call_id: event.id,
-              content: result.content.map((c) => c.text).join("\n"),
-              is_error: result.isError,
-            });
-            this.child?.stdin?.write(resultMsg + "\n");
-          } catch (error) {
-            const errorMsg = JSON.stringify({
-              type: "tool_result",
-              tool_call_id: event.id,
-              content: error instanceof Error ? error.message : String(error),
-              is_error: true,
-            });
-            this.child?.stdin?.write(errorMsg + "\n");
-          }
-          // Still yield the tool_use event so closure capture works for callers
-          yield event;
-          continue;
-        }
-
+        // Note: chibi handles its own tool calls natively, but autonav-registered
+        // tools (submit_answer, self-config) need local interception.
+        // This won't work with stateless chibi-json — tool interception requires
+        // a long-running process. For now, yield the event and let the caller handle it.
         yield event;
       }
     }
 
-    // If we didn't get a result event, emit one based on exit code
+    // Emit a synthetic result event based on process exit
     if (!hasResult) {
       const exitCode = await new Promise<number | null>((resolve) => {
         if (!this.child) {
@@ -300,8 +289,8 @@ class ChibiSession implements HarnessSession {
 
       yield {
         type: "result",
-        success: exitCode === 0,
-        text: exitCode === 0 ? "Completed" : `Process exited with code ${exitCode}`,
+        success: exitCode === 0 && !hadError,
+        text: lastText || (hadError ? "chibi-json returned an error" : ""),
       };
     }
   }
@@ -311,9 +300,8 @@ class ChibiSession implements HarnessSession {
       throw new Error("Session is closed");
     }
 
-    // For multi-turn, we spawn a new chibi-json process
-    // Chibi contexts persist on disk, so history is maintained
-    this.child = this.spawnChibi(prompt);
+    // New invocation, same context name = multi-turn continuity
+    this.child = this.spawnPrompt(prompt);
 
     const session = this;
     return {
@@ -325,10 +313,6 @@ class ChibiSession implements HarnessSession {
 
   updateConfig(config: Partial<AgentConfig>): void {
     Object.assign(this.config, config);
-
-    // Re-write local.toml with updated config
-    const tomlContent = generateLocalToml(this.config);
-    fs.writeFileSync(path.join(this.contextDir, "local.toml"), tomlContent);
   }
 
   async close(): Promise<void> {
@@ -336,7 +320,6 @@ class ChibiSession implements HarnessSession {
 
     if (this.child && this.child.exitCode === null) {
       this.child.kill("SIGTERM");
-      // Wait for process to exit
       await new Promise<void>((resolve) => {
         if (!this.child) {
           resolve();
@@ -350,20 +333,30 @@ class ChibiSession implements HarnessSession {
       });
     }
 
-    // Clean up context directory
+    // Clean up the context
     try {
-      fs.rmSync(this.contextDir, { recursive: true, force: true });
+      const destroyInput = buildInput(
+        { destroy_context: { name: this.contextName } },
+        this.contextName,
+        undefined,
+        this.ephemeralHome?.homePath,
+      );
+      runSync(destroyInput);
     } catch {
       // Best-effort cleanup
     }
+
+    // Clean up ephemeral home directory
+    this.ephemeralHome?.cleanup();
+    this.ephemeralHome = null;
   }
 }
 
 /**
  * Chibi Harness
  *
- * Creates HarnessSessions that delegate to chibi-json subprocess.
- * Translates AgentConfig to chibi-json's JSONL protocol and local.toml config.
+ * Creates sessions that delegate to chibi-json subprocess invocations.
+ * Each command is a separate process; context names provide multi-turn continuity.
  */
 export class ChibiHarness implements Harness {
   run(config: AgentConfig, prompt: string): HarnessSession {
@@ -371,6 +364,9 @@ export class ChibiHarness implements Harness {
   }
 
   createToolServer(name: string, tools: ToolDefinition[]): { server: unknown } {
+    // Return a sentinel object that ChibiSession can detect and extract tools from.
+    // Note: Tool interception doesn't work with stateless chibi-json invocations.
+    // Tools registered here are yielded as events for the caller to handle.
     return {
       server: {
         [CHIBI_TOOL_MARKER]: true,
