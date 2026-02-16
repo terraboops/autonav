@@ -3,7 +3,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
-import { ClaudeAdapter } from "../adapter/index.js";
+import { NavigatorAdapter } from "../adapter/index.js";
 import {
   loadNavigator,
   validateResponse,
@@ -178,7 +178,7 @@ async function executeQuery(
 
     // Initialize adapter with resolved harness
     const harness = await resolveAndCreateHarness(options.harness);
-    const adapter = new ClaudeAdapter({ harness });
+    const adapter = new NavigatorAdapter({ harness });
 
     // Show question (only in interactive mode)
     if (showUI) {

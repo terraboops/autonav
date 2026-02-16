@@ -54,9 +54,9 @@ A knowledge pack must contain:
 ## Programmatic use
 
 ```typescript
-import { ClaudeAdapter } from "@autonav/core";
+import { NavigatorAdapter } from "@autonav/core";
 
-const adapter = new ClaudeAdapter();
+const adapter = new NavigatorAdapter();
 const nav = await adapter.loadNavigator("./my-docs");
 const response = await adapter.query(nav, "How do I deploy?");
 
