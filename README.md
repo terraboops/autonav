@@ -332,7 +332,7 @@ Apache-2.0 © [Terra Tauri](https://terratauri.com)
 |----------|-------------|
 | [The Navigator Pattern](https://terratauri.com/blog/navigator-pattern/) | Introduction to the navigator pattern and philosophy |
 | [Knowledge Pack Protocol](docs/KNOWLEDGE_PACK_PROTOCOL.md) | Create and distribute your own knowledge packs |
-| [Autonav CLI](packages/autonav/README.md) | CLI commands and ClaudeAdapter API |
+| [Autonav CLI](packages/autonav/README.md) | CLI commands and NavigatorAdapter API |
 | [Communication Layer](packages/communication-layer/README.md) | Response schemas and validation |
 | [Navigator Structure](packages/communication-layer/src/protocols/navigator-structure.md) | What files make up a navigator |
 | [CLAUDE.md Guide](./CLAUDE.md) | Full development guide and project context |

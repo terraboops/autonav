@@ -66,6 +66,25 @@ async function postBuild() {
       }
     }
 
+    // Copy chibi-plugins (non-TS files that tsc doesn't copy)
+    const srcPluginsDir = join(packageRoot, 'src', 'harness', 'chibi-plugins');
+    if (existsSync(srcPluginsDir)) {
+      const destPluginsDir = join(packageRoot, 'dist', 'harness', 'chibi-plugins');
+      if (!existsSync(destPluginsDir)) {
+        await mkdir(destPluginsDir, { recursive: true });
+      }
+      const pluginFiles = await readdir(srcPluginsDir);
+      for (const file of pluginFiles) {
+        const srcPath = join(srcPluginsDir, file);
+        const destPath = join(destPluginsDir, file);
+        await copyFile(srcPath, destPath);
+        if (process.platform !== 'win32') {
+          await chmod(destPath, 0o755);
+        }
+        console.log(`✓ Copied chibi plugin: ${file}`);
+      }
+    }
+
     console.log('✅ Post-build completed successfully');
   } catch (error) {
     console.error('❌ Post-build failed:', error);

@@ -3,12 +3,13 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
-import { ClaudeAdapter } from "../adapter/index.js";
+import { NavigatorAdapter } from "../adapter/index.js";
 import {
   loadNavigator,
   formatErrorMessage,
   NavigatorLoadError,
 } from "../query-engine/index.js";
+import { resolveAndCreateHarness } from "../harness/index.js";
 
 /**
  * Command line options
@@ -113,13 +114,14 @@ async function executeUpdate(
       console.error(""); // Blank line
     }
 
+    // Initialize adapter with resolved harness
+    const harness = await resolveAndCreateHarness(options.harness);
+    const adapter = new NavigatorAdapter({ harness });
+
     // Show update message
     console.error(chalk.blue("📝") + " Update: " + chalk.italic(message));
     console.error(""); // Blank line
-    spinner = ora("Updating documentation...").start();
-
-    // Initialize adapter
-    const adapter = new ClaudeAdapter();
+    spinner = ora(`${harness.displayName} is updating documentation...`).start();
 
     // Execute update with timeout
     const updatePromise = adapter.update(navigator, message);
