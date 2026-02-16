@@ -12,12 +12,12 @@
  */
 
 import { z } from "zod";
-import { tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import type { PluginManager } from "../plugins/index.js";
 import {
   handleUpdatePluginConfig,
   handleGetPluginConfig,
 } from "./handler.js";
+import { defineTool, type Harness } from "../harness/index.js";
 
 /**
  * Available plugins that can be configured
@@ -64,9 +64,10 @@ export interface SelfConfigResult {
  */
 export function createSelfConfigMcpServer(
   pluginManager: PluginManager | undefined,
-  pluginsConfigPath: string
+  pluginsConfigPath: string,
+  harness: Harness
 ) {
-  const updatePluginConfigTool = tool(
+  const updatePluginConfigTool = defineTool(
     "update_plugin_config",
     `Update your own plugin configuration. Use this when the user asks you to:
 - Schedule check-ins or reminders (signal plugin)
@@ -113,7 +114,7 @@ This allows you to autonomously manage your own behavior based on user requests.
     }
   );
 
-  const getPluginConfigTool = tool(
+  const getPluginConfigTool = defineTool(
     "get_plugin_config",
     `Read your current plugin configuration. Use this to:
 - Check what plugins are currently enabled
@@ -142,9 +143,5 @@ This allows you to autonomously manage your own behavior based on user requests.
     }
   );
 
-  return createSdkMcpServer({
-    name: "autonav-self-config",
-    version: "1.0.0",
-    tools: [updatePluginConfigTool, getPluginConfigTool],
-  });
+  return harness.createToolServer("autonav-self-config", [updatePluginConfigTool, getPluginConfigTool]).server;
 }

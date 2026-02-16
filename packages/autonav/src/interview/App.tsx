@@ -1,13 +1,12 @@
 /**
  * Ink-based TUI for interactive nav init interview
  *
- * Uses Claude Agent SDK for authentication (leverages Claude Code's OAuth)
+ * Uses the harness abstraction for LLM communication.
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import TextInput from "ink-text-input";
-import { query, type Query } from "@anthropic-ai/claude-agent-sdk";
 import {
   getInterviewSystemPrompt,
   parseNavigatorConfig,
@@ -17,6 +16,7 @@ import {
 import type { AnalysisResult } from "../repo-analyzer/index.js";
 import { saveProgress, clearProgress, type InterviewProgress } from "./progress.js";
 import { ActivityIndicator, Banner, SystemMessage, UserResponse, Divider } from "./ui/index.js";
+import { type Harness, type AgentEvent, collectText } from "../harness/index.js";
 
 // Check if debug mode is enabled
 const DEBUG = process.env.AUTONAV_DEBUG === "1" || process.env.DEBUG === "1";
@@ -51,28 +51,21 @@ async function generateConfigFields(
   conversationHistory: string,
   systemPrompt: string,
   name: string,
-  onProgress: (step: number, label: string) => void
+  onProgress: (step: number, label: string) => void,
+  harness: Harness
 ): Promise<NavigatorConfig> {
   // Helper to make a single-field extraction call
   const extractField = async (fieldPrompt: string): Promise<string> => {
-    const q = query({
-      prompt: `<conversation>\n${conversationHistory}\n</conversation>\n\n${fieldPrompt}`,
-      options: {
-        model: INTERVIEW_MODEL,
-        systemPrompt,
-        permissionMode: "bypassPermissions",
-      },
-    });
-
-    let result = "";
-    for await (const message of q) {
-      if (message.type === "assistant") {
-        const textBlocks = message.message.content.filter(
-          (b): b is Extract<typeof b, { type: "text" }> => b.type === "text"
-        );
-        result = textBlocks.map((b) => b.text).join("\n");
-      }
-    }
+    const result = await collectText(
+      harness.run(
+        {
+          model: INTERVIEW_MODEL,
+          systemPrompt,
+          permissionMode: "bypassPermissions",
+        },
+        `<conversation>\n${conversationHistory}\n</conversation>\n\n${fieldPrompt}`
+      )
+    );
     return result.trim();
   };
 
@@ -155,6 +148,7 @@ interface InterviewAppProps {
   analysisContext?: AnalysisResult;
   initialMessages?: Message[];
   onComplete: (config: NavigatorConfig) => void;
+  harness: Harness;
 }
 
 export function InterviewApp({
@@ -164,6 +158,7 @@ export function InterviewApp({
   analysisContext,
   initialMessages,
   onComplete,
+  harness,
 }: InterviewAppProps) {
   // Get the system prompt, customized for pack or analysis if provided
   const systemPrompt = getInterviewSystemPrompt(packContext, analysisContext);
@@ -175,30 +170,24 @@ export function InterviewApp({
   const [completionStep, setCompletionStep] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showHint, setShowHint] = useState(false);
-  const queryRef = useRef<Query | null>(null);
+  const sessionRef = useRef<AsyncIterable<AgentEvent> | null>(null);
   const completedRef = useRef(false);
   const { exit } = useApp();
 
-  // Process messages from Claude
+  // Process events from the harness session
   const processResponse = useCallback(async () => {
-    const queryInstance = queryRef.current;
-    if (!queryInstance || completedRef.current) return;
+    const session = sessionRef.current;
+    if (!session || completedRef.current) return;
 
     try {
       debugLog("Waiting for Claude response...");
       let fullText = "";
 
-      for await (const message of queryInstance) {
-        debugLog("Received message type:", message.type);
+      for await (const event of session) {
+        debugLog("Received event type:", event.type);
 
-        if (message.type === "assistant") {
-          // Extract text content from the assistant message
-          const content = message.message.content;
-          const textBlocks = content.filter(
-            (b): b is Extract<typeof b, { type: "text" }> => b.type === "text"
-          );
-          const text = textBlocks.map((b) => b.text).join("\n");
-
+        if (event.type === "text") {
+          const text = event.text;
           if (text) {
             fullText = text;
             setMessages((prev) => {
@@ -223,9 +212,8 @@ export function InterviewApp({
               return newMessages;
             });
           }
-        } else if (message.type === "result") {
-          debugLog("Result received:", message.subtype);
-          // Query completed, check if we got a config
+        } else if (event.type === "result") {
+          debugLog("Result received:", event.success ? "success" : "error");
           break;
         }
       }
@@ -295,18 +283,18 @@ export function InterviewApp({
 
         debugLog("Initial message:", initialMessage);
 
-        // Create query with system prompt
-        const queryInstance = query({
-          prompt: initialMessage,
-          options: {
+        // Create session via harness
+        const session = harness.run(
+          {
             model: INTERVIEW_MODEL,
             systemPrompt,
             permissionMode: "bypassPermissions",
           },
-        });
+          initialMessage
+        );
 
-        queryRef.current = queryInstance;
-        debugLog("Query created");
+        sessionRef.current = session;
+        debugLog("Session created");
 
         // Process response
         await processResponse();
@@ -322,7 +310,7 @@ export function InterviewApp({
     };
 
     initQuery();
-  }, [name, processResponse, initialMessages]);
+  }, [name, processResponse, initialMessages, harness, systemPrompt, analysisContext]);
 
   // Show hint after 5+ user messages
   useEffect(() => {
@@ -375,7 +363,8 @@ export function InterviewApp({
             conversationHistory,
             systemPrompt,
             name,
-            (_step, label) => setCompletionStep(label)
+            (_step, label) => setCompletionStep(label),
+            harness
           );
 
           completedRef.current = true;
@@ -433,16 +422,16 @@ ${value}
 
 Continue the interview by responding to their message. Remember: after gathering enough information (usually 4-6 exchanges), you should signal that you're ready to create the navigator and wait for the user to type 'done'. Do NOT output the JSON configuration until the user explicitly says they're ready. Do NOT simulate user responses - only provide YOUR response as the assistant.`;
 
-        const queryInstance = query({
-          prompt: fullPrompt,
-          options: {
+        const session = harness.run(
+          {
             model: INTERVIEW_MODEL,
             systemPrompt,
             permissionMode: "bypassPermissions",
           },
-        });
+          fullPrompt
+        );
 
-        queryRef.current = queryInstance;
+        sessionRef.current = session;
         await processResponse();
       } catch (err) {
         debugLog("Error sending message:", err);
@@ -450,7 +439,7 @@ Continue the interview by responding to their message. Remember: after gathering
         setIsLoading(false);
       }
     },
-    [isLoading, messages, systemPrompt, processResponse, name, navigatorPath, packContext, analysisContext, onComplete]
+    [isLoading, messages, systemPrompt, processResponse, name, navigatorPath, packContext, analysisContext, onComplete, harness]
   );
 
   // Handle Ctrl+C to exit

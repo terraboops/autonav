@@ -1,4 +1,3 @@
-import { query, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
@@ -13,7 +12,8 @@ import {
 } from "@autonav/communication-layer";
 import { createPluginManager, PluginManager, PluginConfigFileSchema } from "../plugins/index.js";
 import { sanitizeError } from "../plugins/utils/security.js";
-import { createSelfConfigMcpServer, createResponseMcpServer, SUBMIT_ANSWER_TOOL } from "../tools/index.js";
+import { createSelfConfigMcpServer, createResponseMcpServer, createCrossNavMcpServer, SUBMIT_ANSWER_TOOL } from "../tools/index.js";
+import { type Harness, ClaudeCodeHarness } from "../harness/index.js";
 
 /**
  * Optional LangSmith integration for tracing Claude Agent SDK calls
@@ -144,6 +144,7 @@ export interface QueryOptions {
  */
 export class ClaudeAdapter {
   private readonly options: { model: string; maxTurns?: number };
+  private readonly harness: Harness;
 
   /**
    * Create a new Claude Adapter
@@ -155,6 +156,7 @@ export class ClaudeAdapter {
       model: options.model || "claude-sonnet-4-5",
       maxTurns: options.maxTurns ?? 50, // Default: 50 turns max (prevents runaway execution)
     };
+    this.harness = new ClaudeCodeHarness();
   }
 
   /**
@@ -378,18 +380,23 @@ export class ClaudeAdapter {
     }
 
     // Set up MCP servers
-    const mcpServers: Record<string, ReturnType<typeof createSelfConfigMcpServer>> = {};
+    const mcpServers: Record<string, unknown> = {};
 
     // Always add response tools for structured output
-    mcpServers["autonav-response"] = createResponseMcpServer();
+    mcpServers["autonav-response"] = createResponseMcpServer(this.harness);
 
     // Add self-config tools if enabled
     if (enableSelfConfig && navigator.pluginsConfigPath) {
       mcpServers["autonav-self-config"] = createSelfConfigMcpServer(
         navigator.pluginManager,
-        navigator.pluginsConfigPath
+        navigator.pluginsConfigPath,
+        this.harness
       );
     }
+
+    // Add cross-nav query tool so this agent can ask other navigators
+    const crossNavMcp = createCrossNavMcpServer(this.harness);
+    mcpServers["autonav-cross-nav"] = crossNavMcp.server;
 
     // Debug logging
     const debug = process.env.AUTONAV_DEBUG === "1";
@@ -402,23 +409,20 @@ export class ClaudeAdapter {
     }
 
     try {
-      // Execute query using Claude Agent SDK
-      // The SDK handles the agentic loop automatically
-      const queryIterator = query({
-        prompt,
-        options: {
+      // Execute query via harness
+      const session = this.harness.run(
+        {
           model: this.options.model,
           maxTurns,
           systemPrompt,
           cwd: navigator.navigatorPath,
           mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
-          // Allow the SDK to handle permissions
           permissionMode: "bypassPermissions",
         },
-      });
+        prompt
+      );
 
-      // Collect messages and find the result
-      let resultMessage: SDKResultMessage | undefined;
+      // Collect events and find the result
       let lastAssistantText = "";
       let submitAnswerInput: {
         answer: string;
@@ -427,94 +431,75 @@ export class ClaudeAdapter {
         confidenceReason: string;
         outOfDomain: boolean;
       } | undefined;
-      let turnNumber = 0;
-      let submitAnswerTurn: number | undefined;
+      let toolUseCount = 0;
+      let submitAnswerToolIndex: number | undefined;
+      let resultEvent: Extract<import("../harness/index.js").AgentEvent, { type: "result" }> | undefined;
 
-      for await (const message of queryIterator) {
-        // Count turns (increment for each assistant message)
-        if (message.type === "assistant") {
-          turnNumber++;
+      for await (const event of session) {
+        if (event.type === "tool_use") {
+          toolUseCount++;
           if (debug) {
-            console.error(`\n[DEBUG] Turn ${turnNumber}: Assistant message`);
+            console.error(`[DEBUG] Tool called: ${event.name}`);
           }
-        }
-
-        // Log tool usage for debugging
-        if (message.type === "assistant") {
-          const content = message.message.content;
-          for (const block of content) {
-            if (block.type === "tool_use") {
-              if (debug) {
-                console.error(`[DEBUG] Tool called: ${block.name}`);
-              }
-              // Check if this is the submit_answer tool
-              // Note: MCP SDK prefixes tool names with server name: "mcp__autonav-response__submit_answer"
-              if (block.name === SUBMIT_ANSWER_TOOL || block.name.endsWith(`__${SUBMIT_ANSWER_TOOL}`)) {
-                // Extract the structured response from tool input
-                submitAnswerInput = block.input as typeof submitAnswerInput;
-                submitAnswerTurn = turnNumber; // Track which turn submit_answer was called
-                if (debug) {
-                  console.error(`[DEBUG] submit_answer tool called successfully at turn ${turnNumber}!`);
-                }
-              }
-            } else if (block.type === "text") {
-              lastAssistantText = block.text;
-              if (debug) {
-                console.error(`[DEBUG] Text response: ${block.text.substring(0, 100)}...`);
-              }
+          // Check if this is the submit_answer tool
+          // Note: MCP SDK prefixes tool names with server name: "mcp__autonav-response__submit_answer"
+          if (event.name === SUBMIT_ANSWER_TOOL || event.name.endsWith(`__${SUBMIT_ANSWER_TOOL}`)) {
+            submitAnswerInput = event.input as typeof submitAnswerInput;
+            submitAnswerToolIndex = toolUseCount;
+            if (debug) {
+              console.error(`[DEBUG] submit_answer tool called successfully!`);
             }
           }
-        }
-
-        // Capture the result message
-        if (message.type === "result") {
-          resultMessage = message;
+        } else if (event.type === "text") {
+          lastAssistantText = event.text;
           if (debug) {
-            console.error(`\n[DEBUG] Result: ${resultMessage.subtype}`);
-            console.error(`[DEBUG] Total turns: ${turnNumber}`);
+            console.error(`[DEBUG] Text response: ${event.text.substring(0, 100)}...`);
+          }
+        } else if (event.type === "result") {
+          resultEvent = event;
+          if (debug) {
+            console.error(`\n[DEBUG] Result: ${event.success ? "success" : "error"}`);
+            console.error(`[DEBUG] Total turns: ${event.numTurns ?? "unknown"}`);
           }
         }
       }
 
       // Log execution metrics (controlled by AUTONAV_METRICS or AUTONAV_DEBUG)
       const showMetrics = process.env.AUTONAV_METRICS === "1" || debug;
-      if (showMetrics && resultMessage) {
+      if (showMetrics && resultEvent) {
+        const totalTurns = resultEvent.numTurns ?? toolUseCount;
         console.error(`\n[METRICS] Query completed`);
-        console.error(`[METRICS] Total turns: ${turnNumber}`);
+        console.error(`[METRICS] Total turns: ${totalTurns}`);
 
-        // Track turns after submit_answer (diagnostic for termination behavior)
-        if (submitAnswerTurn !== undefined) {
-          const turnsAfterSubmit = turnNumber - submitAnswerTurn;
-          console.error(`[METRICS] submit_answer called at turn: ${submitAnswerTurn}`);
-          console.error(`[METRICS] Turns after submit_answer: ${turnsAfterSubmit}`);
+        // Track tool calls after submit_answer (diagnostic for termination behavior)
+        if (submitAnswerToolIndex !== undefined) {
+          const toolsAfterSubmit = toolUseCount - submitAnswerToolIndex;
+          console.error(`[METRICS] submit_answer called at tool call: ${submitAnswerToolIndex}`);
+          console.error(`[METRICS] Tool calls after submit_answer: ${toolsAfterSubmit}`);
 
-          // Warn if Claude continued for many turns after submit_answer
-          if (turnsAfterSubmit > 3) {
-            console.error(`[METRICS] ⚠️  Claude continued for ${turnsAfterSubmit} turns after submit_answer`);
+          if (toolsAfterSubmit > 3) {
+            console.error(`[METRICS] ⚠️  Claude continued for ${toolsAfterSubmit} tool calls after submit_answer`);
           }
         }
 
-        if (resultMessage.duration_ms) {
-          console.error(`[METRICS] Duration: ${resultMessage.duration_ms}ms`);
+        if (resultEvent.durationMs) {
+          console.error(`[METRICS] Duration: ${resultEvent.durationMs}ms`);
         }
-        if (resultMessage.duration_api_ms) {
-          console.error(`[METRICS] API duration: ${resultMessage.duration_api_ms}ms`);
+        if (resultEvent.durationApiMs) {
+          console.error(`[METRICS] API duration: ${resultEvent.durationApiMs}ms`);
         }
-        if (resultMessage.total_cost_usd !== undefined) {
-          console.error(`[METRICS] Cost: $${resultMessage.total_cost_usd.toFixed(4)}`);
+        if (resultEvent.costUsd !== undefined) {
+          console.error(`[METRICS] Cost: $${resultEvent.costUsd.toFixed(4)}`);
         }
       }
 
       // Check for errors
-      if (!resultMessage) {
-        throw new Error("No result message received from Claude Agent SDK");
+      if (!resultEvent) {
+        throw new Error("No result received from agent");
       }
 
-      if (resultMessage.subtype !== "success") {
-        const errorDetails = "errors" in resultMessage
-          ? resultMessage.errors.join(", ")
-          : "Unknown error";
-        throw new Error(`Query failed: ${resultMessage.subtype} - ${errorDetails}`);
+      if (!resultEvent.success) {
+        throw new Error(`Query failed: ${resultEvent.text || "Unknown error"}`);
       }
 
       // Build the navigator response
@@ -532,7 +517,7 @@ export class ClaudeAdapter {
         });
       } else {
         // Fall back to parsing text response (legacy path)
-        const finalText = resultMessage.result || lastAssistantText;
+        const finalText = resultEvent.text || lastAssistantText;
 
         if (!finalText) {
           throw new Error("No response received from Claude. Expected submit_answer tool call or text response.");
@@ -607,52 +592,42 @@ When updating documentation:
 Your task: ${message}`;
 
     try {
-      // Execute update using Claude Agent SDK with write permissions
-      const queryIterator = query({
-        prompt: message,
-        options: {
+      // Execute update via harness with write permissions
+      const session = this.harness.run(
+        {
           model: this.options.model,
           maxTurns,
           systemPrompt,
           cwd: navigator.navigatorPath,
-          // Allow file writes in the navigator directory
           permissionMode: "bypassPermissions",
         },
-      });
+        message
+      );
 
       // Collect the result
-      let resultMessage: SDKResultMessage | undefined;
       let lastAssistantText = "";
+      let resultEvent: Extract<import("../harness/index.js").AgentEvent, { type: "result" }> | undefined;
 
-      for await (const message of queryIterator) {
-        if (message.type === "assistant") {
-          const content = message.message.content;
-          for (const block of content) {
-            if (block.type === "text") {
-              lastAssistantText = block.text;
-            }
-          }
+      for await (const event of session) {
+        if (event.type === "text") {
+          lastAssistantText = event.text;
         }
-
-        if (message.type === "result") {
-          resultMessage = message;
+        if (event.type === "result") {
+          resultEvent = event;
         }
       }
 
       // Check for errors
-      if (!resultMessage) {
-        throw new Error("No result message received from Claude Agent SDK");
+      if (!resultEvent) {
+        throw new Error("No result received from agent");
       }
 
-      if (resultMessage.subtype !== "success") {
-        const errorDetails = "errors" in resultMessage
-          ? resultMessage.errors.join(", ")
-          : "Unknown error";
-        throw new Error(`Update failed: ${resultMessage.subtype} - ${errorDetails}`);
+      if (!resultEvent.success) {
+        throw new Error(`Update failed: ${resultEvent.text || "Unknown error"}`);
       }
 
       // Return the final response text
-      return resultMessage.result || lastAssistantText || "Update completed (no response text)";
+      return resultEvent.text || lastAssistantText || "Update completed (no response text)";
     } catch (error) {
       if (error instanceof Error) {
         throw error;

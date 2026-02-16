@@ -81,6 +81,13 @@ export const NavigatorConfigSchema = z.object({
   plugins: z.object({
     configFile: z.string().describe('Path to plugins config file'),
   }).optional().describe('Plugin configuration'),
+
+  /**
+   * Harness (agent runtime) configuration
+   */
+  harness: z.object({
+    type: z.enum(['claude-code', 'chibi']).describe('Agent runtime to use'),
+  }).optional().describe('Harness configuration'),
 });
 
 export type NavigatorConfig = z.infer<typeof NavigatorConfigSchema>;
