@@ -19,6 +19,8 @@
  */
 
 import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
 import type { SandboxConfig } from "./types.js";
 
 let nonoAvailableCache: boolean | null = null;
@@ -68,6 +70,32 @@ export function isSandboxEnabled(config?: SandboxConfig): boolean {
 }
 
 /**
+ * System paths needed for sandboxed subprocesses to execute shell scripts
+ * and common tools. Without these, plugin scripts can't run bash/jq/etc.
+ */
+function getSystemReadPaths(): string[] {
+  const paths: string[] = [];
+
+  if (os.platform() === "darwin") {
+    // macOS system binaries and libraries
+    for (const p of ["/bin", "/usr/bin", "/usr/lib", "/usr/libexec"]) {
+      if (fs.existsSync(p)) paths.push(p);
+    }
+    // Homebrew (Apple Silicon and Intel)
+    for (const p of ["/opt/homebrew", "/usr/local"]) {
+      if (fs.existsSync(p)) paths.push(p);
+    }
+  } else {
+    // Linux system paths
+    for (const p of ["/bin", "/usr/bin", "/usr/lib", "/usr/lib64", "/lib", "/lib64"]) {
+      if (fs.existsSync(p)) paths.push(p);
+    }
+  }
+
+  return paths;
+}
+
+/**
  * Build nono CLI arguments for a given sandbox config.
  *
  * Returns the full argument list: ["run", "--silent", ...flags, "--"]
@@ -79,6 +107,11 @@ export function buildSandboxArgs(config: SandboxConfig): string[] {
   }
 
   const args = ["run", "--silent", "--allow-cwd"];
+
+  // System binary paths (read-only) — needed for plugin script execution
+  for (const p of getSystemReadPaths()) {
+    args.push("--read", p);
+  }
 
   // Read-only paths
   if (config.readPaths) {

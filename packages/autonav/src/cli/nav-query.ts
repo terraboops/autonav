@@ -176,16 +176,16 @@ async function executeQuery(
       console.error(""); // Blank line
     }
 
+    // Initialize adapter with resolved harness
+    const harness = await resolveAndCreateHarness(options.harness);
+    const adapter = new ClaudeAdapter({ harness });
+
     // Show question (only in interactive mode)
     if (showUI) {
       console.error(chalk.blue("❓") + " Question: " + chalk.italic(question));
       console.error(""); // Blank line
-      spinner = ora("Querying Claude...").start();
+      spinner = ora(`Asking ${harness.displayName}...`).start();
     }
-
-    // Initialize adapter with resolved harness
-    const harness = await resolveAndCreateHarness(options.harness);
-    const adapter = new ClaudeAdapter({ harness });
 
     // Execute query with timeout
     const queryPromise = adapter.query(navigator, question);
