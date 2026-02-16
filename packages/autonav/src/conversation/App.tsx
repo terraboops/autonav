@@ -1,13 +1,14 @@
 /**
  * Ink-based TUI for interactive navigator conversation
  *
- * Uses Claude Agent SDK for authentication (leverages Claude Code's OAuth)
+ * Uses Harness abstraction for multi-turn conversation, supporting
+ * both Claude Code and chibi runtimes.
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import TextInput from "ink-text-input";
-import { query, type Query } from "@anthropic-ai/claude-agent-sdk";
+import { type Harness, type HarnessSession, ClaudeCodeHarness } from "../harness/index.js";
 import { buildConversationSystemPrompt } from "./prompts.js";
 
 // Check if debug mode is enabled
@@ -37,6 +38,7 @@ interface ConversationAppProps {
   navigatorPath: string;
   navigatorSystemPrompt: string;
   knowledgeBasePath: string;
+  harness?: Harness;
 }
 
 export function ConversationApp({
@@ -44,13 +46,15 @@ export function ConversationApp({
   navigatorPath,
   navigatorSystemPrompt,
   knowledgeBasePath,
+  harness,
 }: ConversationAppProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [activity, setActivity] = useState<ActivityState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const queryRef = useRef<Query | null>(null);
+  const sessionRef = useRef<HarnessSession | null>(null);
+  const harnessRef = useRef<Harness>(harness ?? new ClaudeCodeHarness());
   const { exit } = useApp();
 
   // Helper to determine activity type from tool name
@@ -93,62 +97,33 @@ export function ConversationApp({
     knowledgeBasePath
   );
 
-  // Process messages from Claude
-  const processResponse = useCallback(async () => {
-    const queryInstance = queryRef.current;
-    if (!queryInstance) return;
-
+  // Process events from harness session
+  const processEvents = useCallback(async (events: AsyncIterable<import("../harness/index.js").AgentEvent>) => {
     try {
-      debugLog("Waiting for Claude response...");
+      debugLog("Waiting for response...");
       setActivity({ type: "thinking" });
 
-      for await (const message of queryInstance) {
-        debugLog("Received message type:", message.type);
+      for await (const event of events) {
+        debugLog("Received event type:", event.type);
 
-        if (message.type === "assistant") {
-          // Extract text content and tool use from the assistant message
-          const content = message.message.content;
+        if (event.type === "tool_use") {
+          const toolActivity = getActivityFromTool(event.name);
+          setActivity(toolActivity);
 
-          // Check for tool use blocks first
-          const toolUseBlocks = content.filter(
-            (b): b is Extract<typeof b, { type: "tool_use" }> => b.type === "tool_use"
-          );
-
-          // Update activity based on tool calls
-          for (const toolBlock of toolUseBlocks) {
-            const toolActivity = getActivityFromTool(toolBlock.name);
-            setActivity(toolActivity);
-
-            // Add activity message to show what's happening
-            setMessages((prev) => [
-              ...prev,
-              { role: "activity", content: `⚙️ ${toolBlock.name}` },
-            ]);
-          }
-
-          // Extract text content
-          const textBlocks = content.filter(
-            (b): b is Extract<typeof b, { type: "text" }> => b.type === "text"
-          );
-          const text = textBlocks.map((b) => b.text).join("\n");
-
-          if (text) {
+          setMessages((prev) => [
+            ...prev,
+            { role: "activity", content: `\u2699\uFE0F ${event.name}` },
+          ]);
+        } else if (event.type === "text") {
+          if (event.text) {
             setActivity({ type: "thinking" });
             setMessages((prev) => [
               ...prev,
-              { role: "assistant", content: text },
+              { role: "assistant", content: event.text },
             ]);
           }
-        } else if (message.type === "tool_progress") {
-          // Tool execution happening
-          debugLog("Tool progress:", message);
-          // The tool_progress event has a tool_name property
-          const toolName = (message as { tool_name?: string }).tool_name;
-          if (toolName) {
-            setActivity(getActivityFromTool(toolName));
-          }
-        } else if (message.type === "result") {
-          debugLog("Result received:", message.subtype);
+        } else if (event.type === "result") {
+          debugLog("Result received:", event.success);
           break;
         }
       }
@@ -212,6 +187,11 @@ Model: ${CONVERSATION_MODEL}`,
       }
 
       if (cmd === "/clear") {
+        // Close existing session so next message starts fresh
+        if (sessionRef.current) {
+          sessionRef.current.close().catch(() => {});
+          sessionRef.current = null;
+        }
         setMessages([
           {
             role: "system",
@@ -222,6 +202,9 @@ Model: ${CONVERSATION_MODEL}`,
       }
 
       if (cmd === "/exit") {
+        if (sessionRef.current) {
+          sessionRef.current.close().catch(() => {});
+        }
         exit();
         return true;
       }
@@ -253,40 +236,43 @@ Model: ${CONVERSATION_MODEL}`,
       try {
         debugLog("Sending user message:", value);
 
-        // Build conversation history for context
-        const conversationHistory = messages
-          .filter((m) => m.role !== "system")
-          .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
-          .join("\n\n");
+        let events: AsyncIterable<import("../harness/index.js").AgentEvent>;
 
-        const fullPrompt = conversationHistory
-          ? `${conversationHistory}\n\nUser: ${value}`
-          : value;
+        if (sessionRef.current) {
+          // Multi-turn: send follow-up to existing session
+          events = sessionRef.current.send(value);
+        } else {
+          // First message: create new session
+          const session = harnessRef.current.run(
+            {
+              model: CONVERSATION_MODEL,
+              systemPrompt,
+              permissionMode: "acceptEdits",
+              cwd: navigatorPath,
+            },
+            value
+          );
 
-        const queryInstance = query({
-          prompt: fullPrompt,
-          options: {
-            model: CONVERSATION_MODEL,
-            systemPrompt,
-            permissionMode: "acceptEdits", // Allow file operations
-            cwd: navigatorPath, // Set working directory to navigator
-          },
-        });
+          sessionRef.current = session;
+          events = session;
+        }
 
-        queryRef.current = queryInstance;
-        await processResponse();
+        await processEvents(events);
       } catch (err) {
         debugLog("Error sending message:", err);
         setError(err instanceof Error ? err.message : "Failed to send message");
         setIsLoading(false);
       }
     },
-    [isLoading, messages, systemPrompt, navigatorPath, handleCommand, processResponse]
+    [isLoading, systemPrompt, navigatorPath, handleCommand, processEvents]
   );
 
   // Handle Ctrl+C or Ctrl+D to exit
   useInput((input, key) => {
     if (key.ctrl && (input === "c" || input === "d")) {
+      if (sessionRef.current) {
+        sessionRef.current.close().catch(() => {});
+      }
       exit();
     }
   });
@@ -296,7 +282,7 @@ Model: ${CONVERSATION_MODEL}`,
       {/* Header */}
       <Box marginBottom={1}>
         <Text bold color="cyan">
-          💬 {navigatorName}
+          {"\uD83D\uDCAC"} {navigatorName}
         </Text>
         <Text color="gray"> - conversation mode</Text>
       </Box>
@@ -312,7 +298,7 @@ Model: ${CONVERSATION_MODEL}`,
         <Box key={i} marginBottom={1} flexDirection="column">
           {msg.role === "user" ? (
             <Box>
-              <Text color="green">{"you › "}</Text>
+              <Text color="green">{"you \u203A "}</Text>
               <Text>{msg.content}</Text>
             </Box>
           ) : msg.role === "assistant" ? (
@@ -355,7 +341,7 @@ Model: ${CONVERSATION_MODEL}`,
       {/* Input */}
       {!isLoading && (
         <Box>
-          <Text color="green">{"you › "}</Text>
+          <Text color="green">{"you \u203A "}</Text>
           <TextInput
             value={input}
             onChange={setInput}

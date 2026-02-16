@@ -46,6 +46,7 @@ Commands:
   migrate <path>    Migrate a navigator to latest version
   mend <path>       Health check and repair for navigators
   memento <code> <nav>  Iterative development loop (nav plans, worker implements)
+  standup <navs...>  Multi-navigator standup (parallel reports + blocker sync)
   install [path]    Symlink local skills to global location
   uninstall [path]  Remove global skill symlinks (preserves local)
 
@@ -63,6 +64,7 @@ Examples:
   autonav migrate ./my-navigator
   autonav mend ./my-navigator --auto-fix
   autonav memento ./my-app ./my-nav --task "Add auth" --branch feature/auth
+  autonav standup ./nav-a ./nav-b --verbose
   autonav install ./my-navigator
   autonav uninstall ./my-navigator
 
@@ -74,6 +76,7 @@ For command-specific help:
   autonav migrate --help
   autonav mend --help
   autonav memento --help
+  autonav standup --help
   autonav install --help
   autonav uninstall --help
 `);
@@ -121,6 +124,9 @@ function main() {
       break;
     case "memento":
       scriptPath = path.join(__dirname, "nav-memento.js");
+      break;
+    case "standup":
+      scriptPath = path.join(__dirname, "nav-standup.js");
       break;
     case "install":
       scriptPath = path.join(__dirname, "nav-install.js");

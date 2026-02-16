@@ -9,11 +9,11 @@
  */
 
 import { z } from "zod";
-import { tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import {
   NavigatorResponseSchema,
   PROTOCOL_VERSION,
 } from "@autonav/communication-layer";
+import { defineTool, type Harness } from "../harness/index.js";
 
 /**
  * Result type returned when submit_answer tool is called
@@ -31,8 +31,8 @@ export interface SubmitAnswerResult {
  * This achieves the same result as Claude's Structured Outputs
  * but works within the Claude Agent SDK's tool use flow.
  */
-export function createResponseMcpServer() {
-  const submitAnswerTool = tool(
+export function createResponseMcpServer(harness: Harness) {
+  const submitAnswerTool = defineTool(
     "submit_answer",
     `Submit your final answer to the user's question. You MUST use this tool to provide your response.
 
@@ -90,11 +90,7 @@ Do NOT respond with plain text - always use this tool to submit your answer.`,
     }
   );
 
-  return createSdkMcpServer({
-    name: "autonav-response",
-    version: "1.0.0",
-    tools: [submitAnswerTool],
-  });
+  return harness.createToolServer("autonav-response", [submitAnswerTool]).server;
 }
 
 /**
