@@ -6,6 +6,7 @@
  * 2. Sequential sync: Each nav reviews all reports and resolves blockers
  */
 
+import { query, type SDKResultMessage, type ModelUsage } from "@anthropic-ai/claude-agent-sdk";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -28,10 +29,6 @@ import {
   buildSyncPrompt,
   type NavigatorIdentity,
 } from "./prompts.js";
-import {
-  type Harness,
-  resolveAndCreateHarness,
-} from "../harness/index.js";
 
 const DEBUG = process.env.AUTONAV_DEBUG === "1" || process.env.DEBUG === "1";
 
@@ -118,15 +115,24 @@ export function loadNavForStandup(dir: string): LoadedNav {
 }
 
 /**
+ * Get context utilization from a result message's modelUsage
+ */
+function getContextUtilization(resultMessage: SDKResultMessage): number {
+  const modelUsage = resultMessage.modelUsage;
+  const firstModel = Object.values(modelUsage)[0] as ModelUsage | undefined;
+  if (!firstModel || firstModel.contextWindow === 0) return 0;
+  return (firstModel.inputTokens / firstModel.contextWindow) * 100;
+}
+
+/**
  * Run the report phase for a single navigator
  */
 async function runReportPhase(
   nav: LoadedNav,
   otherNavNames: string[],
   standupDir: string,
-  options: StandupOptions,
-  harness: Harness
-): Promise<{ report: StatusReport; costUsd: number }> {
+  options: StandupOptions
+): Promise<{ report: StatusReport; costUsd: number; contextPercent: number }> {
   const {
     model = "claude-sonnet-4-5",
     maxTurns = 15,
@@ -134,7 +140,7 @@ async function runReportPhase(
     verbose = false,
   } = options;
 
-  const protocol = createReportProtocolMcpServer(harness);
+  const protocol = createReportProtocolMcpServer();
 
   const systemPrompt = buildReportSystemPrompt(nav.systemPrompt);
   const prompt = buildReportPrompt(
@@ -150,13 +156,13 @@ async function runReportPhase(
     console.log(`[Report] Querying ${nav.name}...`);
   }
 
-  const agentConfig = {
+  const sdkOptions = {
     model,
     maxTurns,
     systemPrompt,
     cwd: nav.directory,
     additionalDirectories: [...nav.workingDirectories, standupDir],
-    permissionMode: "acceptEdits",
+    permissionMode: "acceptEdits" as const,
     allowedTools: [
       "Read", "Glob", "Grep", "Bash",
       "mcp__autonav-standup-report__submit_status_report",
@@ -167,49 +173,68 @@ async function runReportPhase(
     ...(maxBudgetUsd !== undefined ? { maxBudgetUsd } : {}),
   };
 
-  debug(`[Report:${nav.name}] Agent config:`, JSON.stringify({
-    model: agentConfig.model,
-    maxTurns: agentConfig.maxTurns,
-    cwd: agentConfig.cwd,
-    additionalDirectories: agentConfig.additionalDirectories,
-    permissionMode: agentConfig.permissionMode,
-    mcpServers: Object.keys(agentConfig.mcpServers),
-    maxBudgetUsd: agentConfig.maxBudgetUsd,
+  debug(`[Report:${nav.name}] SDK options:`, JSON.stringify({
+    model: sdkOptions.model,
+    maxTurns: sdkOptions.maxTurns,
+    cwd: sdkOptions.cwd,
+    additionalDirectories: sdkOptions.additionalDirectories,
+    permissionMode: sdkOptions.permissionMode,
+    mcpServers: Object.keys(sdkOptions.mcpServers),
+    maxBudgetUsd: sdkOptions.maxBudgetUsd,
   }, null, 2));
 
-  const session = harness.run(agentConfig, prompt);
+  const queryIterator = query({
+    prompt,
+    options: sdkOptions,
+  });
 
-  let costUsd = 0;
-  let success = false;
-  let errorText = "";
+  let resultMessage: SDKResultMessage | undefined;
 
-  for await (const event of session) {
-    if (event.type === "tool_use") {
-      const shortToolName = event.name.split("__").pop() || event.name;
-      if (verbose) {
-        console.log(`[Report:${nav.name}] Tool: ${shortToolName}`);
+  for await (const message of queryIterator) {
+    if (message.type === "assistant") {
+      for (const block of message.message.content) {
+        if (block.type === "tool_use") {
+          const fullToolName = block.name;
+          const shortToolName = fullToolName.split("__").pop() || fullToolName;
+          if (verbose) {
+            console.log(`[Report:${nav.name}] Tool: ${shortToolName}`);
+          }
+          debug(`[Report:${nav.name}] Full tool name: ${fullToolName}`);
+        }
       }
-      debug(`[Report:${nav.name}] Full tool name: ${event.name}`);
-    } else if (event.type === "tool_result") {
-      if (event.isError) {
-        debug(`[Report:${nav.name}] Tool ERROR result:`, event.content.substring(0, 500));
+    }
+    if (message.type === "user" && "tool_use_result" in message) {
+      const toolResult = message.tool_use_result;
+      if (toolResult && typeof toolResult === "object" && "isError" in toolResult && (toolResult as Record<string, unknown>).isError) {
+        debug(`[Report:${nav.name}] Tool ERROR result:`, JSON.stringify(toolResult).substring(0, 500));
       } else if (DEBUG) {
-        debug(`[Report:${nav.name}] Tool result:`, event.content.substring(0, 300));
+        debug(`[Report:${nav.name}] Tool result:`, JSON.stringify(toolResult).substring(0, 300));
       }
-    } else if (event.type === "result") {
-      success = event.success;
-      costUsd = event.costUsd ?? 0;
-      if (!event.success) {
-        errorText = event.text || "Unknown error";
-      }
-      debug(`[Report:${nav.name}] Result: success=${event.success}, cost=$${costUsd.toFixed(4)}`);
+    }
+    if (message.type === "result") {
+      resultMessage = message;
     }
   }
 
+  if (!resultMessage) {
+    throw new Error(`${nav.name}: No result message received`);
+  }
+
+  debug(`[Report:${nav.name}] Result subtype: ${resultMessage.subtype}`);
+  debug(`[Report:${nav.name}] Turns: ${resultMessage.num_turns}, Cost: $${resultMessage.total_cost_usd.toFixed(4)}`);
   debug(`[Report:${nav.name}] Captured report: ${protocol.getCapturedReport() ? "YES" : "NO"}`);
 
-  if (!success) {
-    throw new Error(`${nav.name} report failed: ${errorText || "Unknown error"}`);
+  if (resultMessage.subtype !== "success" && "errors" in resultMessage) {
+    debug(`[Report:${nav.name}] Errors:`, resultMessage.errors);
+  }
+
+  const costUsd = resultMessage.total_cost_usd;
+  const contextPercent = getContextUtilization(resultMessage);
+
+  if (resultMessage.subtype !== "success") {
+    const errorDetails =
+      "errors" in resultMessage ? resultMessage.errors.join(", ") : "Unknown error";
+    throw new Error(`${nav.name} report failed: ${errorDetails}`);
   }
 
   const report = protocol.getCapturedReport();
@@ -225,11 +250,11 @@ async function runReportPhase(
 
   if (verbose) {
     console.log(
-      `[Report:${nav.name}] Complete - ${report.blockers.length} blocker(s), cost: $${costUsd.toFixed(4)}`
+      `[Report:${nav.name}] Complete - ${report.blockers.length} blocker(s), context: ${contextPercent.toFixed(1)}%`
     );
   }
 
-  return { report, costUsd };
+  return { report, costUsd, contextPercent };
 }
 
 /**
@@ -241,9 +266,8 @@ async function runSyncPhase(
   previousSyncResponses: SyncResponse[],
   standupDir: string,
   otherNavNames: string[],
-  options: StandupOptions,
-  harness: Harness
-): Promise<{ sync: SyncResponse; costUsd: number }> {
+  options: StandupOptions
+): Promise<{ sync: SyncResponse; costUsd: number; contextPercent: number }> {
   const {
     model = "claude-sonnet-4-5",
     maxTurns = 30,
@@ -251,7 +275,7 @@ async function runSyncPhase(
     verbose = false,
   } = options;
 
-  const protocol = createSyncProtocolMcpServer(harness);
+  const protocol = createSyncProtocolMcpServer();
 
   const systemPrompt = buildSyncSystemPrompt(nav.systemPrompt);
   const prompt = buildSyncPrompt(
@@ -270,13 +294,13 @@ async function runSyncPhase(
     console.log(`[Sync] Querying ${nav.name}...`);
   }
 
-  const agentConfig = {
+  const sdkOptions = {
     model,
     maxTurns,
     systemPrompt,
     cwd: nav.directory,
     additionalDirectories: [...nav.workingDirectories, standupDir],
-    permissionMode: "acceptEdits",
+    permissionMode: "acceptEdits" as const,
     allowedTools: [
       "Read", "Write", "Edit", "Glob", "Grep", "Bash",
       "mcp__autonav-standup-sync__submit_sync_response",
@@ -287,42 +311,60 @@ async function runSyncPhase(
     ...(maxBudgetUsd !== undefined ? { maxBudgetUsd } : {}),
   };
 
-  debug(`[Sync:${nav.name}] Agent config:`, JSON.stringify({
-    model: agentConfig.model,
-    maxTurns: agentConfig.maxTurns,
-    cwd: agentConfig.cwd,
-    additionalDirectories: agentConfig.additionalDirectories,
-    permissionMode: agentConfig.permissionMode,
-    mcpServers: Object.keys(agentConfig.mcpServers),
-    maxBudgetUsd: agentConfig.maxBudgetUsd,
+  debug(`[Sync:${nav.name}] SDK options:`, JSON.stringify({
+    model: sdkOptions.model,
+    maxTurns: sdkOptions.maxTurns,
+    cwd: sdkOptions.cwd,
+    additionalDirectories: sdkOptions.additionalDirectories,
+    permissionMode: sdkOptions.permissionMode,
+    mcpServers: Object.keys(sdkOptions.mcpServers),
+    maxBudgetUsd: sdkOptions.maxBudgetUsd,
   }, null, 2));
 
-  const session = harness.run(agentConfig, prompt);
+  const queryIterator = query({
+    prompt,
+    options: sdkOptions,
+  });
 
-  let costUsd = 0;
-  let success = false;
-  let errorText = "";
+  let resultMessage: SDKResultMessage | undefined;
 
-  for await (const event of session) {
-    if (event.type === "tool_use") {
-      const shortToolName = event.name.split("__").pop() || event.name;
-      if (verbose) {
-        console.log(`[Sync:${nav.name}] Tool: ${shortToolName}`);
+  for await (const message of queryIterator) {
+    if (message.type === "assistant") {
+      for (const block of message.message.content) {
+        if (block.type === "tool_use") {
+          const fullToolName = block.name;
+          const shortToolName = fullToolName.split("__").pop() || fullToolName;
+          if (verbose) {
+            console.log(`[Sync:${nav.name}] Tool: ${shortToolName}`);
+          }
+          debug(`[Sync:${nav.name}] Full tool name: ${fullToolName}`);
+        }
       }
-      debug(`[Sync:${nav.name}] Full tool name: ${event.name}`);
-    } else if (event.type === "result") {
-      success = event.success;
-      costUsd = event.costUsd ?? 0;
-      if (!event.success) {
-        errorText = event.text || "Unknown error";
-      }
-      debug(`[Sync:${nav.name}] Result: success=${event.success}, cost=$${costUsd.toFixed(4)}`);
-      debug(`[Sync:${nav.name}] Captured sync: ${protocol.getCapturedSync() ? "YES" : "NO"}`);
+    }
+    if (message.type === "result") {
+      resultMessage = message;
     }
   }
 
-  if (!success) {
-    throw new Error(`${nav.name} sync failed: ${errorText || "Unknown error"}`);
+  if (!resultMessage) {
+    throw new Error(`${nav.name}: No result message received during sync`);
+  }
+
+  debug(`[Sync:${nav.name}] Result subtype: ${resultMessage.subtype}`);
+  debug(`[Sync:${nav.name}] Turns: ${resultMessage.num_turns}, Cost: $${resultMessage.total_cost_usd.toFixed(4)}`);
+  debug(`[Sync:${nav.name}] Captured sync: ${protocol.getCapturedSync() ? "YES" : "NO"}`);
+
+  if (resultMessage.subtype !== "success" && "errors" in resultMessage) {
+    debug(`[Sync:${nav.name}] Errors:`, resultMessage.errors);
+  }
+
+  const costUsd = resultMessage.total_cost_usd;
+  const contextPercent = getContextUtilization(resultMessage);
+
+  if (resultMessage.subtype !== "success") {
+    const errorDetails =
+      "errors" in resultMessage ? resultMessage.errors.join(", ") : "Unknown error";
+    throw new Error(`${nav.name} sync failed: ${errorDetails}`);
   }
 
   const sync = protocol.getCapturedSync();
@@ -338,11 +380,11 @@ async function runSyncPhase(
 
   if (verbose) {
     console.log(
-      `[Sync:${nav.name}] Complete - ${sync.blockerResolutions.length} resolution(s), cost: $${costUsd.toFixed(4)}`
+      `[Sync:${nav.name}] Complete - ${sync.blockerResolutions.length} resolution(s), context: ${contextPercent.toFixed(1)}%`
     );
   }
 
-  return { sync, costUsd };
+  return { sync, costUsd, contextPercent };
 }
 
 /**
@@ -354,9 +396,6 @@ export async function runStandup(
 ): Promise<StandupResult> {
   const startTime = Date.now();
   const { verbose = false, reportOnly = false } = options;
-
-  // Create harness
-  const harness = await resolveAndCreateHarness(options.harness);
 
   // Resolve config and create standup directory
   const configDir = resolveConfigDir(options.configDir);
@@ -372,6 +411,7 @@ export async function runStandup(
   const navNames = navs.map((n) => n.name);
   const errors: string[] = [];
   let totalCostUsd = 0;
+  const contextUtilization: Record<string, number> = {};
 
   // === Phase 1: Parallel Report ===
   console.log(
@@ -381,7 +421,7 @@ export async function runStandup(
   const reportResults = await Promise.allSettled(
     navs.map((nav) => {
       const otherNames = navNames.filter((n) => n !== nav.name);
-      return runReportPhase(nav, otherNames, standupDir, options, harness);
+      return runReportPhase(nav, otherNames, standupDir, options);
     })
   );
 
@@ -392,13 +432,15 @@ export async function runStandup(
     const nav = navs[i]!;
 
     if (result.status === "fulfilled") {
-      const { report, costUsd } = result.value;
+      const { report, costUsd, contextPercent } = result.value;
       reports.push(report);
       totalCostUsd += costUsd;
+      contextUtilization[`${nav.name} (report)`] = contextPercent;
 
       console.log(
         `  ${chalk.green("+")} ${chalk.bold(nav.name)} - ` +
           `${report.blockers.length} blocker(s), ` +
+          `context: ${chalk.cyan(contextPercent.toFixed(1) + "%")}, ` +
           `cost: ${chalk.yellow("$" + costUsd.toFixed(4))}`
       );
     } else {
@@ -437,16 +479,17 @@ export async function runStandup(
           syncResponses, // accumulating - each nav sees previous syncs
           standupDir,
           otherNames,
-          options,
-          harness
+          options
         );
 
         syncResponses.push(result.sync);
         totalCostUsd += result.costUsd;
+        contextUtilization[`${nav.name} (sync)`] = result.contextPercent;
 
         console.log(
           `  ${chalk.green("+")} ${chalk.bold(nav.name)} - ` +
             `${result.sync.blockerResolutions.length} resolution(s), ` +
+            `context: ${chalk.cyan(result.contextPercent.toFixed(1) + "%")}, ` +
             `cost: ${chalk.yellow("$" + result.costUsd.toFixed(4))}`
         );
       } catch (error) {
@@ -477,7 +520,7 @@ export async function runStandup(
     syncResponses,
     durationMs,
     totalCostUsd,
-    contextUtilization: {},
+    contextUtilization,
     errors: errors.length > 0 ? errors : undefined,
   };
 }

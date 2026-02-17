@@ -6,13 +6,13 @@
  */
 
 import { z } from "zod";
+import { tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import {
   StatusReportSchema,
   SyncResponseSchema,
   type StatusReport,
   type SyncResponse,
 } from "./types.js";
-import { defineTool, type Harness } from "../harness/index.js";
 
 /**
  * Tool names
@@ -47,10 +47,10 @@ function stripNulls(obj: unknown): unknown {
  *
  * Each navigator gets its own server instance (separate closure).
  */
-export function createReportProtocolMcpServer(harness: Harness) {
+export function createReportProtocolMcpServer() {
   let capturedReport: StatusReport | null = null;
 
-  const submitReportTool = defineTool(
+  const submitReportTool = tool(
     SUBMIT_STATUS_REPORT_TOOL,
     `Submit your structured status report. This is the ONLY way to deliver your report — the standup loop captures your output exclusively through this tool. Plain text responses are discarded.
 
@@ -123,7 +123,11 @@ Other navigators will read your report in the sync phase to identify blockers th
     }
   );
 
-  const { server } = harness.createToolServer("autonav-standup-report", [submitReportTool]);
+  const server = createSdkMcpServer({
+    name: "autonav-standup-report",
+    version: "1.0.0",
+    tools: [submitReportTool],
+  });
 
   return {
     server,
@@ -139,10 +143,10 @@ Other navigators will read your report in the sync phase to identify blockers th
  *
  * Each navigator gets its own server instance (separate closure).
  */
-export function createSyncProtocolMcpServer(harness: Harness) {
+export function createSyncProtocolMcpServer() {
   let capturedSync: SyncResponse | null = null;
 
-  const submitSyncTool = defineTool(
+  const submitSyncTool = tool(
     SUBMIT_SYNC_RESPONSE_TOOL,
     `Submit your structured sync response after reviewing all status reports. This is the ONLY way to deliver your response — the standup loop captures your output exclusively through this tool. Plain text responses are discarded.
 
@@ -209,7 +213,11 @@ Prioritize resolving blockers where \`needsFrom\` matches your name, then those 
     }
   );
 
-  const { server } = harness.createToolServer("autonav-standup-sync", [submitSyncTool]);
+  const server = createSdkMcpServer({
+    name: "autonav-standup-sync",
+    version: "1.0.0",
+    tools: [submitSyncTool],
+  });
 
   return {
     server,

@@ -31,7 +31,6 @@ interface StandupCommandOptions {
   maxTurns?: string;
   maxBudget?: string;
   reportOnly?: boolean;
-  harness?: string;
 }
 
 /**
@@ -67,7 +66,6 @@ program
   .option("--max-turns <n>", "Max turns per agent", "30")
   .option("--max-budget <usd>", "Max cost per agent in USD", "1.0")
   .option("--report-only", "Skip sync phase, only generate reports")
-  .option("--harness <type>", "Agent runtime to use (claude-code|chibi)")
   .action(async (navDirs: string[], options: StandupCommandOptions) => {
     await executeStandup(navDirs, options);
   });
@@ -155,7 +153,6 @@ async function executeStandup(
       maxTurns,
       maxBudgetUsd,
       reportOnly: options.reportOnly,
-      harness: options.harness,
     });
 
     // Print final summary
