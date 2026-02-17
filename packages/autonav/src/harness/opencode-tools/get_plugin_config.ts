@@ -13,11 +13,11 @@ export default tool({
   description:
     "Read your current plugin configuration. Use this to check what plugins are enabled, see notification settings, or verify your current schedule.",
   args: {
-    plugin: {
-      type: "string",
-      description:
+    plugin: tool.schema
+      .string()
+      .describe(
         'The plugin to read configuration for ("slack", "signal", "github", "email", or "all")',
-    },
+      ),
   },
   async execute(input: { plugin: string }) {
     const { plugin } = input

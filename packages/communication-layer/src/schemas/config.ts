@@ -86,7 +86,8 @@ export const NavigatorConfigSchema = z.object({
    * Harness (agent runtime) configuration
    */
   harness: z.object({
-    type: z.enum(['claude-code', 'chibi']).describe('Agent runtime to use'),
+    type: z.enum(['claude-code', 'chibi', 'opencode']).describe('Agent runtime to use'),
+    model: z.string().optional().describe('Model to use (e.g. "opencode/kimi-k2.5-free")'),
   }).optional().describe('Harness configuration'),
 });
 

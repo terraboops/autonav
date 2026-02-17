@@ -16,15 +16,14 @@ export default tool({
   description:
     "Ask another navigator a question. Use this when you need information from a different navigator's knowledge base. The target navigator will search its own knowledge and return an answer.",
   args: {
-    navigator: {
-      type: "string",
-      description:
+    navigator: tool.schema
+      .string()
+      .describe(
         "Path to the target navigator directory (relative to cwd or absolute)",
-    },
-    question: {
-      type: "string",
-      description: "The question to ask the target navigator",
-    },
+      ),
+    question: tool.schema
+      .string()
+      .describe("The question to ask the target navigator"),
   },
   async execute(input: { navigator: string; question: string }) {
     const { navigator, question } = input
@@ -96,7 +95,7 @@ export default tool({
       // Use opencode run for a one-shot query
       const result = execFileSync(
         "opencode",
-        ["run", "--project", navPath, question],
+        ["run", "--dir", navPath, question],
         opts,
       )
 
