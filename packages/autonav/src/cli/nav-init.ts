@@ -37,6 +37,7 @@ import {
   checkFileConflicts,
   type ExistingClaudeMdAction,
 } from "../confirmation/index.js";
+import { registerNavigator } from "../registry.js";
 
 /**
  * autonav init CLI command
@@ -641,6 +642,7 @@ See \`config.json\` for navigator configuration.
       2
     );
     fs.writeFileSync(path.join(navigatorPath, "config.json"), configContent);
+    registerNavigator(navigatorName, navigatorPath);
     if (!options.quiet) {
       console.log("✓ Created config.json");
     }
@@ -994,6 +996,7 @@ async function main() {
       path.join(navigatorPath, "config.json"),
       generateConfigJson(vars)
     );
+    registerNavigator(navigatorName, navigatorPath);
     if (!options.quiet) {
       console.log("✓ Generated config.json");
     }
