@@ -24,7 +24,8 @@ import type {
   AgentEvent,
 } from "./types.js";
 import type { ToolDefinition } from "./tool-server.js";
-import { createEphemeralHome, type EphemeralHome } from "./ephemeral-home.js";
+// ephemeral-home is not used for OpenCode — we inject tools directly into
+// the navigator directory because OpenCode requires a real git project context.
 
 // Marker for tool server sentinel objects (same pattern as ChibiHarness)
 const OPENCODE_TOOL_MARKER = "__opencode_tools__" as const;
@@ -76,7 +77,7 @@ class OpenCodeSession implements HarnessSession {
   private config: AgentConfig;
   private sessionId: string;
   private client: any; // OpencodeClient (imported dynamically)
-  private ephemeralHome: EphemeralHome | null;
+  private cleanupFn: (() => void) | null;
   private closed = false;
   private directory: string;
   private abortController: AbortController;
@@ -86,13 +87,13 @@ class OpenCodeSession implements HarnessSession {
     config: AgentConfig,
     sessionId: string,
     client: any,
-    ephemeralHome: EphemeralHome | null,
+    cleanupFn: (() => void) | null,
     directory: string,
   ) {
     this.config = { ...config };
     this.sessionId = sessionId;
     this.client = client;
-    this.ephemeralHome = ephemeralHome;
+    this.cleanupFn = cleanupFn;
     this.directory = directory;
     this.abortController = new AbortController();
   }
@@ -139,6 +140,7 @@ class OpenCodeSession implements HarnessSession {
         const evt = event as Record<string, unknown>;
         const eventType = evt.type as string;
         const props = evt.properties as Record<string, unknown> | undefined;
+
         if (!props) continue;
 
         // Filter by session ID where available
@@ -356,8 +358,8 @@ class OpenCodeSession implements HarnessSession {
     }
 
     // Clean up ephemeral home
-    this.ephemeralHome?.cleanup();
-    this.ephemeralHome = null;
+    this.cleanupFn?.();
+    this.cleanupFn = null;
   }
 }
 
@@ -453,29 +455,59 @@ export class OpenCodeHarness implements Harness {
   ): Promise<OpenCodeSession> {
     await this.ensureServer(config);
 
-    // Create ephemeral project directory with custom tools
-    const ephemeralHome = createEphemeralHome({
-      harness: "opencode",
-      setup: (home) => {
-        const toolsDir = path.join(home, ".opencode", "tools");
-        fs.mkdirSync(toolsDir, { recursive: true });
+    // Use the navigator's actual directory as the OpenCode project directory.
+    // OpenCode needs direct access to the project's files (knowledge base, etc.)
+    // and requires a real git project context. We inject tools and config into
+    // the navigator directory and track them for cleanup.
+    const directory = config.cwd || process.cwd();
+    const injectedPaths: string[] = [];
 
-        // Copy all tool files from the opencode-tools directory
-        const srcDir = fileURLToPath(
-          new URL("./opencode-tools", import.meta.url),
-        );
-        if (fs.existsSync(srcDir)) {
-          for (const file of fs.readdirSync(srcDir)) {
-            const srcPath = path.join(srcDir, file);
-            if (fs.statSync(srcPath).isFile()) {
-              fs.copyFileSync(srcPath, path.join(toolsDir, file));
-            }
-          }
+    // Inject .opencode/tools/ into the navigator directory
+    const toolsDir = path.join(directory, ".opencode", "tools");
+    fs.mkdirSync(toolsDir, { recursive: true });
+    injectedPaths.push(path.join(directory, ".opencode"));
+
+    const srcDir = fileURLToPath(
+      new URL("./opencode-tools", import.meta.url),
+    );
+    if (fs.existsSync(srcDir)) {
+      for (const file of fs.readdirSync(srcDir)) {
+        const srcPath = path.join(srcDir, file);
+        if (fs.statSync(srcPath).isFile()) {
+          fs.copyFileSync(srcPath, path.join(toolsDir, file));
         }
-      },
-    });
+      }
+    }
 
-    const directory = ephemeralHome.homePath;
+    // Write opencode.json project config with model settings
+    const opencodeConfigPath = path.join(directory, "opencode.json");
+    const hadExistingConfig = fs.existsSync(opencodeConfigPath);
+    const opencodeConfig: Record<string, unknown> = {
+      $schema: "https://opencode.ai/config.json",
+    };
+    if (config.model) {
+      opencodeConfig.model = config.model;
+    }
+    fs.writeFileSync(opencodeConfigPath, JSON.stringify(opencodeConfig, null, 2));
+    if (!hadExistingConfig) {
+      injectedPaths.push(opencodeConfigPath);
+    }
+
+    // Create a cleanup function for injected files
+    const cleanup = (): void => {
+      for (const p of injectedPaths) {
+        try {
+          const stat = fs.statSync(p);
+          if (stat.isDirectory()) {
+            fs.rmSync(p, { recursive: true, force: true });
+          } else {
+            fs.unlinkSync(p);
+          }
+        } catch {
+          // Best-effort cleanup
+        }
+      }
+    };
 
     // Build extra env vars for tool scripts
     const extraEnv: Record<string, string> = {};
@@ -496,7 +528,7 @@ export class OpenCodeHarness implements Harness {
 
     const sessionId = result.data?.id;
     if (!sessionId) {
-      ephemeralHome.cleanup();
+      cleanup();
       throw new Error("Failed to create OpenCode session: no session ID returned");
     }
 
@@ -508,7 +540,7 @@ export class OpenCodeHarness implements Harness {
       config,
       sessionId,
       this.client,
-      ephemeralHome,
+      cleanup,
       directory,
     );
 

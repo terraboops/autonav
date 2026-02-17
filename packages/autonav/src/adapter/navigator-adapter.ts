@@ -535,11 +535,23 @@ export class NavigatorAdapter {
           confidence = !isNaN(n) ? scoreToConfidence(n) : "medium";
         }
 
+        // Normalize sources: some harnesses (e.g. OpenCode) pass sources
+        // as a JSON string rather than an array, since their tool APIs
+        // don't support complex types natively.
+        let sources = submitAnswerInput.sources;
+        if (typeof sources === "string") {
+          try {
+            sources = JSON.parse(sources);
+          } catch {
+            sources = [];
+          }
+        }
+
         // Use structured output from tool call (preferred)
         navigatorResponse = NavigatorResponseSchema.parse({
           query: question,
           answer: submitAnswerInput.answer,
-          sources: submitAnswerInput.sources,
+          sources,
           confidence,
           confidenceReason: submitAnswerInput.confidenceReason,
           outOfDomain: submitAnswerInput.outOfDomain,

@@ -14,26 +14,32 @@ export default tool({
   description:
     "Update your own plugin configuration. Use this to schedule check-ins, change notification settings, enable/disable plugins, update channel preferences, or modify any plugin behavior.",
   args: {
-    plugin: {
-      type: "string",
-      description: 'The plugin to configure ("slack", "signal", "github", "email")',
-    },
-    updates: {
-      type: "object",
-      description:
-        "Config key-value pairs to merge into the plugin's config section",
-    },
-    reason: {
-      type: "string",
-      description: "Brief explanation of why you're making this change",
-    },
+    plugin: tool.schema
+      .string()
+      .describe(
+        'The plugin to configure ("slack", "signal", "github", "email")',
+      ),
+    updates: tool.schema
+      .string()
+      .describe(
+        "JSON object of config key-value pairs to merge into the plugin's config section",
+      ),
+    reason: tool.schema
+      .string()
+      .describe("Brief explanation of why you're making this change"),
   },
-  async execute(input: {
-    plugin: string
-    updates: Record<string, unknown>
-    reason: string
-  }) {
-    const { plugin, updates, reason } = input
+  async execute(input: { plugin: string; updates: string; reason: string }) {
+    const { plugin, reason } = input
+
+    let updates: Record<string, unknown>
+    try {
+      updates = JSON.parse(input.updates)
+    } catch {
+      return JSON.stringify({
+        success: false,
+        error: "Invalid JSON in updates field",
+      })
+    }
 
     if (!plugin || !updates || !reason) {
       return JSON.stringify({
