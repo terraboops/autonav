@@ -205,6 +205,8 @@ interface ConversationAppProps {
   knowledgeBasePath: string;
   harness?: Harness;
   mcpServers?: Record<string, unknown>;
+  /** Whether sandbox is enabled for chat (default: true) */
+  sandboxEnabled?: boolean;
 }
 
 export function ConversationApp({
@@ -214,6 +216,7 @@ export function ConversationApp({
   knowledgeBasePath,
   harness,
   mcpServers,
+  sandboxEnabled = true,
 }: ConversationAppProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -448,6 +451,12 @@ Model: ${CONVERSATION_MODEL}`,
               permissionMode: "acceptEdits",
               cwd: navigatorPath,
               mcpServers,
+              // Per-nav sandbox: chat defaults to enabled (read-only access)
+              ...(sandboxEnabled ? {
+                sandbox: {
+                  readPaths: [navigatorPath],
+                },
+              } : {}),
             },
             value
           );

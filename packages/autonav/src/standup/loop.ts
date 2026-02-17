@@ -52,6 +52,8 @@ interface LoadedNav {
   knowledgeBasePath: string;
   identity: NavigatorIdentity;
   workingDirectories: string[];
+  /** Per-operation sandbox profile from config.json */
+  sandboxEnabled: boolean;
 }
 
 /**
@@ -87,6 +89,7 @@ export function loadNavForStandup(dir: string): LoadedNav {
   let description = "";
   let knowledgeBasePath = path.join(directory, "knowledge");
   let workingDirectories: string[] = [];
+  let sandboxEnabled = true; // standup defaults to sandbox enabled
 
   if (fs.existsSync(configPath)) {
     try {
@@ -101,6 +104,10 @@ export function loadNavForStandup(dir: string): LoadedNav {
           resolveNavPath(p, directory)
         );
       }
+      // Read per-operation sandbox profile (standup defaults to enabled)
+      if (config.sandbox?.standup?.enabled === false) {
+        sandboxEnabled = false;
+      }
     } catch {
       // Use defaults on parse error
     }
@@ -114,6 +121,7 @@ export function loadNavForStandup(dir: string): LoadedNav {
     knowledgeBasePath,
     identity: { name, description },
     workingDirectories,
+    sandboxEnabled,
   };
 }
 
@@ -165,6 +173,12 @@ async function runReportPhase(
       "autonav-standup-report": protocol.server,
     },
     ...(maxBudgetUsd !== undefined ? { maxBudgetUsd } : {}),
+    // Per-nav sandbox: report phase is read-only
+    ...(nav.sandboxEnabled ? {
+      sandbox: {
+        readPaths: [nav.directory, nav.knowledgeBasePath, ...nav.workingDirectories],
+      },
+    } : {}),
   };
 
   debug(`[Report:${nav.name}] Agent config:`, JSON.stringify({
@@ -285,6 +299,13 @@ async function runSyncPhase(
       "autonav-standup-sync": protocol.server,
     },
     ...(maxBudgetUsd !== undefined ? { maxBudgetUsd } : {}),
+    // Per-nav sandbox: sync phase needs write access
+    ...(nav.sandboxEnabled ? {
+      sandbox: {
+        writePaths: [nav.directory, nav.knowledgeBasePath, standupDir],
+        readPaths: [...nav.workingDirectories],
+      },
+    } : {}),
   };
 
   debug(`[Sync:${nav.name}] Agent config:`, JSON.stringify({

@@ -95,6 +95,16 @@ Navigators query each other using the Agent Identity Protocol. Domain authority 
 
 ---
 
+## Security & Sandboxing
+
+Autonav uses defense in depth — 9 independent layers restrict what navigator agents can do. Kernel-enforced sandboxing (Landlock, Seatbelt, bubblewrap) prevents unauthorized file and network access. Each operation gets an appropriate sandbox profile: queries are read-only, updates get read+write, memento workers get full access. Additional layers include working directory scoping, tool allowlists, permission modes, turn/budget limits, cross-navigator cycle detection, ephemeral session directories, credential sanitization, and file watcher path restrictions.
+
+Per-navigator sandbox profiles are configurable in `config.json`. All layers degrade gracefully when their underlying mechanism is unavailable.
+
+**[Full security model →](docs/security-model.md)**
+
+---
+
 ## Install
 
 ```bash
@@ -256,4 +266,5 @@ Apache-2.0 © [Terra Tauri](https://terratauri.com)
 | **[Install Guide](docs/install.md)** | Installation, configuration, troubleshooting |
 | **[Use Cases](docs/use-cases.md)** | Personal agents, domain experts, autonomous dev loops |
 | **[Knowledge Pack Protocol](docs/KNOWLEDGE_PACK_PROTOCOL.md)** | Create and distribute your own packs |
+| **[Security Model](docs/security-model.md)** | Defense-in-depth sandboxing and security layers |
 | **[CONTRIBUTING.md](./CONTRIBUTING.md)** | Development workflow and contribution guide |

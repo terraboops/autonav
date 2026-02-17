@@ -1,21 +1,26 @@
 /**
- * Sandbox Utility
+ * Sandbox Utility (nono)
  *
  * Wraps subprocess commands with nono.sh for kernel-enforced sandboxing
- * (Landlock on Linux, Seatbelt on macOS). Different autonav operations
- * use different sandbox profiles:
+ * (Landlock on Linux, Seatbelt on macOS). Used by ChibiHarness to sandbox
+ * chibi-json subprocesses.
  *
- *   - query: read-only access to navigator
- *   - update: read+write access to navigator
- *   - memento/standup: broader access (configured per-operation)
+ * ClaudeCodeHarness uses the SDK's built-in sandbox instead (also
+ * Seatbelt/bubblewrap). Both harnesses read from AgentConfig.sandbox —
+ * callers never need to know which mechanism is active.
+ *
+ * Per-operation sandbox profiles:
+ *   - query: read-only access to navigator directory
+ *   - update: read+write access to navigator directory
+ *   - chat/standup: configured per-operation (default: enabled)
+ *   - memento: default disabled (worker needs full code access)
  *
  * Note: blockNetwork should NOT be used with harnesses that make their
- * own API calls (chibi, opencode). It's only useful for Claude Code SDK
- * where the API connection is managed in-process by the SDK.
+ * own API calls (chibi). It's only useful for scenarios where the API
+ * connection is managed in-process.
  *
  * Falls back gracefully when nono is not installed — the process runs
- * without sandboxing. Claude Code SDK has built-in sandboxing and
- * skips this entirely.
+ * without sandboxing.
  */
 
 import { execFileSync } from "node:child_process";

@@ -67,28 +67,43 @@ interface LoopState {
 }
 
 /**
+ * Sandbox profile from navigator config
+ */
+interface NavSandboxProfile {
+  memento?: { enabled: boolean };
+}
+
+/**
+ * Loaded nav config for memento loop
+ */
+interface NavConfig {
+  identity: NavigatorIdentity | null;
+  sandbox?: NavSandboxProfile;
+}
+
+/**
  * Load navigator config from config.json
  */
-function loadNavConfig(navDirectory: string): NavigatorIdentity | null {
+function loadNavConfig(navDirectory: string): NavConfig {
   const configPath = path.join(navDirectory, "config.json");
 
   if (!fs.existsSync(configPath)) {
-    return null;
+    return { identity: null };
   }
 
   try {
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    if (config.name && config.description) {
-      return {
-        name: config.name,
-        description: config.description,
-      };
-    }
+    const identity = (config.name && config.description)
+      ? { name: config.name, description: config.description }
+      : null;
+    return {
+      identity,
+      sandbox: config.sandbox,
+    };
   } catch {
     // Ignore parse errors
+    return { identity: null };
   }
-
-  return null;
 }
 
 /**
@@ -498,7 +513,8 @@ export async function runMementoLoop(
   }
 
   // Load navigator config and system prompt
-  const navIdentity = loadNavConfig(navDirectory);
+  const navConfig = loadNavConfig(navDirectory);
+  const navIdentity = navConfig.identity;
   const navSystemPrompt = loadNavSystemPrompt(navDirectory);
 
   // Resolve harness (agent runtime)

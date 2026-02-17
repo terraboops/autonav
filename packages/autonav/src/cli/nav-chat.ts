@@ -132,6 +132,7 @@ async function main() {
     knowledgeBasePath: string;
     instructionsPath?: string;
     relatedNavigators?: Array<{ name: string; description?: string }>;
+    sandbox?: { chat?: { enabled: boolean } };
   };
   try {
     const configContent = fs.readFileSync(configPath, "utf-8");
@@ -205,6 +206,9 @@ async function main() {
     );
     mcpServers["autonav-related-navs-config"] = relatedNavsConfigMcp.server;
 
+    // Per-nav sandbox: chat defaults to enabled unless explicitly disabled
+    const chatSandboxEnabled = config.sandbox?.chat?.enabled !== false;
+
     await runConversationTUI({
       navigatorName: config.name,
       navigatorPath,
@@ -212,6 +216,7 @@ async function main() {
       knowledgeBasePath,
       harness,
       mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
+      sandboxEnabled: chatSandboxEnabled,
     });
 
     console.log("\n👋 Conversation ended.\n");
