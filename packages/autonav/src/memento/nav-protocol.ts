@@ -6,8 +6,8 @@
  */
 
 import { z } from "zod";
+import { tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import { ImplementationPlanSchema, type ImplementationPlan } from "./types.js";
-import { defineTool, type Harness } from "../harness/index.js";
 
 /**
  * Tool name for plan submission
@@ -28,16 +28,16 @@ export interface PlanSubmissionResult {
  * The tool validates plans against the ImplementationPlanSchema
  * and returns structured data for the memento loop.
  */
-export function createNavProtocolMcpServer(harness: Harness) {
+export function createNavProtocolMcpServer() {
   // We'll capture the submitted plan via closure
   let capturedPlan: ImplementationPlan | null = null;
 
-  const submitPlanTool = defineTool(
+  const submitPlanTool = tool(
     SUBMIT_PLAN_TOOL,
     `Submit your implementation plan for the current iteration. You MUST use this tool to provide your plan.
 
 This tool allows you to:
-1. Define concrete implementation steps for the worker agent
+1. Define concrete implementation steps for the implementer agent
 2. Specify validation criteria to verify the implementation
 3. Signal when the overall task is complete
 
@@ -88,7 +88,7 @@ Do NOT respond with plain text - always use this tool to submit your plan.`,
               success: true,
               message: plan.isComplete
                 ? "Task marked as complete. Memento loop will end."
-                : `Plan submitted with ${plan.steps.length} steps. Worker will implement this.`,
+                : `Plan submitted with ${plan.steps.length} steps. Implementer will implement this.`,
               plan,
             }),
           },
@@ -98,7 +98,11 @@ Do NOT respond with plain text - always use this tool to submit your plan.`,
     }
   );
 
-  const { server } = harness.createToolServer("autonav-nav-protocol", [submitPlanTool]);
+  const server = createSdkMcpServer({
+    name: "autonav-nav-protocol",
+    version: "1.0.0",
+    tools: [submitPlanTool],
+  });
 
   // Expose method to get captured plan
   return {

@@ -2,10 +2,10 @@
  * Memento Loop Types
  *
  * Core type definitions for the context-clearing iterative development loop
- * that coordinates navigator (planning) and worker (implementation) agents.
+ * that coordinates navigator (planning) and implementer (implementation) agents.
  *
- * Design principle: The WORKER forgets between iterations (memento pattern).
- * The NAVIGATOR maintains its own memory. Git commits track worker progress.
+ * Design principle: The IMPLEMENTER forgets between iterations (memento pattern).
+ * The NAVIGATOR maintains its own memory. Git commits track implementer progress.
  * All types here are for in-memory use during loop execution.
  */
 
@@ -35,10 +35,10 @@ export type ImplementationStep = z.infer<typeof ImplementationStepSchema>;
 export type ImplementationPlan = z.infer<typeof ImplementationPlanSchema>;
 
 /**
- * Result from worker agent execution
+ * Result from implementer agent execution
  */
-export interface WorkerResult {
-  /** Whether the worker completed successfully */
+export interface ImplementerResult {
+  /** Whether the implementer completed successfully */
   success: boolean;
 
   /** Summary of what was done */
@@ -75,9 +75,6 @@ export interface MementoOptions {
 
   /** Show detailed logging */
   verbose?: boolean;
-
-  /** Agent runtime harness type (defaults to claude-code) */
-  harness?: string;
 }
 
 /**

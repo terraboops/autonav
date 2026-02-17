@@ -1,12 +1,12 @@
 /**
  * Prompts for Memento Loop
  *
- * System prompts and user prompts for navigator and worker agents.
+ * System prompts and user prompts for navigator and implementer agents.
  * Uses shared Agent Identity Protocol from communication-layer.
  *
- * Design principle: The WORKER forgets between iterations (memento pattern).
+ * Design principle: The IMPLEMENTER forgets between iterations (memento pattern).
  * The NAVIGATOR maintains its own memory and knowledge base - we just provide
- * git history as context about what the worker has accomplished so far.
+ * git history as context about what the implementer has accomplished so far.
  */
 
 import {
@@ -33,7 +33,7 @@ interface NavPromptContext {
  * Build the prompt for the navigator to provide an implementation plan
  *
  * Uses Agent Identity Protocol when navigator identity is available.
- * Git history is provided as context about what the worker has done,
+ * Git history is provided as context about what the implementer has done,
  * but the navigator maintains its own knowledge and memory.
  */
 export function buildNavPlanPrompt(
@@ -67,9 +67,9 @@ ${context.task}
 - **Code Directory:** ${context.codeDirectory}
 - **Branch:** ${context.branch || "(default branch)"}
 
-## Recent Git History (Worker's Progress)
+## Recent Git History (Implementer's Progress)
 
-The worker agent has made the following commits. Use this to understand what has been implemented so far:
+The implementer agent has made the following commits. Use this to understand what has been implemented so far:
 
 \`\`\`
 ${gitLog || "(No commits yet)"}
@@ -84,12 +84,12 @@ ${gitLog || "(No commits yet)"}
 
 ### About the Memento Loop
 
-- The **worker agent forgets** between iterations (it has no memory of previous work)
+- The **implementer agent forgets** between iterations (it has no memory of previous work)
 - **You** (the navigator) maintain continuity - use your knowledge and judgment
-- The git history shows what the worker has accomplished so far
-- Keep plans focused and incremental - the worker implements one plan at a time
+- The git history shows what the implementer has accomplished so far
+- Keep plans focused and incremental - the implementer implements one plan at a time
 - Set \`isComplete: true\` when the entire task is done
-- The worker agent will implement your plan, not you
+- The implementer agent will implement your plan, not you
 
 Submit your implementation plan now using the \`submit_implementation_plan\` tool.`;
 }
@@ -121,9 +121,9 @@ You do NOT implement code yourself. You provide plans for the worker agent.
 }
 
 /**
- * Build the prompt for the worker agent to implement a plan
+ * Build the prompt for the implementer agent to implement a plan
  */
-export function buildWorkerPrompt(
+export function buildImplementerPrompt(
   codeDirectory: string,
   plan: ImplementationPlan
 ): string {
@@ -136,10 +136,6 @@ ${step.commands?.length ? `- Commands: ${step.commands.join(", ")}` : ""}`
     )
     .join("\n\n");
 
-  const validationText = plan.validationCriteria
-    .map((c, i) => `${i + 1}. ${c}`)
-    .join("\n");
-
   return `# Implementation Task
 
 ## Plan Summary
@@ -150,24 +146,10 @@ ${plan.summary}
 
 ${stepsText}
 
-## Validation Criteria
-
-After implementation, verify:
-${validationText}
-
 ## Instructions
 
 1. Implement each step in order
-2. After completing all steps, run the validation checks
-3. **Review your code** - read through what you wrote and check for:
-   - Bugs or logic errors
-   - Missing error handling
-   - Code style issues
-   - Incomplete implementations
-4. Fix any issues before finishing
-5. Report what you accomplished
-
-**Important:** Your changes will be committed automatically after you finish. Make sure the code is ready for commit - review and fix before completing.
+2. Report what you accomplished
 
 **Working Directory:** ${codeDirectory}
 
@@ -175,10 +157,10 @@ Begin implementation now.`;
 }
 
 /**
- * Build the system prompt for the worker agent
+ * Build the system prompt for the implementer agent
  */
-export function buildWorkerSystemPrompt(codeDirectory: string): string {
-  return `You are a **Worker Agent** implementing code changes.
+export function buildImplementerSystemPrompt(codeDirectory: string): string {
+  return `You are an **Implementer Agent** implementing code changes.
 
 ## Your Role
 
@@ -187,10 +169,7 @@ You receive implementation plans from the Navigator and execute them precisely.
 ## Guidelines
 
 1. **Execute** each step in the plan
-2. **Verify** your work against the validation criteria
-3. **Review** your code before finishing - check for bugs, missing error handling, style issues
-4. **Fix** any issues you find
-5. **Report** what you accomplished
+2. **Report** what you accomplished
 
 ## Working Directory
 
@@ -201,6 +180,74 @@ All file paths are relative to: ${codeDirectory}
 - Focus on implementing the plan, not redesigning it
 - If something is unclear, make reasonable assumptions
 - Report any blockers or issues clearly
-- Do not add features beyond what the plan specifies
-- **Review your code** - your changes are committed automatically when you finish`;
+- Do not add features beyond what the plan specifies`;
+}
+
+/**
+ * Build the prompt for the reviewer (navigator/opus) to review a diff.
+ * Single-turn, no tools — just read the diff and respond.
+ */
+export function buildReviewPrompt(diff: string): string {
+  const truncatedDiff =
+    diff.length > 8000 ? diff.substring(0, 8000) + "\n... (truncated)" : diff;
+
+  return `Review the following diff for bugs, correctness issues, or missing error handling. Do NOT use any tools — just read the diff and respond.
+
+Respond in EXACTLY one of these formats:
+
+If no issues: Reply with only "LGTM"
+
+If issues found: Reply with a bullet list, one issue per line:
+- [file:line] Issue description. Fix: what to do.
+- [file:line] Issue description. Fix: what to do.
+
+Do NOT suggest style improvements, refactors, or nice-to-haves. Only flag things that are bugs or will cause runtime errors.
+
+\`\`\`diff
+${truncatedDiff}
+\`\`\``;
+}
+
+/**
+ * Build the prompt for the fixer (implementer/haiku) to fix review issues.
+ */
+export function buildFixPrompt(
+  codeDirectory: string,
+  reviewResult: string
+): string {
+  return `# Fix Review Issues
+
+Fix the following issues found during code review:
+
+${reviewResult}
+
+## Instructions
+
+1. Fix each issue listed above
+2. Report what you fixed
+
+**Working Directory:** ${codeDirectory}
+
+Begin fixing now.`;
+}
+
+/**
+ * Build the system prompt for the fixer agent
+ */
+export function buildFixSystemPrompt(codeDirectory: string): string {
+  return `You are a **Code Fixer Agent** fixing issues found during code review.
+
+## Your Role
+
+You receive a list of issues from a code reviewer and fix them precisely.
+
+## Working Directory
+
+All file paths are relative to: ${codeDirectory}
+
+## Important
+
+- Fix only the issues listed — do not refactor or add features
+- If something is unclear, make a reasonable assumption
+- Report what you fixed`;
 }
