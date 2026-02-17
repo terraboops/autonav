@@ -55,7 +55,7 @@ export {
 
 // Nav protocol
 export {
-  createNavProtocolMcpServer,
+  createNavProtocolTools,
   SUBMIT_PLAN_TOOL,
   type PlanSubmissionResult,
 } from "./nav-protocol.js";

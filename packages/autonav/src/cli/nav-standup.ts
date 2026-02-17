@@ -20,6 +20,7 @@ import chalk from "chalk";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { runStandup } from "../standup/index.js";
+import { resolveAndCreateHarness } from "../harness/index.js";
 
 /**
  * Command line options
@@ -146,6 +147,9 @@ async function executeStandup(
   console.log(chalk.dim("-".repeat(40)));
 
   try {
+    // Create harness for agent execution
+    const harness = await resolveAndCreateHarness();
+
     const result = await runStandup(resolvedDirs, {
       configDir: options.configDir,
       verbose,
@@ -153,7 +157,7 @@ async function executeStandup(
       maxTurns,
       maxBudgetUsd,
       reportOnly: options.reportOnly,
-    });
+    }, harness);
 
     // Print final summary
     console.log(chalk.dim("\n" + "-".repeat(40)));

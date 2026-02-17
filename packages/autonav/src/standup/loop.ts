@@ -6,7 +6,6 @@
  * 2. Sequential sync: Each nav reviews all reports and resolves blockers
  */
 
-import { query, type SDKResultMessage, type ModelUsage } from "@anthropic-ai/claude-agent-sdk";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -17,10 +16,11 @@ import type {
   StatusReport,
   SyncResponse,
 } from "./types.js";
+import type { Harness, AgentEvent } from "../harness/index.js";
 import { resolveConfigDir, createStandupDir } from "./config.js";
 import {
-  createReportProtocolMcpServer,
-  createSyncProtocolMcpServer,
+  createReportProtocolTools,
+  createSyncProtocolTools,
 } from "./standup-protocol.js";
 import {
   buildReportSystemPrompt,
@@ -115,23 +115,14 @@ export function loadNavForStandup(dir: string): LoadedNav {
 }
 
 /**
- * Get context utilization from a result message's modelUsage
- */
-function getContextUtilization(resultMessage: SDKResultMessage): number {
-  const modelUsage = resultMessage.modelUsage;
-  const firstModel = Object.values(modelUsage)[0] as ModelUsage | undefined;
-  if (!firstModel || firstModel.contextWindow === 0) return 0;
-  return (firstModel.inputTokens / firstModel.contextWindow) * 100;
-}
-
-/**
  * Run the report phase for a single navigator
  */
 async function runReportPhase(
   nav: LoadedNav,
   otherNavNames: string[],
   standupDir: string,
-  options: StandupOptions
+  options: StandupOptions,
+  harness: Harness
 ): Promise<{ report: StatusReport; costUsd: number; contextPercent: number }> {
   const {
     model = "claude-sonnet-4-5",
@@ -140,7 +131,8 @@ async function runReportPhase(
     verbose = false,
   } = options;
 
-  const protocol = createReportProtocolMcpServer();
+  const protocol = createReportProtocolTools();
+  const { server } = harness.createToolServer("autonav-standup-report", protocol.tools);
 
   const systemPrompt = buildReportSystemPrompt(nav.systemPrompt);
   const prompt = buildReportPrompt(
@@ -156,7 +148,7 @@ async function runReportPhase(
     console.log(`[Report] Querying ${nav.name}...`);
   }
 
-  const sdkOptions = {
+  const agentConfig = {
     model,
     maxTurns,
     systemPrompt,
@@ -168,73 +160,65 @@ async function runReportPhase(
       "mcp__autonav-standup-report__submit_status_report",
     ],
     mcpServers: {
-      "autonav-standup-report": protocol.server,
+      "autonav-standup-report": server,
     },
     ...(maxBudgetUsd !== undefined ? { maxBudgetUsd } : {}),
   };
 
-  debug(`[Report:${nav.name}] SDK options:`, JSON.stringify({
-    model: sdkOptions.model,
-    maxTurns: sdkOptions.maxTurns,
-    cwd: sdkOptions.cwd,
-    additionalDirectories: sdkOptions.additionalDirectories,
-    permissionMode: sdkOptions.permissionMode,
-    mcpServers: Object.keys(sdkOptions.mcpServers),
-    maxBudgetUsd: sdkOptions.maxBudgetUsd,
+  debug(`[Report:${nav.name}] Agent config:`, JSON.stringify({
+    model: agentConfig.model,
+    maxTurns: agentConfig.maxTurns,
+    cwd: agentConfig.cwd,
+    additionalDirectories: agentConfig.additionalDirectories,
+    permissionMode: agentConfig.permissionMode,
+    mcpServers: Object.keys(agentConfig.mcpServers),
+    maxBudgetUsd: agentConfig.maxBudgetUsd,
   }, null, 2));
 
-  const queryIterator = query({
-    prompt,
-    options: sdkOptions,
-  });
+  const session = harness.run(agentConfig, prompt);
 
-  let resultMessage: SDKResultMessage | undefined;
+  let resultEvent: (AgentEvent & { type: "result" }) | undefined;
 
-  for await (const message of queryIterator) {
-    if (message.type === "assistant") {
-      for (const block of message.message.content) {
-        if (block.type === "tool_use") {
-          const fullToolName = block.name;
-          const shortToolName = fullToolName.split("__").pop() || fullToolName;
-          if (verbose) {
-            console.log(`[Report:${nav.name}] Tool: ${shortToolName}`);
-          }
-          debug(`[Report:${nav.name}] Full tool name: ${fullToolName}`);
-        }
+  for await (const event of session) {
+    if (event.type === "tool_use") {
+      const shortToolName = event.name.split("__").pop() || event.name;
+      if (verbose) {
+        console.log(`[Report:${nav.name}] Tool: ${shortToolName}`);
       }
+      debug(`[Report:${nav.name}] Full tool name: ${event.name}`);
     }
-    if (message.type === "user" && "tool_use_result" in message) {
-      const toolResult = message.tool_use_result;
-      if (toolResult && typeof toolResult === "object" && "isError" in toolResult && (toolResult as Record<string, unknown>).isError) {
-        debug(`[Report:${nav.name}] Tool ERROR result:`, JSON.stringify(toolResult).substring(0, 500));
+    if (event.type === "tool_result") {
+      if (event.isError) {
+        debug(`[Report:${nav.name}] Tool ERROR result:`, event.content.substring(0, 500));
       } else if (DEBUG) {
-        debug(`[Report:${nav.name}] Tool result:`, JSON.stringify(toolResult).substring(0, 300));
+        debug(`[Report:${nav.name}] Tool result:`, event.content.substring(0, 300));
       }
     }
-    if (message.type === "result") {
-      resultMessage = message;
+    if (event.type === "result") {
+      resultEvent = event;
     }
   }
 
-  if (!resultMessage) {
+  if (!resultEvent) {
     throw new Error(`${nav.name}: No result message received`);
   }
 
-  debug(`[Report:${nav.name}] Result subtype: ${resultMessage.subtype}`);
-  debug(`[Report:${nav.name}] Turns: ${resultMessage.num_turns}, Cost: $${resultMessage.total_cost_usd.toFixed(4)}`);
+  debug(`[Report:${nav.name}] Result: success=${resultEvent.success}`);
+  debug(`[Report:${nav.name}] Turns: ${resultEvent.numTurns}, Cost: $${resultEvent.costUsd?.toFixed(4)}`);
   debug(`[Report:${nav.name}] Captured report: ${protocol.getCapturedReport() ? "YES" : "NO"}`);
 
-  if (resultMessage.subtype !== "success" && "errors" in resultMessage) {
-    debug(`[Report:${nav.name}] Errors:`, resultMessage.errors);
+  if (!resultEvent.success) {
+    debug(`[Report:${nav.name}] Error:`, resultEvent.text);
   }
 
-  const costUsd = resultMessage.total_cost_usd;
-  const contextPercent = getContextUtilization(resultMessage);
+  const costUsd = resultEvent.costUsd ?? 0;
+  // Approximate context utilization from input tokens (assume 200k context window)
+  const contextPercent = resultEvent.usage
+    ? (resultEvent.usage.inputTokens / 200_000) * 100
+    : 0;
 
-  if (resultMessage.subtype !== "success") {
-    const errorDetails =
-      "errors" in resultMessage ? resultMessage.errors.join(", ") : "Unknown error";
-    throw new Error(`${nav.name} report failed: ${errorDetails}`);
+  if (!resultEvent.success) {
+    throw new Error(`${nav.name} report failed: ${resultEvent.text || "Unknown error"}`);
   }
 
   const report = protocol.getCapturedReport();
@@ -266,7 +250,8 @@ async function runSyncPhase(
   previousSyncResponses: SyncResponse[],
   standupDir: string,
   otherNavNames: string[],
-  options: StandupOptions
+  options: StandupOptions,
+  harness: Harness
 ): Promise<{ sync: SyncResponse; costUsd: number; contextPercent: number }> {
   const {
     model = "claude-sonnet-4-5",
@@ -275,7 +260,8 @@ async function runSyncPhase(
     verbose = false,
   } = options;
 
-  const protocol = createSyncProtocolMcpServer();
+  const protocol = createSyncProtocolTools();
+  const { server } = harness.createToolServer("autonav-standup-sync", protocol.tools);
 
   const systemPrompt = buildSyncSystemPrompt(nav.systemPrompt);
   const prompt = buildSyncPrompt(
@@ -294,7 +280,7 @@ async function runSyncPhase(
     console.log(`[Sync] Querying ${nav.name}...`);
   }
 
-  const sdkOptions = {
+  const agentConfig = {
     model,
     maxTurns,
     systemPrompt,
@@ -306,65 +292,58 @@ async function runSyncPhase(
       "mcp__autonav-standup-sync__submit_sync_response",
     ],
     mcpServers: {
-      "autonav-standup-sync": protocol.server,
+      "autonav-standup-sync": server,
     },
     ...(maxBudgetUsd !== undefined ? { maxBudgetUsd } : {}),
   };
 
-  debug(`[Sync:${nav.name}] SDK options:`, JSON.stringify({
-    model: sdkOptions.model,
-    maxTurns: sdkOptions.maxTurns,
-    cwd: sdkOptions.cwd,
-    additionalDirectories: sdkOptions.additionalDirectories,
-    permissionMode: sdkOptions.permissionMode,
-    mcpServers: Object.keys(sdkOptions.mcpServers),
-    maxBudgetUsd: sdkOptions.maxBudgetUsd,
+  debug(`[Sync:${nav.name}] Agent config:`, JSON.stringify({
+    model: agentConfig.model,
+    maxTurns: agentConfig.maxTurns,
+    cwd: agentConfig.cwd,
+    additionalDirectories: agentConfig.additionalDirectories,
+    permissionMode: agentConfig.permissionMode,
+    mcpServers: Object.keys(agentConfig.mcpServers),
+    maxBudgetUsd: agentConfig.maxBudgetUsd,
   }, null, 2));
 
-  const queryIterator = query({
-    prompt,
-    options: sdkOptions,
-  });
+  const session = harness.run(agentConfig, prompt);
 
-  let resultMessage: SDKResultMessage | undefined;
+  let resultEvent: (AgentEvent & { type: "result" }) | undefined;
 
-  for await (const message of queryIterator) {
-    if (message.type === "assistant") {
-      for (const block of message.message.content) {
-        if (block.type === "tool_use") {
-          const fullToolName = block.name;
-          const shortToolName = fullToolName.split("__").pop() || fullToolName;
-          if (verbose) {
-            console.log(`[Sync:${nav.name}] Tool: ${shortToolName}`);
-          }
-          debug(`[Sync:${nav.name}] Full tool name: ${fullToolName}`);
-        }
+  for await (const event of session) {
+    if (event.type === "tool_use") {
+      const shortToolName = event.name.split("__").pop() || event.name;
+      if (verbose) {
+        console.log(`[Sync:${nav.name}] Tool: ${shortToolName}`);
       }
+      debug(`[Sync:${nav.name}] Full tool name: ${event.name}`);
     }
-    if (message.type === "result") {
-      resultMessage = message;
+    if (event.type === "result") {
+      resultEvent = event;
     }
   }
 
-  if (!resultMessage) {
+  if (!resultEvent) {
     throw new Error(`${nav.name}: No result message received during sync`);
   }
 
-  debug(`[Sync:${nav.name}] Result subtype: ${resultMessage.subtype}`);
-  debug(`[Sync:${nav.name}] Turns: ${resultMessage.num_turns}, Cost: $${resultMessage.total_cost_usd.toFixed(4)}`);
+  debug(`[Sync:${nav.name}] Result: success=${resultEvent.success}`);
+  debug(`[Sync:${nav.name}] Turns: ${resultEvent.numTurns}, Cost: $${resultEvent.costUsd?.toFixed(4)}`);
   debug(`[Sync:${nav.name}] Captured sync: ${protocol.getCapturedSync() ? "YES" : "NO"}`);
 
-  if (resultMessage.subtype !== "success" && "errors" in resultMessage) {
-    debug(`[Sync:${nav.name}] Errors:`, resultMessage.errors);
+  if (!resultEvent.success) {
+    debug(`[Sync:${nav.name}] Error:`, resultEvent.text);
   }
 
-  const costUsd = resultMessage.total_cost_usd;
-  const contextPercent = getContextUtilization(resultMessage);
+  const costUsd = resultEvent.costUsd ?? 0;
+  // Approximate context utilization from input tokens (assume 200k context window)
+  const contextPercent = resultEvent.usage
+    ? (resultEvent.usage.inputTokens / 200_000) * 100
+    : 0;
 
-  if (resultMessage.subtype !== "success") {
-    const errorDetails =
-      "errors" in resultMessage ? resultMessage.errors.join(", ") : "Unknown error";
-    throw new Error(`${nav.name} sync failed: ${errorDetails}`);
+  if (!resultEvent.success) {
+    throw new Error(`${nav.name} sync failed: ${resultEvent.text || "Unknown error"}`);
   }
 
   const sync = protocol.getCapturedSync();
@@ -392,7 +371,8 @@ async function runSyncPhase(
  */
 export async function runStandup(
   navDirs: string[],
-  options: StandupOptions = {}
+  options: StandupOptions = {},
+  harness: Harness
 ): Promise<StandupResult> {
   const startTime = Date.now();
   const { verbose = false, reportOnly = false } = options;
@@ -421,7 +401,7 @@ export async function runStandup(
   const reportResults = await Promise.allSettled(
     navs.map((nav) => {
       const otherNames = navNames.filter((n) => n !== nav.name);
-      return runReportPhase(nav, otherNames, standupDir, options);
+      return runReportPhase(nav, otherNames, standupDir, options, harness);
     })
   );
 
@@ -479,7 +459,8 @@ export async function runStandup(
           syncResponses, // accumulating - each nav sees previous syncs
           standupDir,
           otherNames,
-          options
+          options,
+          harness
         );
 
         syncResponses.push(result.sync);

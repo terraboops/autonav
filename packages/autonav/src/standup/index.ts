@@ -36,8 +36,8 @@ export { resolveConfigDir, createStandupDir } from "./config.js";
 
 // Protocol
 export {
-  createReportProtocolMcpServer,
-  createSyncProtocolMcpServer,
+  createReportProtocolTools,
+  createSyncProtocolTools,
   SUBMIT_STATUS_REPORT_TOOL,
   SUBMIT_SYNC_RESPONSE_TOOL,
 } from "./standup-protocol.js";

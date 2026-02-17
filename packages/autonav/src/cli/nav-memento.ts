@@ -23,6 +23,7 @@ import chalk from "chalk";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { runMementoLoop } from "../memento/index.js";
+import { resolveAndCreateHarness } from "../harness/index.js";
 
 /**
  * Command line options
@@ -170,6 +171,9 @@ async function executeMemento(
   console.log(chalk.dim("─".repeat(40)));
 
   try {
+    // Create harness for agent execution
+    const harness = await resolveAndCreateHarness();
+
     // Run the memento loop
     const result = await runMementoLoop(resolvedCodeDir, resolvedNavDir, task, {
       pr: options.pr,
@@ -179,7 +183,7 @@ async function executeMemento(
       verbose,
       model: options.model,
       navModel: options.navModel,
-    });
+    }, harness);
 
     // Display results
     console.log(chalk.dim("\n" + "─".repeat(40)));

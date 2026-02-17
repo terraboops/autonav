@@ -9,11 +9,11 @@
  * history as context about what the implementer has accomplished so far.
  */
 
-import { query, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as readline from "node:readline";
 import type { MementoOptions, MementoResult, ImplementationPlan } from "./types.js";
+import type { Harness, AgentEvent } from "../harness/index.js";
 import { NavigatorAdapter } from "../adapter/index.js";
 import { loadNavigator } from "../query-engine/index.js";
 import chalk from "chalk";
@@ -31,7 +31,7 @@ import {
   createPullRequest,
   isGhAvailable,
 } from "./git-operations.js";
-import { createNavProtocolMcpServer } from "./nav-protocol.js";
+import { createNavProtocolTools } from "./nav-protocol.js";
 import {
   buildNavPlanPrompt,
   buildNavSystemPrompt,
@@ -411,7 +411,7 @@ function promptUser(question: string): Promise<string> {
 /**
  * Generate a commit message from the current diff using a quick LLM call
  */
-async function generateCommitMessage(codeDirectory: string): Promise<string> {
+async function generateCommitMessage(codeDirectory: string, harness: Harness): Promise<string> {
   const diff = getRecentDiff({ cwd: codeDirectory });
   if (!diff) return "chore: commit uncommitted changes";
 
@@ -423,9 +423,8 @@ async function generateCommitMessage(codeDirectory: string): Promise<string> {
   const prompt = `Generate a single-line conventional commit message (e.g. "feat: ...", "fix: ...", "chore: ...") for these changes. Reply with ONLY the commit message, nothing else.\n\n${truncatedDiff}`;
 
   try {
-    const iter = query({
-      prompt,
-      options: {
+    const session = harness.run(
+      {
         model: "claude-haiku-4-5",
         maxTurns: 1,
         systemPrompt: "You generate concise conventional commit messages. Reply with only the commit message.",
@@ -433,16 +432,13 @@ async function generateCommitMessage(codeDirectory: string): Promise<string> {
         permissionMode: "bypassPermissions",
         allowedTools: [],
       },
-    });
+      prompt
+    );
 
     let message = "";
-    for await (const msg of iter) {
-      if (msg.type === "assistant") {
-        for (const block of msg.message.content) {
-          if (block.type === "text") {
-            message += block.text;
-          }
-        }
+    for await (const event of session) {
+      if (event.type === "text") {
+        message += event.text;
       }
     }
 
@@ -497,7 +493,8 @@ async function reviewAndFixChanges(
   navDirectory: string,
   _navSystemPrompt: string,
   navIdentity: NavigatorIdentity | null,
-  options: MementoLoopOptions
+  options: MementoLoopOptions,
+  harness: Harness
 ): Promise<void> {
   const { verbose = false } = options;
   const diff = getRecentDiff({ cwd: codeDirectory });
@@ -532,32 +529,28 @@ ${truncatedDiff}
 
   let reviewResult = "";
   try {
-    const reviewIter = query({
-      prompt: reviewPrompt,
-      options: {
+    const reviewSession = harness.run(
+      {
         model: options.navModel || "claude-opus-4-5",
-        maxTurns: 1, // Single turn — no tool use, just read the diff
+        maxTurns: 1,
         systemPrompt: "You are a code reviewer. Be concise and actionable. Never use tools — respond directly.",
         cwd: navDirectory,
         permissionMode: "bypassPermissions",
         allowedTools: [],
       },
-    });
+      reviewPrompt
+    );
 
-    for await (const msg of reviewIter) {
-      if (msg.type === "assistant") {
-        for (const block of msg.message.content) {
-          if (block.type === "text") {
-            reviewResult += block.text;
-          }
-        }
+    for await (const event of reviewSession) {
+      if (event.type === "text") {
+        reviewResult += event.text;
       }
     }
   } catch (err) {
     console.log(chalk.yellow(`\nReview failed: ${err instanceof Error ? err.message : err}`));
     console.log(chalk.dim("Committing as-is."));
     stageAllChanges({ cwd: codeDirectory });
-    const commitMsg = await generateCommitMessage(codeDirectory);
+    const commitMsg = await generateCommitMessage(codeDirectory, harness);
     const hash = commitChanges(commitMsg, { cwd: codeDirectory, verbose });
     if (hash) console.log(`\n${chalk.green("Committed:")} ${hash}\n`);
     return;
@@ -567,7 +560,7 @@ ${truncatedDiff}
   if (reviewResult.trim().toUpperCase().startsWith("LGTM")) {
     console.log(chalk.green(`\n${navName} says: LGTM`));
     stageAllChanges({ cwd: codeDirectory });
-    const commitMsg = await generateCommitMessage(codeDirectory);
+    const commitMsg = await generateCommitMessage(codeDirectory, harness);
     const hash = commitChanges(commitMsg, { cwd: codeDirectory, verbose });
     if (hash) console.log(`${chalk.green("Committed:")} ${hash}\n`);
     return;
@@ -601,24 +594,20 @@ ${truncatedDiff}
   const fixSystemPrompt = buildImplementerSystemPrompt(codeDirectory);
 
   try {
-    const fixIter = query({
-      prompt: fixPrompt,
-      options: {
+    const fixSession = harness.run(
+      {
         model: options.model || "claude-haiku-4-5",
         maxTurns: options.maxTurns || 50,
         systemPrompt: fixSystemPrompt,
         cwd: codeDirectory,
         permissionMode: "bypassPermissions",
       },
-    });
+      fixPrompt
+    );
 
-    for await (const msg of fixIter) {
-      if (verbose && msg.type === "assistant") {
-        for (const block of msg.message.content) {
-          if (block.type === "tool_use") {
-            console.log(`[Fix] Tool: ${block.name}`);
-          }
-        }
+    for await (const event of fixSession) {
+      if (verbose && event.type === "tool_use") {
+        console.log(`[Fix] Tool: ${event.name}`);
       }
     }
   } catch (err) {
@@ -628,7 +617,7 @@ ${truncatedDiff}
 
   // Step 3: Commit everything (original changes + fixes)
   stageAllChanges({ cwd: codeDirectory });
-  const commitMsg = await generateCommitMessage(codeDirectory);
+  const commitMsg = await generateCommitMessage(codeDirectory, harness);
   const hash = commitChanges(commitMsg, { cwd: codeDirectory, verbose });
   if (hash) console.log(`\n${chalk.green("Committed:")} ${hash}\n`);
 }
@@ -649,7 +638,8 @@ async function reviewImplementation(
   navDirectory: string,
   options: MementoLoopOptions,
   animation: MatrixAnimation,
-  verbose: boolean
+  verbose: boolean,
+  harness: Harness
 ): Promise<{ lgtm: boolean; fixApplied: boolean }> {
   const MAX_REVIEW_ROUNDS = 5;
   let fixApplied = false;
@@ -676,9 +666,8 @@ async function reviewImplementation(
     // Ask opus to review the diff (single-turn, no tools)
     let reviewResult = "";
     try {
-      const reviewIter = query({
-        prompt: buildReviewPrompt(diff),
-        options: {
+      const reviewSession = harness.run(
+        {
           model: options.navModel || "claude-opus-4-5",
           maxTurns: 1,
           systemPrompt:
@@ -687,15 +676,12 @@ async function reviewImplementation(
           permissionMode: "bypassPermissions",
           allowedTools: [],
         },
-      });
+        buildReviewPrompt(diff)
+      );
 
-      for await (const msg of reviewIter) {
-        if (msg.type === "assistant") {
-          for (const block of msg.message.content) {
-            if (block.type === "text") {
-              reviewResult += block.text;
-            }
-          }
+      for await (const event of reviewSession) {
+        if (event.type === "text") {
+          reviewResult += event.text;
         }
       }
     } catch (err) {
@@ -753,28 +739,24 @@ async function reviewImplementation(
 
     // Ask haiku to fix the issues
     try {
-      const fixIter = query({
-        prompt: buildFixPrompt(codeDirectory, reviewResult),
-        options: {
+      const fixSession = harness.run(
+        {
           model: options.model || "claude-haiku-4-5",
           maxTurns: options.maxTurns || 50,
           systemPrompt: buildFixSystemPrompt(codeDirectory),
           cwd: codeDirectory,
           permissionMode: "bypassPermissions",
         },
-      });
+        buildFixPrompt(codeDirectory, reviewResult)
+      );
 
-      for await (const msg of fixIter) {
-        if (msg.type === "assistant") {
-          for (const block of msg.message.content) {
-            if (block.type === "tool_use") {
-              if (verbose) {
-                console.log(`[Fix] Tool: ${block.name}`);
-              }
-              animation.setLastTool(block.name);
-              animation.incrementTurns();
-            }
+      for await (const event of fixSession) {
+        if (event.type === "tool_use") {
+          if (verbose) {
+            console.log(`[Fix] Tool: ${event.name}`);
           }
+          animation.setLastTool(event.name);
+          animation.incrementTurns();
         }
       }
 
@@ -809,7 +791,8 @@ async function handleUncommittedChanges(
   navDirectory: string,
   navSystemPrompt: string,
   navIdentity: NavigatorIdentity | null,
-  options: MementoLoopOptions
+  options: MementoLoopOptions,
+  harness: Harness
 ): Promise<void> {
   const { verbose = false } = options;
 
@@ -846,7 +829,7 @@ async function handleUncommittedChanges(
     case "commit": {
       console.log(chalk.dim("\nGenerating commit message..."));
       stageAllChanges({ cwd: codeDirectory });
-      const message = await generateCommitMessage(codeDirectory);
+      const message = await generateCommitMessage(codeDirectory, harness);
       const hash = commitChanges(message, { cwd: codeDirectory, verbose });
       if (hash) {
         console.log(`${chalk.green("Committed:")} ${hash} - ${message}\n`);
@@ -861,7 +844,8 @@ async function handleUncommittedChanges(
         navDirectory,
         navSystemPrompt,
         navIdentity,
-        options
+        options,
+        harness
       );
       break;
     }
@@ -912,13 +896,15 @@ async function queryNavForPlanWithStats(
   gitLog: string,
   options: MementoLoopOptions,
   animation: MatrixAnimation,
-  verbose: boolean
+  verbose: boolean,
+  harness: Harness
 ): Promise<NavQueryResult> {
   // Navigator uses opus by default for better planning
   const { navModel: model = "claude-opus-4-5", maxTurns = 50 } = options;
 
-  // Create MCP server with plan submission tool
-  const navProtocol = createNavProtocolMcpServer();
+  // Create tool server via harness
+  const navProtocol = createNavProtocolTools();
+  const { server } = harness.createToolServer("autonav-nav-protocol", navProtocol.tools);
 
   const prompt = buildNavPlanPrompt(
     { codeDirectory, task, iteration, maxIterations, branch: options.branch },
@@ -934,16 +920,15 @@ async function queryNavForPlanWithStats(
 
   // Capture stderr from Claude Code process for diagnostics
   const stderrLines: string[] = [];
-  const queryIterator = query({
-    prompt,
-    options: {
+  const session = harness.run(
+    {
       model,
       maxTurns,
       systemPrompt,
       cwd: navDirectory,
       additionalDirectories: [codeDirectory],
       mcpServers: {
-        "autonav-nav-protocol": navProtocol.server,
+        "autonav-nav-protocol": server,
       },
       permissionMode: "bypassPermissions",
       disallowedTools: ["Write", "Edit", "Bash"],
@@ -954,65 +939,53 @@ async function queryNavForPlanWithStats(
         }
       },
     },
-  });
+    prompt
+  );
 
-  let resultMessage: SDKResultMessage | undefined;
+  let resultEvent: (AgentEvent & { type: "result" }) | undefined;
   let lastTool: string | undefined;
   const mood: MoodState = { toolCount: 0, lastError: false, consecutiveSuccess: 0 };
 
   try {
-    for await (const message of queryIterator) {
+    for await (const event of session) {
       // Detect errors from tool results
-      if (message.type === "user") {
-        const msg = message as Record<string, unknown>;
-        if (msg.tool_use_result !== undefined) {
-          const result = msg.tool_use_result;
-          if (typeof result === "string" && /^(Error:|error:)/i.test(result)) {
-            mood.lastError = true;
-            mood.consecutiveSuccess = 0;
-            animation.setMessage(pickMood("nav", lastTool || "", {}, mood));
-          }
-        }
+      if (event.type === "tool_result" && event.isError) {
+        mood.lastError = true;
+        mood.consecutiveSuccess = 0;
+        animation.setMessage(pickMood("nav", lastTool || "", {}, mood));
       }
 
-      if (message.type === "assistant") {
-        // Check for rate limit error on the message itself
-        if (message.error === "rate_limit") {
-          const stderr = filterStderr(stderrLines);
-          throw new Error(
-            `Rate limit reached during navigator query${stderr ? `\nStderr:\n${stderr}` : ""}`
-          );
-        }
-
-        const content = message.message.content;
-        for (const block of content) {
-          if (block.type === "tool_use") {
-            const toolName = block.name.split("__").pop() || block.name;
-            lastTool = toolName;
-            mood.toolCount += 1;
-            if (!mood.lastError) {
-              mood.consecutiveSuccess += 1;
-            }
-            mood.lastError = false;
-
-            if (verbose) {
-              console.log(`[Nav] Tool: ${toolName}`);
-            }
-
-            const input = (block.input as Record<string, unknown>) || {};
-            animation.setMessage(pickMood("nav", toolName, input, mood));
-            animation.setLastTool(toolName);
-            animation.incrementTurns();
-          }
-        }
+      // Detect rate limit errors in-stream
+      if (event.type === "error" && event.retryable) {
+        const stderr = filterStderr(stderrLines);
+        throw new Error(
+          `Rate limit reached during navigator query${stderr ? `\nStderr:\n${stderr}` : ""}`
+        );
       }
 
-      if (message.type === "result") {
-        resultMessage = message;
+      if (event.type === "tool_use") {
+        const toolName = event.name.split("__").pop() || event.name;
+        lastTool = toolName;
+        mood.toolCount += 1;
+        if (!mood.lastError) {
+          mood.consecutiveSuccess += 1;
+        }
+        mood.lastError = false;
+
+        if (verbose) {
+          console.log(`[Nav] Tool: ${toolName}`);
+        }
+
+        animation.setMessage(pickMood("nav", toolName, event.input, mood));
+        animation.setLastTool(toolName);
+        animation.incrementTurns();
+      }
+
+      if (event.type === "result") {
+        resultEvent = event;
       }
     }
   } catch (err) {
-    // SDK throws when the Claude Code process crashes (e.g. exit code 1).
     // Enrich the error with filtered stderr (strip the noisy spawn command line).
     const stderr = filterStderr(stderrLines);
     const base = err instanceof Error ? err.message : String(err);
@@ -1021,37 +994,24 @@ async function queryNavForPlanWithStats(
     );
   }
 
-  // Extract token usage from result (input + output = total)
-  const usage = resultMessage?.usage;
-  const tokensUsed = (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0);
+  // Extract token usage from result
+  const tokensUsed = (resultEvent?.usage?.inputTokens ?? 0) + (resultEvent?.usage?.outputTokens ?? 0);
 
   if (verbose) {
-    console.log(`[Nav] Result message type: ${resultMessage?.type}, subtype: ${resultMessage?.subtype}`);
-    console.log(`[Nav] Usage: input=${usage?.input_tokens}, output=${usage?.output_tokens}, total=${tokensUsed}`);
-    // Show per-model breakdown if available
-    const modelUsage = (resultMessage as any)?.modelUsage;
-    if (modelUsage) {
-      console.log(`[Nav] Model usage breakdown:`);
-      for (const [model, stats] of Object.entries(modelUsage)) {
-        const s = stats as any;
-        console.log(`  ${model}: in=${s.inputTokens}, out=${s.outputTokens}, cost=$${s.costUSD?.toFixed(4)}`);
-      }
-    }
-    console.log(`[Nav] Total cost: $${(resultMessage as any)?.total_cost_usd?.toFixed(4) || "?"}`);
+    console.log(`[Nav] Result: success=${resultEvent?.success}`);
+    console.log(`[Nav] Usage: input=${resultEvent?.usage?.inputTokens}, output=${resultEvent?.usage?.outputTokens}, total=${tokensUsed}`);
+    console.log(`[Nav] Total cost: $${resultEvent?.costUsd?.toFixed(4) || "?"}`);
   }
 
-  if (!resultMessage || resultMessage.subtype !== "success") {
-    const errorDetails =
-      resultMessage && "errors" in resultMessage
-        ? resultMessage.errors.join(", ")
-        : "Unknown error";
+  if (!resultEvent || !resultEvent.success) {
+    const errorDetails = resultEvent?.text || "Unknown error";
     const stderr = filterStderr(stderrLines);
     throw new Error(
       `Navigator query failed: ${errorDetails}${stderr ? `\nStderr:\n${stderr}` : ""}`
     );
   }
 
-  // Get the captured plan from the MCP server
+  // Get the captured plan from the tool server closure
   const plan = navProtocol.getCapturedPlan();
 
   if (!plan) {
@@ -1092,7 +1052,8 @@ async function runImplementerAgentWithStats(
   context: { codeDirectory: string; task: string },
   plan: ImplementationPlan,
   options: { verbose?: boolean; model?: string; maxTurns?: number },
-  animation: MatrixAnimation
+  animation: MatrixAnimation,
+  harness: Harness
 ): Promise<ImplementerResultWithStats> {
   // Implementer uses haiku by default for faster/cheaper implementation
   const { verbose = false, model = "claude-haiku-4-5", maxTurns = 50 } = options;
@@ -1116,9 +1077,8 @@ async function runImplementerAgentWithStats(
   for (let attempt = 0; ; attempt++) {
     // Capture stderr from Claude Code process for diagnostics
     const implStderrLines: string[] = [];
-    const queryIterator = query({
-      prompt,
-      options: {
+    const session = harness.run(
+      {
         model,
         maxTurns,
         systemPrompt,
@@ -1131,72 +1091,61 @@ async function runImplementerAgentWithStats(
           }
         },
       },
-    });
+      prompt
+    );
 
-    let resultMessage: SDKResultMessage | undefined;
+    let resultEvent: (AgentEvent & { type: "result" }) | undefined;
     let rateLimitSeen = false;
     const mood: MoodState = { toolCount: 0, lastError: false, consecutiveSuccess: 0 };
 
     try {
-      for await (const message of queryIterator) {
+      for await (const event of session) {
         // Detect errors from tool results
-        if (message.type === "user") {
-          const msg = message as Record<string, unknown>;
-          if (msg.tool_use_result !== undefined) {
-            const result = msg.tool_use_result;
-            if (typeof result === "string" && /^(Error:|error:)/i.test(result)) {
-              mood.lastError = true;
-              mood.consecutiveSuccess = 0;
-              animation.setMessage(pickMood("impl", lastTool || "", {}, mood));
-            }
-          }
+        if (event.type === "tool_result" && event.isError) {
+          mood.lastError = true;
+          mood.consecutiveSuccess = 0;
+          animation.setMessage(pickMood("impl", lastTool || "", {}, mood));
         }
 
-        if (message.type === "assistant") {
-          // Track rate limit errors on messages (don't bail, just note it)
-          if (message.error === "rate_limit") {
-            rateLimitSeen = true;
-          }
-
-          const content = message.message.content;
-          for (const block of content) {
-            if (block.type === "tool_use") {
-              const toolName = block.name;
-              lastTool = toolName;
-              mood.toolCount += 1;
-              if (!mood.lastError) {
-                mood.consecutiveSuccess += 1;
-              }
-              mood.lastError = false;
-
-              if (verbose) {
-                console.log(`[Implementer] Tool: ${toolName}`);
-              }
-
-              const input = (block.input as Record<string, unknown>) || {};
-              animation.setMessage(pickMood("impl", toolName, input, mood));
-              animation.setLastTool(toolName);
-              animation.incrementTurns();
-
-              // Track file operations
-              if (isWriteTool(toolName)) {
-                const filePath = input.file_path || input.path;
-                if (typeof filePath === "string" && !allFilesModified.includes(filePath)) {
-                  allFilesModified.push(filePath);
-                }
-              }
-            } else if (block.type === "text") {
-              lastAssistantText = block.text;
-            }
-          }
+        // Track rate limit errors in-stream (don't bail, just note it)
+        if (event.type === "error" && event.retryable) {
+          rateLimitSeen = true;
         }
 
-        if (message.type === "result") {
-          resultMessage = message;
+        if (event.type === "tool_use") {
+          const toolName = event.name;
+          lastTool = toolName;
+          mood.toolCount += 1;
+          if (!mood.lastError) {
+            mood.consecutiveSuccess += 1;
+          }
+          mood.lastError = false;
+
+          if (verbose) {
+            console.log(`[Implementer] Tool: ${toolName}`);
+          }
+
+          animation.setMessage(pickMood("impl", toolName, event.input, mood));
+          animation.setLastTool(toolName);
+          animation.incrementTurns();
+
+          // Track file operations
+          if (isWriteTool(toolName)) {
+            const filePath = event.input.file_path || event.input.path;
+            if (typeof filePath === "string" && !allFilesModified.includes(filePath)) {
+              allFilesModified.push(filePath);
+            }
+          }
+        } else if (event.type === "text") {
+          lastAssistantText = event.text;
+        }
+
+        if (event.type === "result") {
+          resultEvent = event;
         }
       }
     } catch (err) {
-      // SDK throws when the Claude Code process crashes.
+      // Harness throws when the underlying process crashes.
       // Check if it's a rate limit — if so, wait and retry.
       const stderr = filterStderr(implStderrLines);
       const base = err instanceof Error ? err.message : String(err);
@@ -1242,31 +1191,20 @@ async function runImplementerAgentWithStats(
     }
 
     // Extract token usage
-    const usage = resultMessage?.usage;
-    const iterTokens = (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0);
+    const iterTokens = (resultEvent?.usage?.inputTokens ?? 0) + (resultEvent?.usage?.outputTokens ?? 0);
     totalTokensUsed += iterTokens;
 
     if (verbose) {
-      console.log(`[Implementer] Result: ${resultMessage?.type}, subtype: ${resultMessage?.subtype}`);
-      console.log(`[Implementer] Usage: input=${usage?.input_tokens}, output=${usage?.output_tokens}, total=${iterTokens}`);
-      const modelUsage = (resultMessage as any)?.modelUsage;
-      if (modelUsage) {
-        console.log(`[Implementer] Model usage breakdown:`);
-        for (const [m, stats] of Object.entries(modelUsage)) {
-          const s = stats as any;
-          console.log(`  ${m}: in=${s.inputTokens}, out=${s.outputTokens}, cost=$${s.costUSD?.toFixed(4)}`);
-        }
-      }
-      console.log(`[Implementer] Total cost: $${(resultMessage as any)?.total_cost_usd?.toFixed(4) || "?"}`);
+      console.log(`[Implementer] Result: success=${resultEvent?.success}`);
+      console.log(`[Implementer] Usage: input=${resultEvent?.usage?.inputTokens}, output=${resultEvent?.usage?.outputTokens}, total=${iterTokens}`);
+      console.log(`[Implementer] Total cost: $${resultEvent?.costUsd?.toFixed(4) || "?"}`);
     }
 
     const implStderr = filterStderr(implStderrLines);
 
     // Check if the run failed due to rate limits — if so, wait and retry
-    if (!resultMessage || resultMessage.subtype !== "success" || rateLimitSeen) {
-      const errorDetails = resultMessage
-        ? ("errors" in resultMessage ? resultMessage.errors.join(", ") : resultMessage.subtype)
-        : "No result message received";
+    if (!resultEvent || !resultEvent.success || rateLimitSeen) {
+      const errorDetails = resultEvent?.text || "No result message received";
       const fullError = `${errorDetails}${implStderr ? `\nStderr: ${implStderr}` : ""}`;
 
       // Check if this failure is rate-limit related
@@ -1287,8 +1225,8 @@ async function runImplementerAgentWithStats(
       // Non-retryable failure or max retries exhausted
       return {
         success: false,
-        summary: resultMessage
-          ? `Implementer failed: ${resultMessage.subtype}`
+        summary: resultEvent
+          ? `Implementer failed`
           : "No result message received",
         filesModified: allFilesModified,
         errors: [fullError],
@@ -1300,7 +1238,7 @@ async function runImplementerAgentWithStats(
     // Success!
     return {
       success: true,
-      summary: resultMessage.result || lastAssistantText || "Implementation completed",
+      summary: resultEvent.text || lastAssistantText || "Implementation completed",
       filesModified: allFilesModified,
       tokensUsed: totalTokensUsed,
       lastTool,
@@ -1365,7 +1303,8 @@ export async function runMementoLoop(
   codeDirectory: string,
   navDirectory: string,
   task: string,
-  options: MementoLoopOptions
+  options: MementoLoopOptions,
+  harness: Harness
 ): Promise<MementoResult> {
   const startTime = Date.now();
   const { verbose = false, pr = false, maxIterations = 0 } = options;
@@ -1408,7 +1347,7 @@ export async function runMementoLoop(
   ensureGitRepo({ cwd: codeDirectory, verbose });
 
   // Check for uncommitted changes - navigator can't see them!
-  await handleUncommittedChanges(codeDirectory, navDirectory, navSystemPrompt, navIdentity, options);
+  await handleUncommittedChanges(codeDirectory, navDirectory, navSystemPrompt, navIdentity, options, harness);
 
   // Create or switch to branch if specified
   if (options.branch) {
@@ -1482,7 +1421,8 @@ export async function runMementoLoop(
               gitLog,
               options,
               animation,
-              verbose
+              verbose,
+              harness
             );
           } catch (navError) {
             const rateLimitInfo = isRateLimitError(navError);
@@ -1544,7 +1484,8 @@ export async function runMementoLoop(
             model: options.model,
             maxTurns: options.maxTurns,
           },
-          animation
+          animation,
+          harness
         );
 
         implementerTokens = implementerResult.tokensUsed;
@@ -1568,7 +1509,7 @@ export async function runMementoLoop(
         }
         // Phase 3: Review
         // Animation is still running — reviewImplementation manages stop/start internally
-        await reviewImplementation(codeDirectory, navDirectory, options, animation, verbose);
+        await reviewImplementation(codeDirectory, navDirectory, options, animation, verbose, harness);
       } finally {
         if (!verbose) {
           animation.stop();
@@ -1577,7 +1518,7 @@ export async function runMementoLoop(
 
       // Phase 4: Commit with LLM-generated message
       stageAllChanges({ cwd: codeDirectory });
-      const commitMessage = await generateCommitMessage(codeDirectory);
+      const commitMessage = await generateCommitMessage(codeDirectory, harness);
       const commitHash = commitChanges(commitMessage, { cwd: codeDirectory, verbose });
 
       // Get diff stats from the commit

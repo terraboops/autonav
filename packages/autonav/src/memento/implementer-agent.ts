@@ -1,10 +1,10 @@
 /**
  * Implementer Agent for Memento Loop
  *
- * Executes implementation plans using the Claude Agent SDK.
+ * Executes implementation plans using the harness interface.
  */
 
-import { query, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { Harness, AgentEvent } from "../harness/index.js";
 import type { ImplementationPlan, ImplementerResult } from "./types.js";
 import { buildImplementerPrompt, buildImplementerSystemPrompt } from "./prompts.js";
 
@@ -36,6 +36,7 @@ export interface ImplementerAgentOptions {
 export async function runImplementerAgent(
   context: ImplementerContext,
   plan: ImplementationPlan,
+  harness: Harness,
   options: ImplementerAgentOptions = {}
 ): Promise<ImplementerResult> {
   const startTime = Date.now();
@@ -56,56 +57,47 @@ export async function runImplementerAgent(
 
   const filesModified: string[] = [];
   let lastAssistantText = "";
-  let resultMessage: SDKResultMessage | undefined;
+  let resultEvent: (AgentEvent & { type: "result" }) | undefined;
 
   try {
-    const queryIterator = query({
-      prompt,
-      options: {
+    const session = harness.run(
+      {
         model,
         maxTurns,
         systemPrompt,
         cwd: context.codeDirectory,
         permissionMode: "bypassPermissions",
       },
-    });
+      prompt
+    );
 
-    for await (const message of queryIterator) {
-      if (message.type === "assistant") {
-        const content = message.message.content;
-        for (const block of content) {
-          if (block.type === "tool_use") {
-            // Track file operations
-            if (verbose) {
-              console.log(`[Implementer] Tool: ${block.name}`);
-            }
+    for await (const event of session) {
+      if (event.type === "tool_use") {
+        if (verbose) {
+          console.log(`[Implementer] Tool: ${event.name}`);
+        }
 
-            // Extract file paths from common tools
-            if (
-              block.name === "Write" ||
-              block.name === "Edit" ||
-              block.name === "str_replace_based_edit_tool"
-            ) {
-              const input = block.input as Record<string, unknown>;
-              const filePath = input.file_path || input.path;
-              if (typeof filePath === "string" && !filesModified.includes(filePath)) {
-                filesModified.push(filePath);
-              }
-            }
-          } else if (block.type === "text") {
-            lastAssistantText = block.text;
+        // Extract file paths from common tools
+        if (
+          event.name === "Write" ||
+          event.name === "Edit" ||
+          event.name === "str_replace_based_edit_tool"
+        ) {
+          const filePath = event.input.file_path || event.input.path;
+          if (typeof filePath === "string" && !filesModified.includes(filePath)) {
+            filesModified.push(filePath);
           }
         }
-      }
-
-      if (message.type === "result") {
-        resultMessage = message;
+      } else if (event.type === "text") {
+        lastAssistantText = event.text;
+      } else if (event.type === "result") {
+        resultEvent = event;
       }
     }
 
     const durationMs = Date.now() - startTime;
 
-    if (!resultMessage) {
+    if (!resultEvent) {
       return {
         success: false,
         summary: "No result message received from implementer agent",
@@ -115,17 +107,12 @@ export async function runImplementerAgent(
       };
     }
 
-    if (resultMessage.subtype !== "success") {
-      const errorDetails =
-        "errors" in resultMessage
-          ? resultMessage.errors.join(", ")
-          : "Unknown error";
-
+    if (!resultEvent.success) {
       return {
         success: false,
-        summary: `Implementer failed: ${resultMessage.subtype}`,
+        summary: `Implementer failed`,
         filesModified,
-        errors: [errorDetails],
+        errors: [resultEvent.text || "Unknown error"],
         durationMs,
       };
     }
@@ -137,7 +124,7 @@ export async function runImplementerAgent(
 
     return {
       success: true,
-      summary: resultMessage.result || lastAssistantText || "Implementation completed",
+      summary: resultEvent.text || lastAssistantText || "Implementation completed",
       filesModified,
       durationMs,
     };
