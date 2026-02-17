@@ -106,7 +106,7 @@ program
     300000
   )
   .option("--verbose", "Show additional debug information")
-  .option("--harness <type>", "Agent runtime to use (claude-code|chibi)")
+  .option("--harness <type>", "Agent runtime to use (claude-code|chibi|opencode)")
   .action(async (navigator: string, question: string, options: QueryCommandOptions) => {
     await executeQuery(navigator, question, options);
   });
@@ -176,9 +176,10 @@ async function executeQuery(
       console.error(""); // Blank line
     }
 
-    // Initialize adapter with resolved harness
+    // Initialize adapter with resolved harness, threading model from nav config
     const harness = await resolveAndCreateHarness(options.harness);
-    const adapter = new NavigatorAdapter({ harness });
+    const harnessModel = navigator.config.harness?.model;
+    const adapter = new NavigatorAdapter({ harness, model: harnessModel });
 
     // Show question (only in interactive mode)
     if (showUI) {
