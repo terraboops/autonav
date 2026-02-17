@@ -88,6 +88,15 @@ export const NavigatorConfigSchema = z.object({
   harness: z.object({
     type: z.enum(['claude-code', 'chibi']).describe('Agent runtime to use'),
   }).optional().describe('Harness configuration'),
+
+  /**
+   * Related navigators this navigator can query.
+   * Names are resolved to paths via the global registry or env vars at runtime.
+   */
+  relatedNavigators: z.array(z.object({
+    name: z.string().min(1).describe('Navigator name (used to generate ask_<name> tool)'),
+    description: z.string().optional().describe('What this navigator knows about'),
+  })).optional().describe('Navigators this navigator can communicate with'),
 });
 
 export type NavigatorConfig = z.infer<typeof NavigatorConfigSchema>;

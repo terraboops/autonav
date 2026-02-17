@@ -32,6 +32,7 @@ export interface ConversationOptions {
   navigatorSystemPrompt: string;
   knowledgeBasePath: string;
   harness?: Harness;
+  mcpServers?: Record<string, unknown>;
 }
 
 /**

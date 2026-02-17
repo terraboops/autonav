@@ -39,6 +39,7 @@ interface ConversationAppProps {
   navigatorSystemPrompt: string;
   knowledgeBasePath: string;
   harness?: Harness;
+  mcpServers?: Record<string, unknown>;
 }
 
 export function ConversationApp({
@@ -47,6 +48,7 @@ export function ConversationApp({
   navigatorSystemPrompt,
   knowledgeBasePath,
   harness,
+  mcpServers,
 }: ConversationAppProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -249,6 +251,7 @@ Model: ${CONVERSATION_MODEL}`,
               systemPrompt,
               permissionMode: "acceptEdits",
               cwd: navigatorPath,
+              mcpServers,
             },
             value
           );
