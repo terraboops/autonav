@@ -6,22 +6,25 @@ Autonav uses defense in depth: multiple independent layers restrict what a navig
 
 ## The Harness Abstraction
 
-Every agent session runs through a **harness** — a universal adapter that translates `AgentConfig` into runtime-specific options. The two implementations are:
+Every agent session runs through a **harness** — a universal adapter that translates `AgentConfig` into runtime-specific options. The three implementations are:
 
-- **ChibiHarness** — runs `chibi-json` as a subprocess, uses [nono](https://github.com/always-further/nono) for kernel sandboxing
+- **ChibiHarness** — runs `chibi-json` as a subprocess, uses [nono](https://github.com/always-further/nono) for kernel-level sandboxing (Landlock/Seatbelt)
 - **ClaudeCodeHarness** — uses the Claude Code Agent SDK, passes sandbox settings to the SDK runtime
+- **OpenCodeHarness** — uses the [OpenCode](https://opencode.ai/) SDK (`@opencode-ai/sdk`), manages a shared server process with SSE event streaming
 
 Callers set `AgentConfig.sandbox` without knowing which harness is active. The harness translates:
 
-| Field | ChibiHarness | ClaudeCodeHarness |
-|---|---|---|
-| `sandbox.readPaths` | `nono --read <path>` | SDK restricts writes to `cwd` |
-| `sandbox.writePaths` | `nono --allow <path>` | SDK restricts writes to `cwd` |
-| `sandbox.blockNetwork` | `nono --net-block` | Not used |
-| Mechanism | Landlock (Linux), Seatbelt (macOS) | Seatbelt (macOS), bubblewrap (Linux) |
-| Fallback | Runs unsandboxed if nono not on PATH | SDK handles platform detection |
+| Field | ChibiHarness | ClaudeCodeHarness | OpenCodeHarness |
+|---|---|---|---|
+| `sandbox.readPaths` | [`nono`](https://github.com/always-further/nono) `--read <path>` | SDK restricts writes to `cwd` | Denies `edit` + `bash` permissions |
+| `sandbox.writePaths` | [`nono`](https://github.com/always-further/nono) `--allow <path>` | SDK restricts writes to `cwd` | Allows all permissions |
+| `sandbox.blockNetwork` | [`nono`](https://github.com/always-further/nono) `--net-block` | Not used | Not supported |
+| Mechanism | Landlock (Linux), Seatbelt (macOS) | Seatbelt (macOS), bubblewrap (Linux) | OpenCode permission system |
+| Fallback | Runs unsandboxed if nono not on PATH | SDK handles platform detection | All permissions allowed |
 
-> **Source**: `src/harness/types.ts` (SandboxConfig, AgentConfig), `src/harness/sandbox.ts` (nono wrapper), `src/harness/claude-code-harness.ts` (configToSdkOptions)
+> **Note**: The OpenCode harness translates sandbox config into OpenCode's permission system (`"allow"` / `"deny"` per tool). This is **application-level**, not kernel-enforced — a determined agent could potentially bypass it. Read-only sandbox profiles deny `edit` and `bash`; read-write profiles allow all permissions.
+
+> **Source**: `src/harness/types.ts` (SandboxConfig, AgentConfig), `src/harness/sandbox.ts` (nono wrapper), `src/harness/claude-code-harness.ts` (configToSdkOptions), `src/harness/opencode-harness.ts` (permission config)
 
 ---
 
@@ -51,25 +54,27 @@ Override in `config.json`:
 
 ---
 
-## Layer 1: Kernel-Enforced Sandboxing
+## Layer 1: Sandboxing
 
-The OS kernel blocks unauthorized file and network access. Two implementations provide this:
+File and network access is restricted at the lowest available level. The mechanism varies by harness:
 
-### ChibiHarness — nono
+### ChibiHarness — [nono](https://github.com/always-further/nono)
 
-[nono](https://github.com/always-further/nono) wraps subprocess commands with Landlock (Linux) or Seatbelt (macOS) syscall restrictions.
+[nono](https://github.com/always-further/nono) is a lightweight, zero-dependency sandbox tool that enforces file and network access at the **kernel level** using Landlock (Linux) and Seatbelt (macOS). It's fast, composable, and wraps any command — you just prefix it with `nono run` and declare what the process is allowed to touch. Everything else is denied by the OS kernel itself, not by application-level checks.
+
+Autonav wraps chibi subprocess commands with nono automatically:
 
 ```
 nono run --silent --allow-cwd --read /path/to/nav -- chibi-json ...
 ```
 
-- `--read`: read-only access
-- `--allow`: read+write access
+- `--read`: read-only access to a path
+- `--allow`: read+write access to a path
 - `--allow-cwd`: always grants access to the working directory
-- `--net-block`: blocks network (not used — chibi makes its own API calls)
+- `--net-block`: blocks all network access (not used here — chibi makes its own API calls)
 - System binary paths (`/bin`, `/usr/bin`, `/opt/homebrew`, etc.) are auto-added as read-only
 
-**Auto-detection**: `nono --version` is checked at startup. If nono isn't on PATH, chibi runs unsandboxed. Set `AUTONAV_SANDBOX=0` to force-disable.
+**Auto-detection**: Autonav checks for [nono](https://github.com/always-further/nono) on PATH at startup. If installed, kernel sandboxing activates automatically. If not, chibi runs unsandboxed (the other layers still apply). Set `AUTONAV_SANDBOX=0` to force-disable.
 
 > **Source**: `src/harness/sandbox.ts` (buildSandboxArgs, isSandboxEnabled, wrapCommand)
 
@@ -88,6 +93,18 @@ options.sandbox = {
 The SDK uses Seatbelt (macOS) or bubblewrap (Linux) to restrict writes to `cwd` and subdirectories by default.
 
 > **Source**: `src/harness/claude-code-harness.ts:130` (configToSdkOptions)
+
+### OpenCodeHarness — Permission System
+
+OpenCode doesn't have kernel-level sandboxing. Instead, `AgentConfig.sandbox` is translated into OpenCode's per-tool permission system:
+
+- **Read-only** (`readPaths` set, no `writePaths`): `edit: "deny"`, `bash: "deny"` — the agent can search and read files but cannot modify them or run shell commands
+- **Read-write** (`writePaths` set): all permissions allowed
+- **No sandbox**: all permissions allowed (default headless behavior)
+
+This is **application-level enforcement** — it relies on OpenCode's permission checks, not OS kernel restrictions. It's weaker than [nono](https://github.com/always-further/nono) or SDK sandboxing but still provides meaningful protection for read-only operations.
+
+> **Source**: `src/harness/opencode-harness.ts` (serverConfig.permission in ensureServer)
 
 ---
 
@@ -230,7 +247,7 @@ Additionally, root-level directories (path depth <= 2) are rejected to prevent w
 
 | Layer | Protects Against | Mechanism | Harness-Specific? |
 |---|---|---|---|
-| Kernel sandbox | Unauthorized file/network access | OS syscalls (Landlock/Seatbelt/bubblewrap) | Yes (nono vs SDK) |
+| Sandboxing | Unauthorized file/network access | OS syscalls ([nono](https://github.com/always-further/nono), SDK) or app-level permissions (OpenCode) | Yes |
 | Working directory | Agent escaping its directory | `cwd` scoping | No |
 | Tool allowlists | Agents using dangerous tools | `allowedTools` / `disallowedTools` | No |
 | Permission modes | Unauthorized interactive actions | `permissionMode` | No |
@@ -247,5 +264,6 @@ Additionally, root-level directories (path depth <= 2) are rejected to prevent w
 - **Cross-nav queries don't inherit sandbox profiles.** When navigator A queries navigator B, the sub-session doesn't read B's per-operation sandbox config. The sub-query runs with the cross-nav tool's hardcoded config (model, maxTurns, cwd only).
 - **Nav-to-nav file isolation is behavioral, not kernel-enforced.** System prompts instruct navigators to stay within their knowledge base, but nothing prevents a sandboxed agent from reading files in another navigator's directory if both are within the sandbox's read paths.
 - **`blockNetwork` is disabled for chibi.** The chibi subprocess makes its own API calls to OpenRouter, so blocking network would prevent it from functioning.
-- **Graceful fallback means no sandbox.** If nono is not installed, ChibiHarness runs without kernel sandboxing. The other layers still apply.
+- **Graceful fallback means no sandbox.** If [nono](https://github.com/always-further/nono) is not installed, ChibiHarness runs without kernel sandboxing. The other layers still apply.
+- **OpenCode sandbox is application-level only.** The OpenCode harness uses permission flags (`edit: "deny"`, `bash: "deny"`) rather than kernel enforcement. This prevents casual misuse but is not as strong as Landlock/Seatbelt.
 - **SDK sandbox field is forward-looking.** The Claude Code Agent SDK's `Options` type does not yet expose a `sandbox` field in its public types. The settings are passed through as `Record<string, unknown>` — they take effect when the SDK adds support.

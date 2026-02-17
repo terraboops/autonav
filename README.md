@@ -97,7 +97,7 @@ Navigators query each other using the Agent Identity Protocol. Domain authority 
 
 ## Security & Sandboxing
 
-Autonav uses defense in depth — 9 independent layers restrict what navigator agents can do. Kernel-enforced sandboxing (Landlock, Seatbelt, bubblewrap) prevents unauthorized file and network access. Each operation gets an appropriate sandbox profile: queries are read-only, updates get read+write, memento workers get full access. Additional layers include working directory scoping, tool allowlists, permission modes, turn/budget limits, cross-navigator cycle detection, ephemeral session directories, credential sanitization, and file watcher path restrictions.
+Autonav uses defense in depth — 9 independent layers restrict what navigator agents can do. Kernel-enforced sandboxing via [nono](https://github.com/always-further/nono) (Landlock, Seatbelt) and the Claude Code SDK (Seatbelt, bubblewrap) prevents unauthorized file and network access at the OS level. Each operation gets an appropriate sandbox profile: queries are read-only, updates get read+write, memento workers get full access. Additional layers include working directory scoping, tool allowlists, permission modes, turn/budget limits, cross-navigator cycle detection, ephemeral session directories, credential sanitization, and file watcher path restrictions.
 
 Per-navigator sandbox profiles are configurable in `config.json`. All layers degrade gracefully when their underlying mechanism is unavailable.
 
