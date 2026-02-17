@@ -215,6 +215,7 @@ async function main() {
     });
 
     console.log("\n👋 Conversation ended.\n");
+    process.exit(0);
   } catch (error) {
     if (error instanceof Error && error.message.includes("TTY")) {
       console.error(`❌ Error: ${error.message}`);
