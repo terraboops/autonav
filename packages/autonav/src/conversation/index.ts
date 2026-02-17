@@ -49,17 +49,34 @@ export function runConversationTUI(options: ConversationOptions): Promise<void> 
     ));
   }
 
+  // Suppress default SIGINT during the Ink session.
+  // In raw mode Ctrl+C goes through useInput, but during startup/teardown
+  // SIGINT can still slip through. Double-press within 2s forces immediate exit.
+  let lastSigint = 0;
+  const sigintHandler = () => {
+    const now = Date.now();
+    if (now - lastSigint < 2000) {
+      process.exit(0);
+    }
+    lastSigint = now;
+  };
+  process.on("SIGINT", sigintHandler);
+
   return new Promise((resolve, reject) => {
     try {
       const instance = render(
-        React.createElement(ConversationApp, options)
+        React.createElement(ConversationApp, options),
+        { exitOnCtrlC: false }
       );
 
-      // Wait for the app to exit
+      // Wait for the app to exit, then restore terminal state
       instance.waitUntilExit().then(() => {
+        process.removeListener("SIGINT", sigintHandler);
+        instance.cleanup();
         resolve();
       });
     } catch (err) {
+      process.removeListener("SIGINT", sigintHandler);
       reject(err);
     }
   });
