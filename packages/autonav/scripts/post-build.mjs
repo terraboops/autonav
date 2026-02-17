@@ -85,6 +85,22 @@ async function postBuild() {
       }
     }
 
+    // Copy opencode-tools (TS files that run inside OpenCode's Bun runtime)
+    const srcToolsDir = join(packageRoot, 'src', 'harness', 'opencode-tools');
+    if (existsSync(srcToolsDir)) {
+      const destToolsDir = join(packageRoot, 'dist', 'harness', 'opencode-tools');
+      if (!existsSync(destToolsDir)) {
+        await mkdir(destToolsDir, { recursive: true });
+      }
+      const toolFiles = await readdir(srcToolsDir);
+      for (const file of toolFiles) {
+        const srcPath = join(srcToolsDir, file);
+        const destPath = join(destToolsDir, file);
+        await copyFile(srcPath, destPath);
+        console.log(`✓ Copied opencode tool: ${file}`);
+      }
+    }
+
     console.log('✅ Post-build completed successfully');
   } catch (error) {
     console.error('❌ Post-build failed:', error);
