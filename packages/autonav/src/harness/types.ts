@@ -14,7 +14,7 @@ import type { ToolDefinition } from "./tool-server.js";
 /**
  * Supported harness types
  */
-export type HarnessType = "claude-code" | "chibi";
+export type HarnessType = "claude-code" | "chibi" | "opencode";
 
 /**
  * Sandbox configuration for process isolation.

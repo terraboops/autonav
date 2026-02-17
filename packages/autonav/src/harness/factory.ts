@@ -49,7 +49,7 @@ export function resolveHarnessType(
  * Validate a string is a valid HarnessType
  */
 function validateHarnessType(value: string): HarnessType {
-  const valid: HarnessType[] = ["claude-code", "chibi"];
+  const valid: HarnessType[] = ["claude-code", "chibi", "opencode"];
   if (!valid.includes(value as HarnessType)) {
     throw new Error(
       `Invalid harness type: "${value}". Valid types: ${valid.join(", ")}`
@@ -73,6 +73,11 @@ export async function createHarness(type: HarnessType): Promise<Harness> {
       // Dynamic import to avoid loading chibi dependencies when not needed
       const { ChibiHarness } = await import("./chibi-harness.js");
       return new ChibiHarness();
+    }
+
+    case "opencode": {
+      const { OpenCodeHarness } = await import("./opencode-harness.js");
+      return new OpenCodeHarness();
     }
 
     default:
