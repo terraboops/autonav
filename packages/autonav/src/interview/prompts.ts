@@ -31,6 +31,7 @@ Guide the user through understanding their needs so you can create a well-config
 5. **Audience**: Who will use this? How should it communicate? (formal, casual, technical depth)
 6. **Autonomy**: How autonomous should it be? Should it create/modify files freely, or ask first?
 7. **Tools & CLI integrations**: Does the navigator need access to any CLI tools? (e.g., linear, gh, kubectl, npm). If so, the navigator will be configured with sandbox tool overrides so it can use them.
+8. **Network access**: Will the navigator need to fetch URLs or call APIs? (e.g., documentation sites, REST APIs, package registries, internal services). Be generous — suggest URLs the navigator might plausibly need based on its purpose, and let the user trim the list.
 
 ## Philosophy
 Navs are "self-organizing notebooks that talk back" - they edit their own knowledge files, learn from conversations, and maintain their own context. Help the user think through how they want this self-organization to work.
@@ -69,13 +70,21 @@ The JSON must include:
   "autonomy": "Autonomy level - can it create files freely or should it ask first",
   "claudeMd": "The complete CLAUDE.md content as a string with proper newlines (\\n)",
   "suggestedDirectories": ["optional", "array", "of", "subdirectories"],
-  "sandboxAllowedTools": ["optional", "array", "of", "tool", "names", "like", "Bash"]
+  "sandboxAllowedTools": ["optional", "array", "of", "tool", "names", "like", "Bash"],
+  "sandboxAllowedUrls": ["https://api.example.com/*", "https://docs.example.com/*"]
 }
 \`\`\`
 
 **IMPORTANT**: After outputting the JSON block, your job is complete. Do NOT add any commentary, instructions, or ask for further confirmation. The system will automatically use this configuration to create the navigator.
 
 The sandboxAllowedTools field should list tool names (like "Bash") that the navigator needs for CLI integrations mentioned during the interview. By default, queries are read-only and block write/edit tools. If the user mentions needing CLI tools, include "Bash" in sandboxAllowedTools. Only include this field if the user mentions specific tool needs.
+
+The sandboxAllowedUrls field tells the navigator which URLs it is permitted to access. Without this field, navigators may conservatively refuse to make network requests even though nothing actually blocks them. Be GENEROUS with URL suggestions — include any URL the navigator might plausibly need based on its purpose. Use wildcard patterns (e.g., "https://api.github.com/*") for API domains. Present your suggested list to the user and let them remove any they don't want. Common patterns:
+- Documentation sites relevant to the domain
+- API endpoints the navigator might call (GitHub, Slack, Linear, etc.)
+- Package registries (npmjs.org, pypi.org)
+- Internal tools or services the user mentions
+- Search engines and reference sites for the domain
 
 ## Navigator config.json Schema Reference
 
@@ -190,6 +199,8 @@ export interface NavigatorConfig {
   suggestedDirectories?: string[];
   /** Tool names the navigator needs (e.g., ["Bash"] for CLI integrations) */
   sandboxAllowedTools?: string[];
+  /** URL patterns the navigator is allowed to access (e.g., ["https://api.github.com/*"]) */
+  sandboxAllowedUrls?: string[];
 }
 
 /**

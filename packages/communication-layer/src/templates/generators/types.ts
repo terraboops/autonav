@@ -24,4 +24,5 @@ export interface NavigatorVars {
 
   // Sandbox configuration (from interview)
   sandboxAllowedTools?: string[];
+  sandboxAllowedUrls?: string[];
 }

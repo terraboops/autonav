@@ -119,6 +119,11 @@ export const NavigatorConfigSchema = z.object({
      *  e.g. ["Bash"] to ensure bash is available even in read-only operations,
      *  or ["Bash(linear:*)"] for command-specific patterns. */
     allowedTools: z.array(z.string()).optional().describe('Tools this navigator always needs'),
+    /** URL patterns this navigator is allowed to access.
+     *  e.g. ["https://api.github.com/*", "https://registry.npmjs.org/*"].
+     *  Tells the navigator which network requests it can make.
+     *  Without this, navigators may conservatively refuse network access. */
+    allowedUrls: z.array(z.string()).optional().describe('URL patterns this navigator is allowed to access'),
   }).optional().describe('Per-operation sandbox profiles and navigator tool requirements'),
 
   /**

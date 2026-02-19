@@ -16,6 +16,7 @@ export function generateConfigJson(vars: NavigatorVars): string {
     packName,
     packVersion,
     sandboxAllowedTools,
+    sandboxAllowedUrls,
   } = vars;
 
   const config: Record<string, unknown> = {
@@ -48,11 +49,14 @@ export function generateConfigJson(vars: NavigatorVars): string {
     config.knowledgePack = null;
   }
 
-  // Add sandbox config if allowed tools were specified (e.g., from interview)
-  if (sandboxAllowedTools && sandboxAllowedTools.length > 0) {
-    config.sandbox = {
-      allowedTools: sandboxAllowedTools,
-    };
+  // Add sandbox config if allowed tools or URLs were specified (e.g., from interview)
+  const hasSandboxTools = sandboxAllowedTools && sandboxAllowedTools.length > 0;
+  const hasSandboxUrls = sandboxAllowedUrls && sandboxAllowedUrls.length > 0;
+  if (hasSandboxTools || hasSandboxUrls) {
+    const sandbox: Record<string, unknown> = {};
+    if (hasSandboxTools) sandbox.allowedTools = sandboxAllowedTools;
+    if (hasSandboxUrls) sandbox.allowedUrls = sandboxAllowedUrls;
+    config.sandbox = sandbox;
   }
 
   return JSON.stringify(config, null, 2) + "\n";

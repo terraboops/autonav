@@ -52,8 +52,33 @@ Common self-configuration examples:
 - Add a related navigator: add an entry to \`relatedNavigators\`
 - Change sandbox settings: modify \`sandbox\` per-operation flags
 - Add tool access: add tool names to \`sandbox.allowedTools\` (e.g., \`["Bash"]\`)
+- Allow network access: add URL patterns to \`sandbox.allowedUrls\`
 - Update your description: change \`description\`
 - Add working directories: add paths to \`workingDirectories\``;
+
+    // Extract allowedUrls for an explicit network access statement
+    try {
+      const parsed = JSON.parse(configJson);
+      const allowedUrls = parsed?.sandbox?.allowedUrls as string[] | undefined;
+      if (allowedUrls && allowedUrls.length > 0) {
+        configSection += `
+
+#### Network Access
+
+You ARE allowed to make network requests to the following URLs:
+${allowedUrls.map((u: string) => `- ${u}`).join("\n")}
+
+You can use tools like WebFetch or Bash (curl, wget) to access these URLs. If you need access to additional URLs, update \`sandbox.allowedUrls\` in your config.json.`;
+      } else {
+        configSection += `
+
+#### Network Access
+
+Your config does not currently list any allowed URLs. If you need to fetch web content or call APIs, add URL patterns to \`sandbox.allowedUrls\` in your config.json (e.g., \`["https://api.example.com/*"]\`).`;
+      }
+    } catch {
+      // Config isn't valid JSON — skip network section
+    }
   }
 
   return `${navigatorSystemPrompt}
