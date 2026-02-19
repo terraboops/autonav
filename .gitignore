@@ -19,6 +19,13 @@ build/
 *.swo
 *~
 
+# Claude Code local settings
+.claude/settings.local.json
+
+# OpenCode (build artifacts from post-build script)
+.opencode/
+opencode.json
+
 # OS
 .DS_Store
 Thumbs.db
