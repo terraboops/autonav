@@ -989,6 +989,7 @@ async function main() {
       updatedAt: now,
       packName: packMetadata?.name,
       packVersion: packMetadata?.version,
+      sandboxAllowedTools: interviewConfig?.sandboxAllowedTools,
     };
 
     // Write config.json
