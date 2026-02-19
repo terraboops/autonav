@@ -114,8 +114,8 @@ async function runMigration(
   return false;
 }
 
-async function main() {
-  const args = process.argv.slice(2);
+/** Run this command with the given args (called by dispatcher) */
+export async function run(args: string[]): Promise<void> {
 
   // Handle help
   if (args.includes("--help") || args.includes("-h")) {
@@ -213,8 +213,3 @@ async function main() {
     process.exit(1);
   }
 }
-
-main().catch((error) => {
-  console.error("Fatal error:", error);
-  process.exit(1);
-});

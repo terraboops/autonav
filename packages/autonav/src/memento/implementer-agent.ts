@@ -1,65 +1,63 @@
 /**
- * Worker Agent for Memento Loop
+ * Implementer Agent for Memento Loop
  *
- * Executes implementation plans via the harness adapter.
+ * Executes implementation plans using the harness interface.
  */
 
-import type { ImplementationPlan, WorkerResult } from "./types.js";
-import { buildWorkerPrompt, buildWorkerSystemPrompt } from "./prompts.js";
-import { type Harness, ClaudeCodeHarness } from "../harness/index.js";
+import type { Harness, AgentEvent } from "../harness/index.js";
+import type { ImplementationPlan, ImplementerResult } from "./types.js";
+import { buildImplementerPrompt, buildImplementerSystemPrompt } from "./prompts.js";
 
 /**
- * Minimal context for worker (no persisted state)
+ * Minimal context for implementer (no persisted state)
  */
-interface WorkerContext {
+interface ImplementerContext {
   codeDirectory: string;
   task: string;
 }
 
 /**
- * Options for worker agent execution
+ * Options for implementer agent execution
  */
-export interface WorkerAgentOptions {
+export interface ImplementerAgentOptions {
   /** Show detailed logging */
   verbose?: boolean;
 
   /** Model to use (defaults to claude-sonnet-4-5) */
   model?: string;
 
-  /** Maximum turns for worker agent */
+  /** Maximum turns for implementer agent */
   maxTurns?: number;
-
-  /** Harness to use (defaults to ClaudeCodeHarness) */
-  harness?: Harness;
 }
 
 /**
- * Run the worker agent to implement a plan
+ * Run the implementer agent to implement a plan
  */
-export async function runWorkerAgent(
-  context: WorkerContext,
+export async function runImplementerAgent(
+  context: ImplementerContext,
   plan: ImplementationPlan,
-  options: WorkerAgentOptions = {}
-): Promise<WorkerResult> {
+  harness: Harness,
+  options: ImplementerAgentOptions = {}
+): Promise<ImplementerResult> {
   const startTime = Date.now();
   const {
     verbose = false,
     model = "claude-sonnet-4-5",
     maxTurns = 50,
-    harness = new ClaudeCodeHarness(),
   } = options;
 
-  const prompt = buildWorkerPrompt(context.codeDirectory, plan);
-  const systemPrompt = buildWorkerSystemPrompt(context.codeDirectory);
+  const prompt = buildImplementerPrompt(context.codeDirectory, plan);
+  const systemPrompt = buildImplementerSystemPrompt(context.codeDirectory);
 
   if (verbose) {
-    console.log("\n[Worker] Starting implementation...");
-    console.log(`[Worker] Plan: ${plan.summary}`);
-    console.log(`[Worker] Steps: ${plan.steps.length}`);
+    console.log("\n[Implementer] Starting implementation...");
+    console.log(`[Implementer] Plan: ${plan.summary}`);
+    console.log(`[Implementer] Steps: ${plan.steps.length}`);
   }
 
   const filesModified: string[] = [];
   let lastAssistantText = "";
+  let resultEvent: (AgentEvent & { type: "result" }) | undefined;
 
   try {
     const session = harness.run(
@@ -73,14 +71,10 @@ export async function runWorkerAgent(
       prompt
     );
 
-    let success = false;
-    let resultText = "";
-    let errorText = "";
-
     for await (const event of session) {
       if (event.type === "tool_use") {
         if (verbose) {
-          console.log(`[Worker] Tool: ${event.name}`);
+          console.log(`[Implementer] Tool: ${event.name}`);
         }
 
         // Extract file paths from common tools
@@ -97,34 +91,40 @@ export async function runWorkerAgent(
       } else if (event.type === "text") {
         lastAssistantText = event.text;
       } else if (event.type === "result") {
-        success = event.success;
-        resultText = event.text || "";
-        if (!event.success) {
-          errorText = event.text || "Unknown error";
-        }
+        resultEvent = event;
       }
     }
 
     const durationMs = Date.now() - startTime;
 
-    if (!success) {
+    if (!resultEvent) {
       return {
         success: false,
-        summary: errorText || "Worker failed",
+        summary: "No result message received from implementer agent",
         filesModified,
-        errors: [errorText || "Unknown error"],
+        errors: ["No result message received"],
+        durationMs,
+      };
+    }
+
+    if (!resultEvent.success) {
+      return {
+        success: false,
+        summary: `Implementer failed`,
+        filesModified,
+        errors: [resultEvent.text || "Unknown error"],
         durationMs,
       };
     }
 
     if (verbose) {
-      console.log(`[Worker] Completed in ${durationMs}ms`);
-      console.log(`[Worker] Files modified: ${filesModified.length}`);
+      console.log(`[Implementer] Completed in ${durationMs}ms`);
+      console.log(`[Implementer] Files modified: ${filesModified.length}`);
     }
 
     return {
       success: true,
-      summary: resultText || lastAssistantText || "Implementation completed",
+      summary: resultEvent.text || lastAssistantText || "Implementation completed",
       filesModified,
       durationMs,
     };
@@ -134,7 +134,7 @@ export async function runWorkerAgent(
 
     return {
       success: false,
-      summary: `Worker error: ${errorMessage}`,
+      summary: `Implementer error: ${errorMessage}`,
       filesModified,
       errors: [errorMessage],
       durationMs,

@@ -3,15 +3,10 @@
 /**
  * Main autonav CLI dispatcher
  *
- * Routes commands to appropriate handlers:
- * - autonav init -> nav-init.ts
- * - autonav query -> nav-query.ts
- * - autonav update -> nav-update.ts
- * - autonav chat -> nav-chat.ts
- * - autonav memento -> nav-memento.ts
+ * Routes commands to appropriate handlers via dynamic import (same process).
+ * Each command module exports a `run(args: string[])` function.
  */
 
-import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 import * as fs from "node:fs";
@@ -19,18 +14,25 @@ import * as fs from "node:fs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Read version from package.json
+// Read version from package.json, append -dev if running from a linked/local install
 function getVersion(): string {
   try {
     const packageJsonPath = path.join(__dirname, "..", "..", "package.json");
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
-    return packageJson.version || "unknown";
+    const version = packageJson.version || "unknown";
+
+    // Detect linked install: check if our path is inside a node_modules symlink
+    // or if we're running directly from a source/dev directory
+    const realPath = fs.realpathSync(__filename);
+    const isLinked = !realPath.includes("node_modules") ||
+      realPath !== __filename; // symlinked
+    return isLinked ? `${version}-dev` : version;
   } catch {
     return "unknown";
   }
 }
 
-function printUsage() {
+function printUsage(): void {
   const version = getVersion();
   console.log(`
 autonav v${version} - Autonomous Navigator CLI
@@ -82,7 +84,13 @@ For command-specific help:
 `);
 }
 
-function main() {
+/** Valid command names that map to nav-<command>.js modules */
+const COMMANDS = new Set([
+  "init", "query", "update", "chat", "migrate",
+  "mend", "memento", "standup", "install", "uninstall",
+]);
+
+async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
   // Show version only if --version/-v is first arg (before any command)
@@ -98,61 +106,24 @@ function main() {
     process.exit(0);
   }
 
-  const command = args[0];
+  const command = args[0]!;
   const commandArgs = args.slice(1);
 
-  let scriptPath: string;
-
-  switch (command) {
-    case "init":
-      scriptPath = path.join(__dirname, "nav-init.js");
-      break;
-    case "query":
-      scriptPath = path.join(__dirname, "nav-query.js");
-      break;
-    case "update":
-      scriptPath = path.join(__dirname, "nav-update.js");
-      break;
-    case "chat":
-      scriptPath = path.join(__dirname, "nav-chat.js");
-      break;
-    case "migrate":
-      scriptPath = path.join(__dirname, "nav-migrate.js");
-      break;
-    case "mend":
-      scriptPath = path.join(__dirname, "nav-mend.js");
-      break;
-    case "memento":
-      scriptPath = path.join(__dirname, "nav-memento.js");
-      break;
-    case "standup":
-      scriptPath = path.join(__dirname, "nav-standup.js");
-      break;
-    case "install":
-      scriptPath = path.join(__dirname, "nav-install.js");
-      break;
-    case "uninstall":
-      scriptPath = path.join(__dirname, "nav-uninstall.js");
-      break;
-    default:
-      console.error(`Error: Unknown command: ${command}\n`);
-      printUsage();
-      process.exit(1);
+  if (!COMMANDS.has(command)) {
+    console.error(`Error: Unknown command: ${command}\n`);
+    printUsage();
+    process.exit(1);
   }
 
-  // Spawn the appropriate command script
-  const child = spawn(process.execPath, [scriptPath, ...commandArgs], {
-    stdio: "inherit",
-  });
-
-  child.on("exit", (code) => {
-    process.exit(code || 0);
-  });
-
-  child.on("error", (error) => {
-    console.error(`❌ Error executing command: ${error.message}`);
+  try {
+    const mod = await import(`./nav-${command}.js`);
+    await mod.run(commandArgs);
+  } catch (error) {
+    // Don't double-report errors from commands that already called process.exit()
+    // If we get here, it's an unexpected error (import failure, missing run(), etc.)
+    console.error(`❌ Error executing command: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
-  });
+  }
 }
 
 main();

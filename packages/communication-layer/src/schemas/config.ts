@@ -76,6 +76,14 @@ export const NavigatorConfigSchema = z.object({
   }).nullable().optional().describe('Knowledge pack metadata'),
 
   /**
+   * Additional directories this navigator needs access to (absolute or relative to nav root).
+   * Used to sandbox the navigator to only the directories it manages.
+   */
+  workingDirectories: z.array(z.string()).optional().describe(
+    'Additional directories this navigator needs access to (absolute or relative to nav root)'
+  ),
+
+  /**
    * Plugin configuration
    */
   plugins: z.object({

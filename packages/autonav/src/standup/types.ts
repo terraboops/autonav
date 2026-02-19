@@ -99,9 +99,6 @@ export interface StandupOptions {
 
   /** Max cost per agent in USD */
   maxBudgetUsd?: number;
-
-  /** Agent runtime harness type */
-  harness?: string;
 }
 
 /**

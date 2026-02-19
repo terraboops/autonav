@@ -2,7 +2,7 @@
  * Memento Loop Module
  *
  * Context-clearing iterative development loop that coordinates
- * navigator (planning) and worker (implementation) agents.
+ * navigator (planning) and implementer (implementation) agents.
  *
  * Design principle: Git is the only persistent memory. All other
  * state lives in-memory during loop execution.
@@ -26,7 +26,7 @@
 export {
   type ImplementationStep,
   type ImplementationPlan,
-  type WorkerResult,
+  type ImplementerResult,
   type MementoOptions,
   type MementoResult,
   ImplementationStepSchema,
@@ -55,7 +55,7 @@ export {
 
 // Nav protocol
 export {
-  createNavProtocolMcpServer,
+  createNavProtocolTools,
   SUBMIT_PLAN_TOOL,
   type PlanSubmissionResult,
 } from "./nav-protocol.js";
@@ -64,22 +64,34 @@ export {
 export {
   buildNavPlanPrompt,
   buildNavSystemPrompt,
-  buildWorkerPrompt,
-  buildWorkerSystemPrompt,
+  buildImplementerPrompt,
+  buildImplementerSystemPrompt,
   type NavigatorIdentity,
 } from "./prompts.js";
 
-// Worker agent
+// Implementer agent
 export {
-  runWorkerAgent,
-  type WorkerAgentOptions,
-} from "./worker-agent.js";
+  runImplementerAgent,
+  type ImplementerAgentOptions,
+} from "./implementer-agent.js";
 
 // Main loop
 export {
   runMementoLoop,
   type MementoLoopOptions,
 } from "./loop.js";
+
+// Rate limit handling
+export {
+  parseRateLimitError,
+  isTransientConnectionError,
+  formatDuration,
+  getBackoffDelay,
+  getConnectionRetryDelay,
+  waitWithCountdown,
+  type RateLimitInfo,
+  type RateLimitRetryConfig,
+} from "./rate-limit.js";
 
 // Animation
 export {
