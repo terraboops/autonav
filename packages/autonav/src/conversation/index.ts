@@ -35,6 +35,8 @@ export interface ConversationOptions {
   mcpServers?: Record<string, unknown>;
   /** Whether sandbox is enabled for chat (default: true) */
   sandboxEnabled?: boolean;
+  /** Raw config.json content for config-aware prompts */
+  configJson?: string;
 }
 
 /**

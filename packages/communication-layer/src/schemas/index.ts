@@ -8,3 +8,4 @@ export * from './config.js';
 export * from './query.js';
 export * from './metrics.js';
 export * from './plugin-config.js';
+export * from './config-describe.js';

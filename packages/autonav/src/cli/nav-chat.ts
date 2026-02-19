@@ -134,8 +134,9 @@ export async function run(args: string[]): Promise<void> {
     relatedNavigators?: Array<{ name: string; description?: string }>;
     sandbox?: { chat?: { enabled: boolean } };
   };
+  let configContent: string;
   try {
-    const configContent = fs.readFileSync(configPath, "utf-8");
+    configContent = fs.readFileSync(configPath, "utf-8");
     config = JSON.parse(configContent);
   } catch (error) {
     console.error(`❌ Error: Failed to parse config.json: ${error instanceof Error ? error.message : String(error)}`);
@@ -217,6 +218,7 @@ export async function run(args: string[]): Promise<void> {
       harness,
       mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
       sandboxEnabled: chatSandboxEnabled,
+      configJson: configContent,
     });
 
     console.log("\n👋 Conversation ended.\n");
