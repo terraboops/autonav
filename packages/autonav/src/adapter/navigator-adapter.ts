@@ -440,6 +440,7 @@ export class NavigatorAdapter {
 
     // Per-nav sandbox: query defaults to enabled unless explicitly disabled
     const querySandboxEnabled = navigator.config.sandbox?.query?.enabled !== false;
+    const navAllowedTools = navigator.config.sandbox?.allowedTools;
 
     const session = this.harness.run(
       {
@@ -450,6 +451,7 @@ export class NavigatorAdapter {
         mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
         permissionMode: "bypassPermissions",
         stderr: debug ? (data: string) => process.stderr.write(`[harness] ${data}`) : undefined,
+        ...(navAllowedTools?.length ? { allowedTools: navAllowedTools } : {}),
         ...(querySandboxEnabled ? {
           sandbox: {
             readPaths: [navigator.navigatorPath],
@@ -661,6 +663,7 @@ Your task: ${message}`;
 
     // Per-nav sandbox: update defaults to enabled unless explicitly disabled
     const updateSandboxEnabled = navigator.config.sandbox?.update?.enabled !== false;
+    const navAllowedTools = navigator.config.sandbox?.allowedTools;
 
     const session = this.harness.run(
       {
@@ -669,6 +672,7 @@ Your task: ${message}`;
         systemPrompt,
         cwd: navigator.navigatorPath,
         permissionMode: "bypassPermissions",
+        ...(navAllowedTools?.length ? { allowedTools: navAllowedTools } : {}),
         ...(updateSandboxEnabled ? {
           sandbox: {
             writePaths: [navigator.navigatorPath],

@@ -35,6 +35,8 @@ export interface ConversationOptions {
   mcpServers?: Record<string, unknown>;
   /** Whether sandbox is enabled for chat (default: true) */
   sandboxEnabled?: boolean;
+  /** Navigator-level allowed tools from config.json */
+  navAllowedTools?: string[];
 }
 
 /**

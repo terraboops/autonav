@@ -207,6 +207,8 @@ interface ConversationAppProps {
   mcpServers?: Record<string, unknown>;
   /** Whether sandbox is enabled for chat (default: true) */
   sandboxEnabled?: boolean;
+  /** Navigator-level allowed tools from config.json */
+  navAllowedTools?: string[];
 }
 
 export function ConversationApp({
@@ -217,6 +219,7 @@ export function ConversationApp({
   harness,
   mcpServers,
   sandboxEnabled = true,
+  navAllowedTools,
 }: ConversationAppProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -451,6 +454,7 @@ Model: ${CONVERSATION_MODEL}`,
               permissionMode: "acceptEdits",
               cwd: navigatorPath,
               mcpServers,
+              ...(navAllowedTools?.length ? { allowedTools: navAllowedTools } : {}),
               // Per-nav sandbox: chat defaults to enabled (read-only access)
               ...(sandboxEnabled ? {
                 sandbox: {

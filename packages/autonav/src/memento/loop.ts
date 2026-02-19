@@ -48,6 +48,9 @@ export interface MementoLoopOptions extends MementoOptions {
 
   /** Maximum turns per agent call */
   maxTurns?: number;
+
+  /** Navigator-level allowed tools (set from config.json, passed to both agents) */
+  navAllowedTools?: string[];
 }
 
 /**
@@ -79,6 +82,7 @@ interface NavSandboxProfile {
 interface NavConfig {
   identity: NavigatorIdentity | null;
   sandbox?: NavSandboxProfile;
+  allowedTools?: string[];
 }
 
 /**
@@ -99,6 +103,7 @@ function loadNavConfig(navDirectory: string): NavConfig {
     return {
       identity,
       sandbox: config.sandbox,
+      allowedTools: Array.isArray(config.sandbox?.allowedTools) ? config.sandbox.allowedTools : undefined,
     };
   } catch {
     // Ignore parse errors
@@ -268,6 +273,7 @@ async function queryNavForPlanWithStats(
     console.log("\n[Nav] Querying navigator for plan...");
   }
 
+  const navAllowedTools = options.navAllowedTools;
   const session = harness.run(
     {
       model,
@@ -278,6 +284,7 @@ async function queryNavForPlanWithStats(
         "autonav-nav-protocol": navProtocol.server,
       },
       permissionMode: "bypassPermissions",
+      ...(navAllowedTools?.length ? { allowedTools: navAllowedTools } : {}),
     },
     prompt
   );
@@ -350,12 +357,12 @@ interface WorkerResultWithStats {
 async function runWorkerAgentWithStats(
   context: { codeDirectory: string; task: string },
   plan: ImplementationPlan,
-  options: { verbose?: boolean; model?: string; maxTurns?: number },
+  options: { verbose?: boolean; model?: string; maxTurns?: number; navAllowedTools?: string[] },
   animation: MatrixAnimation,
   harness: Harness
 ): Promise<WorkerResultWithStats> {
   // Worker uses haiku by default for faster/cheaper implementation
-  const { verbose = false, model = "claude-haiku-4-5", maxTurns = 50 } = options;
+  const { verbose = false, model = "claude-haiku-4-5", maxTurns = 50, navAllowedTools } = options;
 
   const { buildWorkerPrompt, buildWorkerSystemPrompt } = await import("./prompts.js");
 
@@ -373,6 +380,7 @@ async function runWorkerAgentWithStats(
       systemPrompt,
       cwd: context.codeDirectory,
       permissionMode: "bypassPermissions",
+      ...(navAllowedTools?.length ? { allowedTools: navAllowedTools } : {}),
     },
     prompt
   );
@@ -517,6 +525,11 @@ export async function runMementoLoop(
   const navIdentity = navConfig.identity;
   const navSystemPrompt = loadNavSystemPrompt(navDirectory);
 
+  // Propagate navigator-level allowed tools to both agents
+  if (navConfig.allowedTools?.length && !options.navAllowedTools) {
+    options.navAllowedTools = navConfig.allowedTools;
+  }
+
   // Resolve harness (agent runtime)
   const harness = await resolveAndCreateHarness(options.harness);
 
@@ -637,6 +650,7 @@ export async function runMementoLoop(
             verbose,
             model: options.model,
             maxTurns: options.maxTurns,
+            navAllowedTools: options.navAllowedTools,
           },
           animation,
           harness

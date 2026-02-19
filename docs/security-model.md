@@ -50,6 +50,20 @@ Override in `config.json`:
 }
 ```
 
+### Navigator-Level Allowed Tools
+
+Navigators can declare tools they always need via `sandbox.allowedTools`. These are merged into every operation's tool list — including operations that normally restrict tools (like standup report). This lets a navigator declare "I need bash access to run `linear`" without modifying framework code.
+
+```json
+{
+  "sandbox": {
+    "allowedTools": ["Bash"]
+  }
+}
+```
+
+The `allowedTools` array accepts tool names (e.g., `"Bash"`, `"Read"`, `"Write"`) and is passed to every agent session the navigator spawns: query, update, chat, standup, and memento (both navigator and worker agents).
+
 > **Source**: `packages/communication-layer/src/schemas/config.ts` (NavigatorConfigSchema), `src/adapter/navigator-adapter.ts` (query/update), `src/standup/loop.ts` (report/sync), `src/conversation/App.tsx` (chat), `src/memento/loop.ts` (memento)
 
 ---
