@@ -49,6 +49,10 @@ interface LoadedNav {
   knowledgeBasePath: string;
   identity: NavigatorIdentity;
   workingDirectories: string[];
+  /** Per-operation sandbox profile from config.json */
+  sandboxEnabled: boolean;
+  /** Navigator-level allowed tools from config.json */
+  navAllowedTools?: string[];
 }
 
 /**
@@ -84,6 +88,8 @@ export function loadNavForStandup(dir: string): LoadedNav {
   let description = "";
   let knowledgeBasePath = path.join(directory, "knowledge");
   let workingDirectories: string[] = [];
+  let sandboxEnabled = true; // standup defaults to sandbox enabled
+  let navAllowedTools: string[] | undefined;
 
   if (fs.existsSync(configPath)) {
     try {
@@ -98,6 +104,14 @@ export function loadNavForStandup(dir: string): LoadedNav {
           resolveNavPath(p, directory)
         );
       }
+      // Read per-operation sandbox profile (standup defaults to enabled)
+      if (config.sandbox?.standup?.enabled === false) {
+        sandboxEnabled = false;
+      }
+      // Read navigator-level allowed tools
+      if (Array.isArray(config.sandbox?.allowedTools)) {
+        navAllowedTools = config.sandbox.allowedTools;
+      }
     } catch {
       // Use defaults on parse error
     }
@@ -111,6 +125,8 @@ export function loadNavForStandup(dir: string): LoadedNav {
     knowledgeBasePath,
     identity: { name, description },
     workingDirectories,
+    sandboxEnabled,
+    navAllowedTools,
   };
 }
 
@@ -156,13 +172,22 @@ async function runReportPhase(
     additionalDirectories: [...nav.workingDirectories, standupDir],
     permissionMode: "acceptEdits" as const,
     allowedTools: [
-      "Read", "Glob", "Grep", "Bash",
-      "mcp__autonav-standup-report__submit_status_report",
+      ...new Set([
+        "Read", "Glob", "Grep", "Bash",
+        "mcp__autonav-standup-report__submit_status_report",
+        ...(nav.navAllowedTools ?? []),
+      ]),
     ],
     mcpServers: {
       "autonav-standup-report": server,
     },
     ...(maxBudgetUsd !== undefined ? { maxBudgetUsd } : {}),
+    // Per-nav sandbox: report phase is read-only
+    ...(nav.sandboxEnabled ? {
+      sandbox: {
+        readPaths: [nav.directory, nav.knowledgeBasePath, ...nav.workingDirectories],
+      },
+    } : {}),
   };
 
   debug(`[Report:${nav.name}] Agent config:`, JSON.stringify({
@@ -288,13 +313,23 @@ async function runSyncPhase(
     additionalDirectories: [...nav.workingDirectories, standupDir],
     permissionMode: "acceptEdits" as const,
     allowedTools: [
-      "Read", "Write", "Edit", "Glob", "Grep", "Bash",
-      "mcp__autonav-standup-sync__submit_sync_response",
+      ...new Set([
+        "Read", "Write", "Edit", "Glob", "Grep", "Bash",
+        "mcp__autonav-standup-sync__submit_sync_response",
+        ...(nav.navAllowedTools ?? []),
+      ]),
     ],
     mcpServers: {
       "autonav-standup-sync": server,
     },
     ...(maxBudgetUsd !== undefined ? { maxBudgetUsd } : {}),
+    // Per-nav sandbox: sync phase needs write access
+    ...(nav.sandboxEnabled ? {
+      sandbox: {
+        writePaths: [nav.directory, nav.knowledgeBasePath, standupDir],
+        readPaths: [...nav.workingDirectories],
+      },
+    } : {}),
   };
 
   debug(`[Sync:${nav.name}] Agent config:`, JSON.stringify({

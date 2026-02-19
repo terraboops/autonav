@@ -19,12 +19,12 @@ export type HarnessType = "claude-code" | "chibi" | "opencode";
 /**
  * Sandbox configuration for process isolation.
  *
- * Only applies to harnesses that spawn subprocesses (chibi, opencode).
- * Claude Code SDK has built-in sandboxing and ignores this config.
+ * Each harness translates this to its native sandbox mechanism:
+ *   - ChibiHarness → nono (Landlock on Linux, Seatbelt on macOS)
+ *   - ClaudeCodeHarness → SDK sandbox (Seatbelt on macOS, bubblewrap on Linux)
  *
- * Uses nono.sh for kernel-enforced sandboxing (Landlock on Linux,
- * Seatbelt on macOS). Falls back to running unsandboxed if nono
- * is not available.
+ * Falls back gracefully when the underlying mechanism is unavailable
+ * (e.g., nono not installed → chibi runs unsandboxed).
  */
 export interface SandboxConfig {
   /** Explicitly enable/disable. Default: auto-detect nono on PATH. AUTONAV_SANDBOX=0 to disable. */
@@ -79,8 +79,8 @@ export interface AgentConfig {
 
   /**
    * Sandbox configuration for process isolation.
-   * Only applies to harnesses that spawn subprocesses (chibi, opencode).
-   * Claude Code SDK has built-in sandboxing and ignores this config.
+   * Each harness translates this to its native sandbox mechanism:
+   * nono for chibi, SDK sandbox for Claude Code.
    */
   sandbox?: SandboxConfig;
 }

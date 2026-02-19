@@ -15,6 +15,7 @@ export function generateConfigJson(vars: NavigatorVars): string {
     knowledgeBasePath = "./knowledge",
     packName,
     packVersion,
+    sandboxAllowedTools,
   } = vars;
 
   const config: Record<string, unknown> = {
@@ -45,6 +46,13 @@ export function generateConfigJson(vars: NavigatorVars): string {
     };
   } else {
     config.knowledgePack = null;
+  }
+
+  // Add sandbox config if allowed tools were specified (e.g., from interview)
+  if (sandboxAllowedTools && sandboxAllowedTools.length > 0) {
+    config.sandbox = {
+      allowedTools: sandboxAllowedTools,
+    };
   }
 
   return JSON.stringify(config, null, 2) + "\n";

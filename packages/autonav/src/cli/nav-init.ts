@@ -989,6 +989,7 @@ export async function run(args: string[]): Promise<void> {
       updatedAt: now,
       packName: packMetadata?.name,
       packVersion: packMetadata?.version,
+      sandboxAllowedTools: interviewConfig?.sandboxAllowedTools,
     };
 
     // Write config.json

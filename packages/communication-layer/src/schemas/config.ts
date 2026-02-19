@@ -99,6 +99,29 @@ export const NavigatorConfigSchema = z.object({
   }).optional().describe('Harness configuration'),
 
   /**
+   * Per-operation sandbox profiles.
+   *
+   * Controls whether kernel-enforced sandboxing is active for each operation.
+   * Each harness translates this to its native mechanism:
+   *   - ChibiHarness → nono (Landlock/Seatbelt)
+   *   - ClaudeCodeHarness → SDK sandbox (Seatbelt/bubblewrap)
+   *
+   * Defaults: sandbox ON for query/update/chat/standup, OFF for memento.
+   * Override per-nav in config.json.
+   */
+  sandbox: z.object({
+    query: z.object({ enabled: z.boolean() }).default({ enabled: true }),
+    update: z.object({ enabled: z.boolean() }).default({ enabled: true }),
+    chat: z.object({ enabled: z.boolean() }).default({ enabled: true }),
+    memento: z.object({ enabled: z.boolean() }).default({ enabled: false }),
+    standup: z.object({ enabled: z.boolean() }).default({ enabled: true }),
+    /** Tools this navigator always needs, merged into every operation's tool list.
+     *  e.g. ["Bash"] to ensure bash is available even in read-only operations,
+     *  or ["Bash(linear:*)"] for command-specific patterns. */
+    allowedTools: z.array(z.string()).optional().describe('Tools this navigator always needs'),
+  }).optional().describe('Per-operation sandbox profiles and navigator tool requirements'),
+
+  /**
    * Related navigators this navigator can query.
    * Names are resolved to paths via the global registry or env vars at runtime.
    */

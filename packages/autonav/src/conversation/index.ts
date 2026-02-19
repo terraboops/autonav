@@ -33,6 +33,8 @@ export interface ConversationOptions {
   knowledgeBasePath: string;
   harness?: Harness;
   mcpServers?: Record<string, unknown>;
+  /** Whether sandbox is enabled for chat (default: true) */
+  sandboxEnabled?: boolean;
 }
 
 /**

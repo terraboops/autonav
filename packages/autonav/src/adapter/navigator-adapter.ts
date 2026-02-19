@@ -438,6 +438,16 @@ export class NavigatorAdapter {
       console.error(`[DEBUG] System prompt length: ${systemPrompt.length} chars`);
     }
 
+    // Per-nav sandbox: query defaults to enabled unless explicitly disabled
+    const querySandboxEnabled = navigator.config.sandbox?.query?.enabled !== false;
+    const navAllowedTools = navigator.config.sandbox?.allowedTools;
+
+    // Query is read-only: block write tools. navAllowedTools can override
+    // (e.g., a navigator that explicitly needs Write access for queries).
+    const queryDisallowed = ["Write", "Edit", "NotebookEdit"].filter(
+      (t) => !navAllowedTools?.includes(t)
+    );
+
     const session = this.harness.run(
       {
         model: this.options.model,
@@ -447,9 +457,12 @@ export class NavigatorAdapter {
         mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
         permissionMode: "bypassPermissions",
         stderr: debug ? (data: string) => process.stderr.write(`[harness] ${data}`) : undefined,
-        sandbox: {
-          readPaths: [navigator.navigatorPath],
-        },
+        disallowedTools: queryDisallowed,
+        ...(querySandboxEnabled ? {
+          sandbox: {
+            readPaths: [navigator.navigatorPath],
+          },
+        } : {}),
       },
       prompt
     );
@@ -654,6 +667,9 @@ When updating documentation:
 
 Your task: ${message}`;
 
+    // Per-nav sandbox: update defaults to enabled unless explicitly disabled
+    const updateSandboxEnabled = navigator.config.sandbox?.update?.enabled !== false;
+
     const session = this.harness.run(
       {
         model: this.options.model,
@@ -661,9 +677,11 @@ Your task: ${message}`;
         systemPrompt,
         cwd: navigator.navigatorPath,
         permissionMode: "bypassPermissions",
-        sandbox: {
-          writePaths: [navigator.navigatorPath],
-        },
+        ...(updateSandboxEnabled ? {
+          sandbox: {
+            writePaths: [navigator.navigatorPath],
+          },
+        } : {}),
       },
       message
     );

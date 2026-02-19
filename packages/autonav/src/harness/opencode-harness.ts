@@ -405,10 +405,16 @@ export class OpenCodeHarness implements Harness {
         serverConfig.model = config.model;
       }
 
-      // Set all permissions to allow for headless operation
+      // Set permissions based on sandbox config.
+      // When sandbox is set with only readPaths (no writePaths), restrict to
+      // read-only by denying edit and bash. Otherwise, allow all for headless operation.
+      const isReadOnly = config?.sandbox &&
+        config.sandbox.readPaths?.length &&
+        !config.sandbox.writePaths?.length;
+
       serverConfig.permission = {
-        edit: "allow",
-        bash: "allow",
+        edit: isReadOnly ? "deny" : "allow",
+        bash: isReadOnly ? "deny" : "allow",
         webfetch: "allow",
         doom_loop: "allow",
         external_directory: "allow",

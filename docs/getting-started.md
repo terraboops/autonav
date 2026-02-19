@@ -70,7 +70,7 @@ After init completes, you'll have a directory like this:
 
 ```
 my-assistant/
-├── config.json          # Navigator identity and version
+├── config.json          # Navigator identity, version, and sandbox config
 ├── CLAUDE.md            # System prompt and grounding rules
 ├── knowledge/           # Your knowledge base (start adding docs here)
 │   ├── agents/          # Agent identity definitions
@@ -82,6 +82,30 @@ my-assistant/
 ├── .gitignore
 └── README.md
 ```
+
+#### Sandbox Configuration
+
+The `config.json` file supports a `sandbox` field for controlling per-operation security profiles and declaring tool requirements. If you mention CLI tools during the interview (e.g., `linear`, `gh`, `kubectl`), the interview will automatically configure `sandbox.allowedTools` for you.
+
+You can also edit `config.json` directly:
+
+```json
+{
+  "sandbox": {
+    "allowedTools": ["Bash"],
+    "query": { "enabled": true },
+    "update": { "enabled": true },
+    "chat": { "enabled": true },
+    "standup": { "enabled": true },
+    "memento": { "enabled": false }
+  }
+}
+```
+
+- **`allowedTools`**: Tool names this navigator always needs (e.g., `["Bash"]` to run CLI commands like `linear` or `gh`). This overrides tool restrictions in operations that block tools by default.
+- **Per-operation profiles**: Enable or disable sandboxing per operation. Queries are read-only by default; updates get read-write access. Set `"enabled": false` to disable sandboxing for a specific operation.
+
+See the **[Security Model](security-model.md)** for the full breakdown of how each layer works.
 
 This is the **navigator-as-directory** pattern. Everything your navigator knows and is lives in this directory. It's git-friendly, portable, and composable. You can version it, PR it, and share it with your team.
 
@@ -327,7 +351,7 @@ Here's what happens at each stage:
    - `submit_answer` — enforces structured JSON responses with required fields (answer, sources, confidence)
    - `self-config tools` — lets the navigator update its own plugin configuration
    - `cross-nav query` — allows the navigator to query other navigators
-3. **Constrain the runtime** — Sets sandbox read paths so the agent can only access the navigator directory, configures permission bypass for non-interactive use, sets turn limits to prevent runaway execution
+3. **Constrain the runtime** — Applies defense-in-depth sandboxing: kernel-enforced file isolation (Seatbelt/Landlock via [nono](https://github.com/always-further/nono) or the SDK sandbox), working directory scoping to the navigator directory, permission bypass for non-interactive use, and turn limits to prevent runaway execution. Each operation gets an appropriate sandbox profile — queries are read-only, updates get read+write. See the **[Security Model](security-model.md)** for the full 9-layer breakdown
 4. **Agent searches and reasons** — The agent runtime (Claude Code SDK by default) receives the engineered context and uses file tools to search the knowledge base for relevant information
 5. **Structured response** — The agent calls `submit_answer` with a typed response (answer, sources array, confidence level, out-of-domain flag). This structured output is validated against the schema
 6. **Post-validation** — Autonav checks for hallucination patterns, verifies cited source files exist, and validates the confidence level meets any threshold you set
