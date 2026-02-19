@@ -1,0 +1,99 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'core-v*'
+      - 'comm-layer-v*'
+      - 'pack-server-v*'
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Ensure npm supports trusted publishing
+        run: |
+          npm install -g npm@latest
+          echo "npm version: $(npm --version)"
+
+      - name: Parse tag
+        id: tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [[ "$TAG" =~ ^core-v(.+)$ ]]; then
+            echo "package=@autonav/core" >> "$GITHUB_OUTPUT"
+            echo "workspace=@autonav/core" >> "$GITHUB_OUTPUT"
+            echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+            echo "prefix=core" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" =~ ^comm-layer-v(.+)$ ]]; then
+            echo "package=@autonav/communication-layer" >> "$GITHUB_OUTPUT"
+            echo "workspace=@autonav/communication-layer" >> "$GITHUB_OUTPUT"
+            echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+            echo "prefix=comm-layer" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" =~ ^pack-server-v(.+)$ ]]; then
+            echo "package=@autonav/pack-server" >> "$GITHUB_OUTPUT"
+            echo "workspace=@autonav/pack-server" >> "$GITHUB_OUTPUT"
+            echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+            echo "prefix=pack-server" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Could not parse tag: $TAG"
+            exit 1
+          fi
+
+      - name: Validate version
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+          PACKAGE: ${{ steps.tag.outputs.package }}
+        run: |
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+            echo "::error::Invalid semver: $VERSION"
+            exit 1
+          fi
+          echo "Publishing $PACKAGE@$VERSION"
+
+      - name: Stamp version
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+          WORKSPACE: ${{ steps.tag.outputs.workspace }}
+        run: npm pkg set version="$VERSION" -w "$WORKSPACE"
+
+      - run: npm ci
+
+      - name: Build
+        run: |
+          npm run build -w @autonav/communication-layer
+          npm run build -w @autonav/core
+          npm run build -w @autonav/pack-server
+
+      - name: Test
+        run: npm test
+
+      - name: Publish
+        env:
+          WORKSPACE: ${{ steps.tag.outputs.workspace }}
+        run: npm publish --provenance --access public -w "$WORKSPACE"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "${{ steps.tag.outputs.package }}@${{ steps.tag.outputs.version }}"
+          generate_release_notes: true
+          prerelease: ${{ contains(steps.tag.outputs.version, '-') }}

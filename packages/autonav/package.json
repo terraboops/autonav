@@ -33,12 +33,12 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/terraboops/platform-ai.git",
+    "url": "git+https://github.com/terraboops/autonav.git",
     "directory": "packages/autonav"
   },
-  "homepage": "https://github.com/terraboops/platform-ai#readme",
+  "homepage": "https://github.com/terraboops/autonav#readme",
   "bugs": {
-    "url": "https://github.com/terraboops/platform-ai/issues"
+    "url": "https://github.com/terraboops/autonav/issues"
   },
   "files": [
     "dist",
