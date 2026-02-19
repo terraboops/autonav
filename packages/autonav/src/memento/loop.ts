@@ -639,7 +639,7 @@ ${truncatedDiff}
 /**
  * Review implementation changes (Phase 3 of the 4-phase iteration loop).
  *
- * Runs up to 5 review-fix cycles:
+ * Runs up to maxReviewRounds (default 10) review-fix cycles:
  *   1. Stage changes and get diff
  *   2. Ask opus to review (single-turn, no tools)
  *   3. If LGTM → done
@@ -655,7 +655,7 @@ async function reviewImplementation(
   verbose: boolean,
   harness: Harness
 ): Promise<{ lgtm: boolean; fixApplied: boolean }> {
-  const MAX_REVIEW_ROUNDS = 5;
+  const MAX_REVIEW_ROUNDS = options.maxReviewRounds ?? 10;
   let fixApplied = false;
 
   for (let round = 1; round <= MAX_REVIEW_ROUNDS; round++) {
