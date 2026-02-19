@@ -81,6 +81,7 @@ program
   .option("--verbose", "Show detailed logging")
   .option("--model <model>", "Model for implementer agent", "claude-haiku-4-5")
   .option("--nav-model <model>", "Model for navigator agent", "claude-opus-4-5")
+  .option("--harness <type>", "Agent runtime to use (claude-code|chibi|opencode)")
   .action(
     async (
       codeDirectory: string,

@@ -15,6 +15,8 @@ import {
 import { createPluginManager, PluginManager, PluginConfigFileSchema } from "../plugins/index.js";
 import { sanitizeError } from "../plugins/utils/security.js";
 import { createSelfConfigMcpServer, createResponseMcpServer, createCrossNavMcpServer, SUBMIT_ANSWER_TOOL } from "../tools/index.js";
+import { createRelatedNavsMcpServer } from "../tools/related-navs.js";
+import { createRelatedNavsConfigServer } from "../tools/related-navs-config.js";
 import { type Harness, ClaudeCodeHarness } from "../harness/index.js";
 
 /**
@@ -408,6 +410,24 @@ export class NavigatorAdapter {
     const crossNavMcp = createCrossNavMcpServer(this.harness);
     mcpServers["autonav-cross-nav"] = crossNavMcp.server;
 
+    // Add per-navigator tools for related navigators (ask_<name>)
+    if (navigator.config.relatedNavigators && navigator.config.relatedNavigators.length > 0) {
+      const relatedNavsMcp = createRelatedNavsMcpServer(
+        this.harness,
+        navigator.config.relatedNavigators
+      );
+      if (relatedNavsMcp) {
+        mcpServers["autonav-related-navs"] = relatedNavsMcp.server;
+      }
+    }
+
+    // Add self-config tools for managing related navigators
+    const relatedNavsConfigMcp = createRelatedNavsConfigServer(
+      navigator.navigatorPath,
+      this.harness
+    );
+    mcpServers["autonav-related-navs-config"] = relatedNavsConfigMcp.server;
+
     // Debug logging
     const debug = process.env.AUTONAV_DEBUG === "1";
     if (debug) {
@@ -535,11 +555,23 @@ export class NavigatorAdapter {
           confidence = !isNaN(n) ? scoreToConfidence(n) : "medium";
         }
 
+        // Normalize sources: some harnesses (e.g. OpenCode) pass sources
+        // as a JSON string rather than an array, since their tool APIs
+        // don't support complex types natively.
+        let sources = submitAnswerInput.sources;
+        if (typeof sources === "string") {
+          try {
+            sources = JSON.parse(sources);
+          } catch {
+            sources = [];
+          }
+        }
+
         // Use structured output from tool call (preferred)
         navigatorResponse = NavigatorResponseSchema.parse({
           query: question,
           answer: submitAnswerInput.answer,
-          sources: submitAnswerInput.sources,
+          sources,
           confidence,
           confidenceReason: submitAnswerInput.confidenceReason,
           outOfDomain: submitAnswerInput.outOfDomain,

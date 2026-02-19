@@ -4,6 +4,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { runConversationTUI, isInteractiveTerminal } from "../conversation/index.js";
 import { resolveAndCreateHarness } from "../harness/index.js";
+import { createRelatedNavsMcpServer } from "../tools/related-navs.js";
+import { createRelatedNavsConfigServer } from "../tools/related-navs-config.js";
+import { createCrossNavMcpServer } from "../tools/cross-nav.js";
 
 /**
  * autonav chat CLI command
@@ -124,7 +127,12 @@ export async function run(args: string[]): Promise<void> {
   }
 
   // Load config
-  let config: { name: string; knowledgeBasePath: string; instructionsPath?: string };
+  let config: {
+    name: string;
+    knowledgeBasePath: string;
+    instructionsPath?: string;
+    relatedNavigators?: Array<{ name: string; description?: string }>;
+  };
   try {
     const configContent = fs.readFileSync(configPath, "utf-8");
     config = JSON.parse(configContent);
@@ -172,15 +180,42 @@ export async function run(args: string[]): Promise<void> {
     // Resolve harness from CLI flag, env var, or default
     const harness = await resolveAndCreateHarness(options.harness);
 
+    // Build MCP servers for cross-navigator communication
+    const mcpServers: Record<string, unknown> = {};
+
+    // Generic cross-nav tool (query by path)
+    const crossNavMcp = createCrossNavMcpServer(harness);
+    mcpServers["autonav-cross-nav"] = crossNavMcp.server;
+
+    // Per-navigator tools (ask_<name>) from relatedNavigators config
+    if (config.relatedNavigators && config.relatedNavigators.length > 0) {
+      const relatedNavsMcp = createRelatedNavsMcpServer(
+        harness,
+        config.relatedNavigators
+      );
+      if (relatedNavsMcp) {
+        mcpServers["autonav-related-navs"] = relatedNavsMcp.server;
+      }
+    }
+
+    // Self-config tools for managing related navigators
+    const relatedNavsConfigMcp = createRelatedNavsConfigServer(
+      navigatorPath,
+      harness
+    );
+    mcpServers["autonav-related-navs-config"] = relatedNavsConfigMcp.server;
+
     await runConversationTUI({
       navigatorName: config.name,
       navigatorPath,
       navigatorSystemPrompt: systemPrompt,
       knowledgeBasePath,
       harness,
+      mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
     });
 
     console.log("\n👋 Conversation ended.\n");
+    process.exit(0);
   } catch (error) {
     if (error instanceof Error && error.message.includes("TTY")) {
       console.error(`❌ Error: ${error.message}`);
