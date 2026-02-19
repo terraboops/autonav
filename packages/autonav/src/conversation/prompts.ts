@@ -51,7 +51,7 @@ You can read and modify your own \`config.json\` to change your behavior. To upd
 Common self-configuration examples:
 - Add a related navigator: add an entry to \`relatedNavigators\`
 - Change sandbox settings: modify \`sandbox\` per-operation flags
-- Add tool access: add tool names to \`sandbox.allowedTools\` (e.g., \`["Bash"]\`)
+- Disable sandbox for an operation: set \`sandbox.<operation>.enabled\` to \`false\`
 - Update your description: change \`description\`
 - Add working directories: add paths to \`workingDirectories\``;
   }

@@ -115,11 +115,7 @@ export const NavigatorConfigSchema = z.object({
     chat: z.object({ enabled: z.boolean() }).default({ enabled: true }),
     memento: z.object({ enabled: z.boolean() }).default({ enabled: false }),
     standup: z.object({ enabled: z.boolean() }).default({ enabled: true }),
-    /** Tools this navigator always needs, merged into every operation's tool list.
-     *  e.g. ["Bash"] to ensure bash is available even in read-only operations,
-     *  or ["Bash(linear:*)"] for command-specific patterns. */
-    allowedTools: z.array(z.string()).optional().describe('Tools this navigator always needs'),
-  }).optional().describe('Per-operation sandbox profiles and navigator tool requirements'),
+  }).optional().describe('Per-operation sandbox profiles'),
 
   /**
    * Related navigators this navigator can query.

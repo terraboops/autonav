@@ -16,11 +16,11 @@ Callers set `AgentConfig.sandbox` without knowing which harness is active. The h
 
 | Field | ChibiHarness | ClaudeCodeHarness | OpenCodeHarness |
 |---|---|---|---|
-| `sandbox.readPaths` | [`nono`](https://github.com/always-further/nono) `--read <path>` | SDK restricts writes to `cwd` | Denies `edit` + `bash` permissions |
-| `sandbox.writePaths` | [`nono`](https://github.com/always-further/nono) `--allow <path>` | SDK restricts writes to `cwd` | Allows all permissions |
-| `sandbox.blockNetwork` | [`nono`](https://github.com/always-further/nono) `--net-block` | Not used | Not supported |
-| Mechanism | Landlock (Linux), Seatbelt (macOS) | Seatbelt (macOS), bubblewrap (Linux) | OpenCode permission system |
-| Fallback | Runs unsandboxed if nono not on PATH | SDK handles platform detection | All permissions allowed |
+| `sandbox.readPaths` | [`nono`](https://github.com/always-further/nono) `--read <path>` | Not used (sandbox disabled) | Denies `edit` + `bash` permissions |
+| `sandbox.writePaths` | [`nono`](https://github.com/always-further/nono) `--allow <path>` | Not used (sandbox disabled) | Allows all permissions |
+| `sandbox.blockNetwork` | [`nono`](https://github.com/always-further/nono) `--net-block` | Not used (sandbox disabled) | Not supported |
+| Mechanism | Landlock (Linux), Seatbelt (macOS) | Disabled (cwd/tool/permission layers only) | OpenCode permission system |
+| Fallback | Runs unsandboxed if nono not on PATH | N/A | All permissions allowed |
 
 > **Note**: The OpenCode harness translates sandbox config into OpenCode's permission system (`"allow"` / `"deny"` per tool). This is **application-level**, not kernel-enforced — a determined agent could potentially bypass it. Read-only sandbox profiles deny `edit` and `bash`; read-write profiles allow all permissions.
 
@@ -50,28 +50,6 @@ Override in `config.json`:
 }
 ```
 
-### Navigator-Level Allowed Tools
-
-Navigators can declare tools they always need via `sandbox.allowedTools`. The effect depends on the operation's restriction mechanism:
-
-- **Operations with `disallowedTools`** (query): Tools in `allowedTools` are removed from the disallowed list. For example, if query blocks `Write` but the navigator declares `"allowedTools": ["Write"]`, write access is restored for queries.
-- **Operations with `allowedTools`** (standup report/sync): Navigator tools are merged into the existing allowlist via `Set` — purely additive.
-- **Unrestricted operations** (update, chat, memento): `allowedTools` has no effect — all tools are already available.
-
-This lets a navigator declare "I need Bash access to run `linear`" without modifying framework code:
-
-```json
-{
-  "sandbox": {
-    "allowedTools": ["Bash"]
-  }
-}
-```
-
-The `allowedTools` array accepts tool names (e.g., `"Bash"`, `"Read"`, `"Write"`). It only affects operations that actively restrict tools — it never accidentally restricts an operation that was previously unrestricted.
-
-> **Source**: `packages/communication-layer/src/schemas/config.ts` (NavigatorConfigSchema), `src/adapter/navigator-adapter.ts` (query disallowedTools override), `src/standup/loop.ts` (report/sync allowedTools merge)
-
 ---
 
 ## Layer 1: Sandboxing
@@ -98,21 +76,13 @@ nono run --silent --allow-cwd --read /path/to/nav -- chibi-json ...
 
 > **Source**: `src/harness/sandbox.ts` (buildSandboxArgs, isSandboxEnabled, wrapCommand)
 
-### ClaudeCodeHarness — SDK Sandbox
+### ClaudeCodeHarness — SDK Sandbox (Disabled)
 
-When `AgentConfig.sandbox` is set, the harness passes sandbox settings to the SDK:
+The SDK sandbox is currently **disabled** (`sandbox: { enabled: false }`). The SDK's Seatbelt/bubblewrap sandbox blocks all network access by default and the `allowedDomains` mechanism can't be reliably wired up through the programmatic API yet. Navigators that need to call external APIs (Linear, GitHub, Slack, etc.) would be completely broken with the SDK sandbox enabled.
 
-```typescript
-options.sandbox = {
-  enabled: true,
-  autoAllowBashIfSandboxed: true,
-  allowUnsandboxedCommands: false,
-};
-```
+The ClaudeCodeHarness relies on the other layers (cwd scoping, tool restrictions, permission modes, turn/budget limits) for isolation.
 
-The SDK uses Seatbelt (macOS) or bubblewrap (Linux) to restrict writes to `cwd` and subdirectories by default.
-
-> **Source**: `src/harness/claude-code-harness.ts:130` (configToSdkOptions)
+> **Source**: `src/harness/claude-code-harness.ts` (configToSdkOptions)
 
 ### OpenCodeHarness — Permission System
 
@@ -143,20 +113,20 @@ Every agent session sets `cwd` to the navigator's directory. This is the most fu
 
 ---
 
-## Layer 3: Tool Allowlists
+## Layer 3: Tool Restrictions
 
-Operations restrict which tools the agent can use via `allowedTools` and `disallowedTools`:
+Operations restrict which tools the agent can use via `disallowedTools`:
 
-| Context | Mechanism | Tools | Rationale |
+| Context | Mechanism | Effect | Rationale |
 |---|---|---|---|
 | Query | `disallowedTools` | Blocks Write, Edit, NotebookEdit | Read-only — queries should never modify state |
 | Update | No restriction | All tools available | Read-write — sandbox provides file-level restriction |
 | Chat | No restriction | All tools available | Interactive — user is present to approve actions |
 | Memento | No restriction | All tools available | Full access — worker needs unrestricted code access |
-| Standup report | `allowedTools` | Read, Glob, Grep, Bash, MCP tools | Read-only — explicit allowlist for reporting |
-| Standup sync | `allowedTools` | Read, Write, Edit, Glob, Grep, Bash, MCP tools | Sync phase may update files |
+| Standup report | No restriction | All tools available | Report phase reads and summarizes |
+| Standup sync | No restriction | All tools available | Sync phase may update files |
 
-> **Source**: `src/adapter/navigator-adapter.ts` (query disallowedTools), `src/standup/loop.ts` (allowedTools arrays in report and sync configs)
+> **Source**: `src/adapter/navigator-adapter.ts` (query disallowedTools)
 
 ---
 
@@ -271,7 +241,7 @@ Additionally, root-level directories (path depth <= 2) are rejected to prevent w
 |---|---|---|---|
 | Sandboxing | Unauthorized file/network access | OS syscalls ([nono](https://github.com/always-further/nono), SDK) or app-level permissions (OpenCode) | Yes |
 | Working directory | Agent escaping its directory | `cwd` scoping | No |
-| Tool allowlists | Agents using dangerous tools | `allowedTools` / `disallowedTools` | No |
+| Tool restrictions | Agents using dangerous tools | `disallowedTools` | No |
 | Permission modes | Unauthorized interactive actions | `permissionMode` | No |
 | Turn/budget limits | Runaway execution and cost | `maxTurns`, `maxBudgetUsd` | No |
 | Cycle detection | Infinite nav-to-nav loops | Depth counter (max 3) | No |
@@ -288,4 +258,4 @@ Additionally, root-level directories (path depth <= 2) are rejected to prevent w
 - **`blockNetwork` is disabled for chibi.** The chibi subprocess makes its own API calls to OpenRouter, so blocking network would prevent it from functioning.
 - **Graceful fallback means no sandbox.** If [nono](https://github.com/always-further/nono) is not installed, ChibiHarness runs without kernel sandboxing. The other layers still apply.
 - **OpenCode sandbox is application-level only.** The OpenCode harness uses permission flags (`edit: "deny"`, `bash: "deny"`) rather than kernel enforcement. This prevents casual misuse but is not as strong as Landlock/Seatbelt.
-- **SDK sandbox field is forward-looking.** The Claude Code Agent SDK's `Options` type does not yet expose a `sandbox` field in its public types. The settings are passed through as `Record<string, unknown>` — they take effect when the SDK adds support.
+- **SDK sandbox is disabled.** The SDK's Seatbelt/bubblewrap sandbox blocks all network access by default and `allowedDomains` can't be reliably wired through the programmatic API. Re-enabling requires investigation into loading `.claude/settings.json` via `settingSources`.

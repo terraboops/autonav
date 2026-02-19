@@ -62,9 +62,6 @@ export interface AgentConfig {
   /** Maximum budget in USD */
   maxBudgetUsd?: number;
 
-  /** Tools the agent is allowed to use */
-  allowedTools?: string[];
-
   /** Tools the agent is disallowed from using */
   disallowedTools?: string[];
 

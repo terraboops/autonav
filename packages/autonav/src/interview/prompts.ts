@@ -30,7 +30,7 @@ Guide the user through understanding their needs so you can create a well-config
 4. **Knowledge Sources**: What documentation will be added? How should new knowledge be captured over time?
 5. **Audience**: Who will use this? How should it communicate? (formal, casual, technical depth)
 6. **Autonomy**: How autonomous should it be? Should it create/modify files freely, or ask first?
-7. **Tools & CLI integrations**: Does the navigator need access to any CLI tools? (e.g., linear, gh, kubectl, npm). If so, the navigator will be configured with sandbox tool overrides so it can use them.
+7. **Tools & CLI integrations**: Does the navigator need access to any CLI tools? (e.g., linear, gh, kubectl, npm).
 
 ## Philosophy
 Navs are "self-organizing notebooks that talk back" - they edit their own knowledge files, learn from conversations, and maintain their own context. Help the user think through how they want this self-organization to work.
@@ -68,14 +68,11 @@ The JSON must include:
   "audience": "Who uses this navigator and how it should communicate",
   "autonomy": "Autonomy level - can it create files freely or should it ask first",
   "claudeMd": "The complete CLAUDE.md content as a string with proper newlines (\\n)",
-  "suggestedDirectories": ["optional", "array", "of", "subdirectories"],
-  "sandboxAllowedTools": ["optional", "array", "of", "tool", "names", "like", "Bash"]
+  "suggestedDirectories": ["optional", "array", "of", "subdirectories"]
 }
 \`\`\`
 
 **IMPORTANT**: After outputting the JSON block, your job is complete. Do NOT add any commentary, instructions, or ask for further confirmation. The system will automatically use this configuration to create the navigator.
-
-The sandboxAllowedTools field should list tool names (like "Bash") that the navigator needs for CLI integrations mentioned during the interview. By default, queries are read-only and block write/edit tools. If the user mentions needing CLI tools, include "Bash" in sandboxAllowedTools. Only include this field if the user mentions specific tool needs.
 
 ## Navigator config.json Schema Reference
 
@@ -188,8 +185,6 @@ export interface NavigatorConfig {
   autonomy?: string;
   claudeMd: string;
   suggestedDirectories?: string[];
-  /** Tool names the navigator needs (e.g., ["Bash"] for CLI integrations) */
-  sandboxAllowedTools?: string[];
 }
 
 /**
