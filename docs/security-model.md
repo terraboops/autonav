@@ -52,7 +52,13 @@ Override in `config.json`:
 
 ### Navigator-Level Allowed Tools
 
-Navigators can declare tools they always need via `sandbox.allowedTools`. These are merged into every operation's tool list — including operations that normally restrict tools (like standup report). This lets a navigator declare "I need bash access to run `linear`" without modifying framework code.
+Navigators can declare tools they always need via `sandbox.allowedTools`. The effect depends on the operation's restriction mechanism:
+
+- **Operations with `disallowedTools`** (query): Tools in `allowedTools` are removed from the disallowed list. For example, if query blocks `Write` but the navigator declares `"allowedTools": ["Write"]`, write access is restored for queries.
+- **Operations with `allowedTools`** (standup report/sync): Navigator tools are merged into the existing allowlist via `Set` — purely additive.
+- **Unrestricted operations** (update, chat, memento): `allowedTools` has no effect — all tools are already available.
+
+This lets a navigator declare "I need Bash access to run `linear`" without modifying framework code:
 
 ```json
 {
@@ -62,9 +68,9 @@ Navigators can declare tools they always need via `sandbox.allowedTools`. These 
 }
 ```
 
-The `allowedTools` array accepts tool names (e.g., `"Bash"`, `"Read"`, `"Write"`) and is passed to every agent session the navigator spawns: query, update, chat, standup, and memento (both navigator and worker agents).
+The `allowedTools` array accepts tool names (e.g., `"Bash"`, `"Read"`, `"Write"`). It only affects operations that actively restrict tools — it never accidentally restricts an operation that was previously unrestricted.
 
-> **Source**: `packages/communication-layer/src/schemas/config.ts` (NavigatorConfigSchema), `src/adapter/navigator-adapter.ts` (query/update), `src/standup/loop.ts` (report/sync), `src/conversation/App.tsx` (chat), `src/memento/loop.ts` (memento)
+> **Source**: `packages/communication-layer/src/schemas/config.ts` (NavigatorConfigSchema), `src/adapter/navigator-adapter.ts` (query disallowedTools override), `src/standup/loop.ts` (report/sync allowedTools merge)
 
 ---
 
@@ -141,14 +147,16 @@ Every agent session sets `cwd` to the navigator's directory. This is the most fu
 
 Operations restrict which tools the agent can use via `allowedTools` and `disallowedTools`:
 
-| Context | Allowed Tools | Rationale |
-|---|---|---|
-| Standup report | Read, Grep, Glob, WebFetch, WebSearch, MCP tools | Read-only — reporting doesn't modify |
-| Standup sync | Read, Grep, Glob, Write, Edit, Bash, MCP tools | Sync phase may update files |
-| Query | Default (all tools available) | Sandbox provides file-level restriction |
-| Update | Default (all tools available) | Sandbox provides file-level restriction |
+| Context | Mechanism | Tools | Rationale |
+|---|---|---|---|
+| Query | `disallowedTools` | Blocks Write, Edit, NotebookEdit | Read-only — queries should never modify state |
+| Update | No restriction | All tools available | Read-write — sandbox provides file-level restriction |
+| Chat | No restriction | All tools available | Interactive — user is present to approve actions |
+| Memento | No restriction | All tools available | Full access — worker needs unrestricted code access |
+| Standup report | `allowedTools` | Read, Glob, Grep, Bash, MCP tools | Read-only — explicit allowlist for reporting |
+| Standup sync | `allowedTools` | Read, Write, Edit, Glob, Grep, Bash, MCP tools | Sync phase may update files |
 
-> **Source**: `src/standup/loop.ts` (allowedTools arrays in report and sync configs)
+> **Source**: `src/adapter/navigator-adapter.ts` (query disallowedTools), `src/standup/loop.ts` (allowedTools arrays in report and sync configs)
 
 ---
 

@@ -132,7 +132,7 @@ async function main() {
     knowledgeBasePath: string;
     instructionsPath?: string;
     relatedNavigators?: Array<{ name: string; description?: string }>;
-    sandbox?: { chat?: { enabled: boolean }; allowedTools?: string[] };
+    sandbox?: { chat?: { enabled: boolean } };
   };
   try {
     const configContent = fs.readFileSync(configPath, "utf-8");
@@ -208,7 +208,6 @@ async function main() {
 
     // Per-nav sandbox: chat defaults to enabled unless explicitly disabled
     const chatSandboxEnabled = config.sandbox?.chat?.enabled !== false;
-    const navAllowedTools = Array.isArray(config.sandbox?.allowedTools) ? config.sandbox.allowedTools : undefined;
 
     await runConversationTUI({
       navigatorName: config.name,
@@ -218,7 +217,6 @@ async function main() {
       harness,
       mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
       sandboxEnabled: chatSandboxEnabled,
-      navAllowedTools,
     });
 
     console.log("\n👋 Conversation ended.\n");
