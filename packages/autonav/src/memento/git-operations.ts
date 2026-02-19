@@ -318,3 +318,112 @@ export function getRemoteUrl(options: GitOptions): string | null {
     return null;
   }
 }
+
+/**
+ * Detect the default branch (main or master).
+ *
+ * Tries `git symbolic-ref refs/remotes/origin/HEAD` first, then falls back
+ * to checking if `main` or `master` exist locally.
+ */
+export function getDefaultBranch(options: GitOptions): string {
+  // Try remote HEAD symbolic ref
+  try {
+    const ref = execGit("git symbolic-ref refs/remotes/origin/HEAD", { ...options, verbose: false });
+    // ref looks like "refs/remotes/origin/main"
+    const branch = ref.split("/").pop();
+    if (branch) return branch;
+  } catch {
+    // No remote HEAD — fall through to local check
+  }
+
+  // Check if main exists locally
+  try {
+    execGit("git rev-parse --verify main", { ...options, verbose: false });
+    return "main";
+  } catch {
+    // fall through
+  }
+
+  // Check if master exists locally
+  try {
+    execGit("git rev-parse --verify master", { ...options, verbose: false });
+    return "master";
+  } catch {
+    // fall through
+  }
+
+  // Default to main
+  return "main";
+}
+
+/**
+ * Create a git worktree checked out on a new branch forked from baseBranch.
+ *
+ * Runs: `git worktree add -b <branch> <worktreePath> <baseBranch>` from repoDir.
+ */
+export function createWorktree(
+  repoDir: string,
+  worktreePath: string,
+  branch: string,
+  baseBranch?: string
+): void {
+  const base = baseBranch || getDefaultBranch({ cwd: repoDir });
+  execGit(
+    `git worktree add -b ${branch} "${worktreePath}" ${base}`,
+    { cwd: repoDir }
+  );
+}
+
+/**
+ * Remove a git worktree and clean up.
+ */
+export function removeWorktree(repoDir: string, worktreePath: string): void {
+  try {
+    execGit(`git worktree remove "${worktreePath}" --force`, { cwd: repoDir });
+  } catch {
+    // If git worktree remove fails, try manual cleanup
+  }
+
+  // Clean up directory if it lingers
+  try {
+    const fs = require("node:fs");
+    if (fs.existsSync(worktreePath)) {
+      fs.rmSync(worktreePath, { recursive: true, force: true });
+    }
+  } catch {
+    // Best effort cleanup
+  }
+}
+
+/**
+ * Convert a plan summary into a git branch name.
+ *
+ * "feat: Add user authentication" → "feat/add-user-authentication"
+ * Lowercase, replace spaces/special chars with hyphens, truncate to ~50 chars.
+ */
+export function slugifyBranchName(summary: string): string {
+  return summary
+    .toLowerCase()
+    .replace(/:\s*/g, "/")         // "feat: ..." → "feat/..."
+    .replace(/[^a-z0-9/]+/g, "-")  // non-alphanumeric → hyphens
+    .replace(/-+/g, "-")           // collapse multiple hyphens
+    .replace(/^-|-$/g, "")         // trim leading/trailing hyphens
+    .replace(/\/-|-\//g, "/")      // clean hyphens around slashes
+    .substring(0, 50)
+    .replace(/-$/, "");            // trim trailing hyphen after truncation
+}
+
+/**
+ * Get list of uncommitted files with their status indicators.
+ *
+ * Returns lines like: "M  src/foo.ts", "?? new-file.ts", "A  added.ts"
+ */
+export function getUncommittedFiles(options: GitOptions): string[] {
+  try {
+    const output = execGit("git status --porcelain", { ...options, verbose: false });
+    if (!output) return [];
+    return output.split("\n").filter(Boolean);
+  } catch {
+    return [];
+  }
+}
