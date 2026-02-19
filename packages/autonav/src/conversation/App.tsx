@@ -207,6 +207,8 @@ interface ConversationAppProps {
   mcpServers?: Record<string, unknown>;
   /** Whether sandbox is enabled for chat (default: true) */
   sandboxEnabled?: boolean;
+  /** Raw config.json content for config-aware prompts */
+  configJson?: string;
 }
 
 export function ConversationApp({
@@ -217,6 +219,7 @@ export function ConversationApp({
   harness,
   mcpServers,
   sandboxEnabled = true,
+  configJson,
 }: ConversationAppProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -237,7 +240,8 @@ export function ConversationApp({
   const systemPrompt = buildConversationSystemPrompt(
     navigatorName,
     navigatorSystemPrompt,
-    knowledgeBasePath
+    knowledgeBasePath,
+    configJson
   );
 
   // Process events from harness session

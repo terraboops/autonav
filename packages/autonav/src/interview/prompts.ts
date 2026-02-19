@@ -3,6 +3,7 @@
  */
 
 import type { AnalysisResult } from "../repo-analyzer/index.js";
+import { describeConfigSchema } from "@autonav/communication-layer";
 
 /**
  * Context for pack-based interviews
@@ -75,6 +76,14 @@ The JSON must include:
 **IMPORTANT**: After outputting the JSON block, your job is complete. Do NOT add any commentary, instructions, or ask for further confirmation. The system will automatically use this configuration to create the navigator.
 
 The sandboxAllowedTools field should list tool names (like "Bash") that the navigator needs for CLI integrations mentioned during the interview. By default, queries are read-only and block write/edit tools. If the user mentions needing CLI tools, include "Bash" in sandboxAllowedTools. Only include this field if the user mentions specific tool needs.
+
+## Navigator config.json Schema Reference
+
+The navigator's config.json supports the following fields. Use this to understand what configuration options are available when creating the navigator:
+
+${describeConfigSchema()}
+
+Note: The interview JSON output (purpose, scope, claudeMd, etc.) is a simplified interview format. The system uses it to generate the full config.json above. You don't need to output every config.json field — just the interview fields listed above. But understanding the full schema helps you ask better questions about sandbox settings, related navigators, working directories, etc.
 
 The claudeMd field should be a complete, personalized CLAUDE.md file based on what you learned, including:
 - Clear purpose statement

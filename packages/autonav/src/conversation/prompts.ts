@@ -2,6 +2,17 @@
  * Conversation prompts for interactive nav management
  */
 
+import { describeConfigSchema } from "@autonav/communication-layer";
+
+// Cache the schema description (it's derived from a static Zod schema)
+let _cachedSchemaDescription: string | undefined;
+function getSchemaDescription(): string {
+  if (!_cachedSchemaDescription) {
+    _cachedSchemaDescription = describeConfigSchema();
+  }
+  return _cachedSchemaDescription;
+}
+
 /**
  * Build a system prompt for conversation mode
  * Incorporates the navigator's own CLAUDE.md plus conversation-specific guidance
@@ -9,8 +20,42 @@
 export function buildConversationSystemPrompt(
   navigatorName: string,
   navigatorSystemPrompt: string,
-  knowledgeBasePath: string
+  knowledgeBasePath: string,
+  configJson?: string
 ): string {
+  let configSection = "";
+
+  if (configJson) {
+    configSection = `
+
+### Your Configuration (config.json)
+
+Your current configuration:
+
+\`\`\`json
+${configJson}
+\`\`\`
+
+#### config.json Schema
+
+${getSchemaDescription()}
+
+#### How to Update Your Configuration
+
+You can read and modify your own \`config.json\` to change your behavior. To update:
+
+1. Read \`config.json\` from your navigator root
+2. Parse the JSON, modify the desired fields
+3. Write the updated JSON back to \`config.json\`
+
+Common self-configuration examples:
+- Add a related navigator: add an entry to \`relatedNavigators\`
+- Change sandbox settings: modify \`sandbox\` per-operation flags
+- Add tool access: add tool names to \`sandbox.allowedTools\` (e.g., \`["Bash"]\`)
+- Update your description: change \`description\`
+- Add working directories: add paths to \`workingDirectories\``;
+  }
+
   return `${navigatorSystemPrompt}
 
 ---
@@ -31,6 +76,7 @@ You are now in **conversation mode** with the user. This is an interactive sessi
 
 - **Name**: ${navigatorName}
 - **Knowledge Base**: ${knowledgeBasePath}
+${configSection}
 
 ### Guidelines
 

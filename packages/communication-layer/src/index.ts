@@ -62,6 +62,11 @@ export {
   createNavigatorConfig,
 } from './schemas/config.js';
 
+// Schemas - Config Description
+export {
+  describeConfigSchema,
+} from './schemas/config-describe.js';
+
 // Schemas - Plugin Config
 export {
   PluginConfigSchema,
