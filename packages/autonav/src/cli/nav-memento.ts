@@ -31,6 +31,7 @@ import { resolveAndCreateHarness } from "../harness/index.js";
 interface MementoCommandOptions {
   pr?: boolean;
   maxIterations?: string;
+  maxReviewRounds?: string;
   promise?: string;
   branch?: string;
   task?: string;
@@ -78,6 +79,7 @@ program
   )
   .option("--branch <name>", "Git branch name for work")
   .option("--task <text>", "Task description (reads TASK.md if not provided)")
+  .option("--max-review-rounds <n>", "Maximum review-fix rounds per iteration (default: 10)", "10")
   .option("--verbose", "Show detailed logging")
   .option("--model <model>", "Model for implementer agent", "claude-haiku-4-5")
   .option("--nav-model <model>", "Model for navigator agent", "claude-opus-4-5")
@@ -184,6 +186,7 @@ async function executeMemento(
       verbose,
       model: options.model,
       navModel: options.navModel,
+      maxReviewRounds: parseInt(options.maxReviewRounds || "10", 10),
     }, harness);
 
     // Display results

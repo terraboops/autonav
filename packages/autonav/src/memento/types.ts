@@ -75,6 +75,9 @@ export interface MementoOptions {
 
   /** Show detailed logging */
   verbose?: boolean;
+
+  /** Maximum review-fix rounds per iteration (default: 10) */
+  maxReviewRounds?: number;
 }
 
 /**
