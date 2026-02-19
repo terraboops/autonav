@@ -22,6 +22,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as os from "node:os";
 import { runMementoLoop } from "../memento/index.js";
 import { resolveAndCreateHarness } from "../harness/index.js";
 
@@ -162,6 +163,8 @@ async function executeMemento(
   console.log(`${chalk.blue("Code:")} ${resolvedCodeDir}`);
   console.log(`${chalk.blue("Navigator:")} ${resolvedNavDir}`);
   console.log(`${chalk.blue("Task:")} ${task.substring(0, 80)}${task.length > 80 ? "..." : ""}`);
+  const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
+  console.log(`${chalk.blue("Claude config:")} ${claudeConfigDir}`);
   if (options.branch) {
     console.log(`${chalk.blue("Branch:")} ${options.branch}`);
   }

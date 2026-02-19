@@ -19,18 +19,23 @@ import { loadNavigator } from "../query-engine/index.js";
 import chalk from "chalk";
 import {
   ensureGitRepo,
-  createBranch,
   getCurrentBranch,
   getRecentGitLog,
   getRecentDiff,
   getLastCommitDiffStats,
   hasUncommittedChanges,
+  getUncommittedFiles,
   stageAllChanges,
   commitChanges,
   pushBranch,
   createPullRequest,
   isGhAvailable,
+  getDefaultBranch,
+  createWorktree,
+  removeWorktree,
+  slugifyBranchName,
 } from "./git-operations.js";
+import { resolveConfigDir } from "../standup/config.js";
 import { createNavProtocolTools } from "./nav-protocol.js";
 import {
   buildNavPlanPrompt,
@@ -39,6 +44,7 @@ import {
   buildFixPrompt,
   buildFixSystemPrompt,
   type NavigatorIdentity,
+  type ReviewRound,
 } from "./prompts.js";
 import { MatrixAnimation } from "./matrix-animation.js";
 import {
@@ -260,6 +266,34 @@ function pickMood(
   if (isWriteTool(toolName)) return randomFrom(IMPL_WRITING);
   if (isReadTool(toolName)) return randomFrom(IMPL_READING);
   return randomFrom(IMPL_READING);
+}
+
+// ── Verbose tool formatting ──────────────────────────────────────────────────
+
+/**
+ * Format a tool_use event for verbose logging.
+ *
+ * Shows contextual details: Bash commands, file paths, search patterns.
+ */
+function formatToolEvent(
+  prefix: string,
+  toolName: string,
+  input: Record<string, unknown>
+): string {
+  switch (toolName) {
+    case "Bash":
+      return `[${prefix}] Bash: ${(input.command as string) || ""}`;
+    case "Read":
+    case "Write":
+    case "Edit":
+      return `[${prefix}] ${toolName}: ${(input.file_path as string) || ""}`;
+    case "Glob":
+      return `[${prefix}] Glob: ${(input.pattern as string) || ""}`;
+    case "Grep":
+      return `[${prefix}] Grep: ${(input.pattern as string) || ""}`;
+    default:
+      return `[${prefix}] Tool: ${toolName}`;
+  }
 }
 
 // ── Rate limit retry wrapper ────────────────────────────────────────────────
@@ -657,6 +691,7 @@ async function reviewImplementation(
 ): Promise<{ lgtm: boolean; fixApplied: boolean }> {
   const MAX_REVIEW_ROUNDS = options.maxReviewRounds ?? 10;
   let fixApplied = false;
+  const reviewHistory: ReviewRound[] = [];
 
   for (let round = 1; round <= MAX_REVIEW_ROUNDS; round++) {
     // Stage and get diff
@@ -678,6 +713,7 @@ async function reviewImplementation(
     }
 
     // Ask opus to review the diff (single-turn, no tools)
+    // Pass review history for anti-oscillation on round 2+
     let reviewResult = "";
     try {
       const reviewSession = harness.run(
@@ -688,8 +724,8 @@ async function reviewImplementation(
             "You are a code reviewer. Be concise and actionable. Never use tools — respond directly.",
           cwd: navDirectory,
           permissionMode: "bypassPermissions",
-          },
-        buildReviewPrompt(diff)
+        },
+        buildReviewPrompt(diff, reviewHistory.length > 0 ? reviewHistory : undefined)
       );
 
       for await (const event of reviewSession) {
@@ -714,6 +750,14 @@ async function reviewImplementation(
       }
       return { lgtm: true, fixApplied };
     }
+
+    // Record this round's issues in history (fixApplied will be set after fix)
+    const historyEntry: ReviewRound = {
+      round,
+      issues: reviewResult.trim(),
+      fixApplied: "",
+    };
+    reviewHistory.push(historyEntry);
 
     // Show issues found
     const bulletLines = reviewResult
@@ -751,6 +795,8 @@ async function reviewImplementation(
     }
 
     // Ask haiku to fix the issues
+    // Pass review history so fixer knows what was already addressed
+    let fixerText = "";
     try {
       const fixSession = harness.run(
         {
@@ -760,20 +806,26 @@ async function reviewImplementation(
           cwd: codeDirectory,
           permissionMode: "bypassPermissions",
         },
-        buildFixPrompt(codeDirectory, reviewResult)
+        buildFixPrompt(codeDirectory, reviewResult, reviewHistory.length > 1 ? reviewHistory.slice(0, -1) : undefined)
       );
 
       for await (const event of fixSession) {
         if (event.type === "tool_use") {
           if (verbose) {
-            console.log(`[Fix] Tool: ${event.name}`);
+            console.log(formatToolEvent("Fix", event.name, event.input));
           }
           animation.setLastTool(event.name);
           animation.incrementTurns();
+        } else if (event.type === "text") {
+          fixerText += event.text;
         }
       }
 
       fixApplied = true;
+
+      // Capture fixer summary for history (first ~200 chars of final text)
+      const fixSummary = fixerText.trim().substring(0, 200) || "fixes applied";
+      historyEntry.fixApplied = fixSummary;
     } catch (err) {
       if (verbose) {
         console.log(
@@ -820,6 +872,24 @@ async function handleUncommittedChanges(
   console.log(chalk.dim("The memento loop uses git history as context for the navigator."));
   console.log(chalk.dim("Uncommitted changes won't be visible.\n"));
 
+  // Show affected files with status indicators
+  const uncommittedFiles = getUncommittedFiles({ cwd: codeDirectory });
+  if (uncommittedFiles.length > 0) {
+    console.log(chalk.dim("  Affected files:"));
+    for (const file of uncommittedFiles) {
+      const status = file.substring(0, 2);
+      const filePath = file.substring(3);
+      const statusColor =
+        status.includes("M") ? chalk.yellow :
+        status.includes("A") ? chalk.green :
+        status.includes("D") ? chalk.red :
+        status.includes("?") ? chalk.blue :
+        chalk.dim;
+      console.log(`    ${statusColor(status)} ${filePath}`);
+    }
+    console.log("");
+  }
+
   // Show brief diff summary
   const diff = getRecentDiff({ cwd: codeDirectory });
   if (diff) {
@@ -830,12 +900,27 @@ async function handleUncommittedChanges(
     console.log("");
   }
 
-  console.log("  [c] Commit (auto-generate message)");
-  console.log(`  [r] Ask ${navName} to review, fix issues, then commit`);
-  console.log("  [d] Discard changes");
-  console.log("  [q] Quit\n");
+  // Prompt loop — [v] returns to the menu after showing diff
+  let answer = "";
+  while (true) {
+    console.log("  [c] Commit (auto-generate message)");
+    console.log(`  [r] Ask ${navName} to review, fix issues, then commit`);
+    console.log("  [v] View diff");
+    console.log("  [d] Discard changes");
+    console.log("  [q] Quit\n");
 
-  const answer = await promptUser("Choice [c/r/d/q]: ");
+    answer = await promptUser("Choice [c/r/v/d/q]: ");
+
+    if (answer === "v" || answer === "view") {
+      if (diff) {
+        console.log("\n" + diff + "\n");
+      } else {
+        console.log(chalk.dim("\n  (no diff available)\n"));
+      }
+      continue;
+    }
+    break;
+  }
 
   switch (answer) {
     case "c":
@@ -985,7 +1070,7 @@ async function queryNavForPlanWithStats(
         mood.lastError = false;
 
         if (verbose) {
-          console.log(`[Nav] Tool: ${toolName}`);
+          console.log(formatToolEvent("Nav", toolName, event.input));
         }
 
         animation.setMessage(pickMood("nav", toolName, event.input, mood));
@@ -1134,7 +1219,7 @@ async function runImplementerAgentWithStats(
           mood.lastError = false;
 
           if (verbose) {
-            console.log(`[Implementer] Tool: ${toolName}`);
+            console.log(formatToolEvent("Implementer", toolName, event.input));
           }
 
           animation.setMessage(pickMood("impl", toolName, event.input, mood));
@@ -1362,10 +1447,17 @@ export async function runMementoLoop(
   // Check for uncommitted changes - navigator can't see them!
   await handleUncommittedChanges(codeDirectory, navDirectory, navSystemPrompt, navIdentity, options, harness);
 
-  // Create or switch to branch if specified
-  if (options.branch) {
-    createBranch(options.branch, { cwd: codeDirectory, verbose });
-  }
+  // Detect default branch once and compute worktree base path
+  const defaultBranch = getDefaultBranch({ cwd: codeDirectory });
+  const worktreesBase = path.join(resolveConfigDir(), "worktrees");
+
+  // Track the effective branch and worktree for this run
+  let activeBranch: string | undefined = options.branch;
+  let worktreePath: string | null = null;
+
+  // The working directory for the implementer — starts as codeDirectory,
+  // switches to worktree once created after the first plan
+  let workDir = codeDirectory;
 
   const errors: string[] = [];
 
@@ -1382,8 +1474,8 @@ export async function runMementoLoop(
         console.log(`\nIteration ${state.iteration}...`);
       }
 
-      // Get git log to show the navigator what the implementer has accomplished
-      const gitLog = getRecentGitLog({ cwd: codeDirectory, count: 20 });
+      // Get git log from the working directory (worktree after iteration 1)
+      const gitLog = getRecentGitLog({ cwd: workDir, count: 20 });
 
       // Create animation with cumulative stats
       const animation = new MatrixAnimation({
@@ -1418,13 +1510,14 @@ export async function runMementoLoop(
 
       try {
         // Query navigator for plan (with rate limit retry)
+        // Navigator always reads from workDir (worktree once created)
         let navResult: Awaited<ReturnType<typeof queryNavForPlanWithStats>> | null = null;
         let navRateLimitAttempt = 0;
 
         while (navResult === null) {
           try {
             navResult = await queryNavForPlanWithStats(
-              codeDirectory,
+              workDir,
               navDirectory,
               task,
               state.iteration,
@@ -1463,6 +1556,30 @@ export async function runMementoLoop(
         // Record plan in memory (for PR body)
         state.planHistory.push({ iteration: state.iteration, summary: plan.summary });
 
+        // Create worktree after first plan returns
+        if (state.iteration === 1 && !worktreePath) {
+          const branchName = activeBranch || slugifyBranchName(plan.summary);
+          activeBranch = branchName;
+          worktreePath = path.join(worktreesBase, branchName);
+
+          // Ensure worktrees base directory exists
+          fs.mkdirSync(worktreesBase, { recursive: true });
+
+          if (verbose) {
+            console.log(`[Memento] Creating worktree: ${worktreePath}`);
+            console.log(`[Memento] Branch: ${branchName} (from ${defaultBranch})`);
+          }
+
+          createWorktree(codeDirectory, worktreePath, branchName, defaultBranch);
+          workDir = worktreePath;
+
+          if (!verbose) {
+            animation.stop();
+            console.log(chalk.dim(`  └─ Branch: ${branchName}`));
+            animation.start();
+          }
+        }
+
         // Show what the implementer will be working on (truncate to ~60 chars)
         const shortSummary = plan.summary.length > 60
           ? plan.summary.substring(0, 57) + "..."
@@ -1487,10 +1604,10 @@ export async function runMementoLoop(
         animation.setTokens(0);
         animation.resetTurns();
 
-        // Run implementer to implement the plan
+        // Run implementer to implement the plan (in worktree)
         // Rate limit retries are handled internally by runImplementerAgentWithStats
         const implementerResult = await runImplementerAgentWithStats(
-          { codeDirectory, task },
+          { codeDirectory: workDir, task },
           plan,
           {
             verbose,
@@ -1520,23 +1637,23 @@ export async function runMementoLoop(
           errors.push(`Iteration ${state.iteration}: Implementer failed - ${truncated}`);
           // Continue to next iteration - navigator can see the state and adjust
         }
-        // Phase 3: Review
+        // Phase 3: Review (in worktree)
         // Animation is still running — reviewImplementation manages stop/start internally
-        await reviewImplementation(codeDirectory, navDirectory, options, animation, verbose, harness);
+        await reviewImplementation(workDir, navDirectory, options, animation, verbose, harness);
       } finally {
         if (!verbose) {
           animation.stop();
         }
       }
 
-      // Phase 4: Commit with LLM-generated message
-      stageAllChanges({ cwd: codeDirectory });
-      const commitMessage = await generateCommitMessage(codeDirectory, harness);
-      const commitHash = commitChanges(commitMessage, { cwd: codeDirectory, verbose });
+      // Phase 4: Commit with LLM-generated message (in worktree)
+      stageAllChanges({ cwd: workDir });
+      const commitMessage = await generateCommitMessage(workDir, harness);
+      const commitHash = commitChanges(commitMessage, { cwd: workDir, verbose });
 
       // Get diff stats from the commit
       if (commitHash) {
-        const diffStats = getLastCommitDiffStats({ cwd: codeDirectory });
+        const diffStats = getLastCommitDiffStats({ cwd: workDir });
         state.stats.linesAdded += diffStats.linesAdded;
         state.stats.linesRemoved += diffStats.linesRemoved;
       }
@@ -1565,7 +1682,7 @@ export async function runMementoLoop(
     // Handle PR creation if requested
     let prUrl: string | undefined;
 
-    if (pr && options.branch) {
+    if (pr && activeBranch) {
       if (!isGhAvailable()) {
         console.warn(
           "\nWarning: gh CLI not available. Cannot create PR. Install and authenticate gh CLI."
@@ -1573,9 +1690,9 @@ export async function runMementoLoop(
       } else {
         console.log("\nCreating pull request...");
 
-        // Push branch
-        pushBranch(options.branch, {
-          cwd: codeDirectory,
+        // Push branch (from worktree where commits live)
+        pushBranch(activeBranch, {
+          cwd: workDir,
           verbose,
           setUpstream: true,
         });
@@ -1593,7 +1710,7 @@ ${state.planHistory.map((h) => `- **${h.iteration}**: ${h.summary}`).join("\n")}
 *Created by autonav memento loop*`;
 
         prUrl = createPullRequest({
-          cwd: codeDirectory,
+          cwd: workDir,
           verbose,
           title: task.length > 70 ? `${task.substring(0, 67)}...` : task,
           body: prBody,
@@ -1610,7 +1727,7 @@ ${state.planHistory.map((h) => `- **${h.iteration}**: ${h.summary}`).join("\n")}
       iterations: state.iteration,
       completionMessage: state.completionMessage,
       prUrl,
-      branch: options.branch || getCurrentBranch({ cwd: codeDirectory }),
+      branch: activeBranch || getCurrentBranch({ cwd: workDir }),
       durationMs,
       errors: errors.length > 0 ? errors : undefined,
     };
@@ -1622,9 +1739,27 @@ ${state.planHistory.map((h) => `- **${h.iteration}**: ${h.summary}`).join("\n")}
     return {
       success: false,
       iterations: state.iteration,
-      branch: options.branch || getCurrentBranch({ cwd: codeDirectory }),
+      branch: activeBranch || getCurrentBranch({ cwd: workDir }),
       durationMs,
       errors,
     };
+  } finally {
+    // Clean up worktree on exit
+    if (worktreePath) {
+      if (verbose) {
+        console.log(`[Memento] Cleaning up worktree: ${worktreePath}`);
+      }
+      try {
+        removeWorktree(codeDirectory, worktreePath);
+      } catch (err) {
+        if (verbose) {
+          console.log(
+            chalk.yellow(
+              `[Memento] Worktree cleanup failed: ${err instanceof Error ? err.message : err}`
+            )
+          );
+        }
+      }
+    }
   }
 }

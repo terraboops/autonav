@@ -19,6 +19,15 @@ import type { ImplementationPlan } from "./types.js";
 export type { NavigatorIdentity };
 
 /**
+ * A single round of review history for anti-oscillation context.
+ */
+export interface ReviewRound {
+  round: number;
+  issues: string;      // The reviewer's feedback text
+  fixApplied: string;  // Brief summary of what was fixed (captured from fixer output)
+}
+
+/**
  * Minimal context passed to nav prompt (no persisted state)
  */
 interface NavPromptContext {
@@ -186,12 +195,35 @@ All file paths are relative to: ${codeDirectory}
 /**
  * Build the prompt for the reviewer (navigator/opus) to review a diff.
  * Single-turn, no tools — just read the diff and respond.
+ *
+ * When reviewHistory is provided, previous rounds are included to prevent
+ * oscillation (reviewer contradicting its own earlier feedback).
  */
-export function buildReviewPrompt(diff: string): string {
+export function buildReviewPrompt(diff: string, reviewHistory?: ReviewRound[]): string {
   const truncatedDiff =
     diff.length > 8000 ? diff.substring(0, 8000) + "\n... (truncated)" : diff;
 
-  return `Review the following diff for bugs, correctness issues, or missing error handling. Do NOT use any tools — just read the diff and respond.
+  let historySection = "";
+  if (reviewHistory && reviewHistory.length > 0) {
+    const rounds = reviewHistory
+      .map(
+        (r) =>
+          `### Round ${r.round}\nIssues flagged:\n${r.issues}\n${r.fixApplied ? `Fix applied: ${r.fixApplied}` : "(fix pending)"}`
+      )
+      .join("\n\n");
+
+    historySection = `## Previous Review Rounds
+
+The following reviews have already been conducted on this code. You MUST maintain consistency with your previous feedback. Do NOT contradict or reverse guidance from earlier rounds. Only flag NEW issues or issues that were not properly fixed.
+
+${rounds}
+
+## Current Diff
+
+`;
+  }
+
+  return `${historySection}Review the following diff for bugs, correctness issues, or missing error handling. Do NOT use any tools — just read the diff and respond.
 
 Respond in EXACTLY one of these formats:
 
@@ -210,14 +242,36 @@ ${truncatedDiff}
 
 /**
  * Build the prompt for the fixer (implementer/haiku) to fix review issues.
+ *
+ * When reviewHistory is provided, previous rounds are included so the fixer
+ * knows what was already addressed and avoids reverting earlier fixes.
  */
 export function buildFixPrompt(
   codeDirectory: string,
-  reviewResult: string
+  reviewResult: string,
+  reviewHistory?: ReviewRound[]
 ): string {
+  let historySection = "";
+  if (reviewHistory && reviewHistory.length > 0) {
+    const rounds = reviewHistory
+      .map(
+        (r) =>
+          `### Round ${r.round}\nIssues flagged:\n${r.issues}\n${r.fixApplied ? `Fix applied: ${r.fixApplied}` : "(fix pending)"}`
+      )
+      .join("\n\n");
+
+    historySection = `## Previous Review History
+
+These issues were flagged and fixed in earlier rounds. Do NOT undo or revert these fixes:
+
+${rounds}
+
+`;
+  }
+
   return `# Fix Review Issues
 
-Fix the following issues found during code review:
+${historySection}Fix the following issues found during code review:
 
 ${reviewResult}
 

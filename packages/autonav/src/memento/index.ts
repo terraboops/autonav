@@ -44,12 +44,17 @@ export {
   getDiffStats,
   getLastCommitDiffStats,
   hasUncommittedChanges,
+  getUncommittedFiles,
   stageAllChanges,
   commitChanges,
   pushBranch,
   createPullRequest,
   isGhAvailable,
   getRemoteUrl,
+  getDefaultBranch,
+  createWorktree,
+  removeWorktree,
+  slugifyBranchName,
   type DiffStats,
 } from "./git-operations.js";
 
@@ -66,7 +71,11 @@ export {
   buildNavSystemPrompt,
   buildImplementerPrompt,
   buildImplementerSystemPrompt,
+  buildReviewPrompt,
+  buildFixPrompt,
+  buildFixSystemPrompt,
   type NavigatorIdentity,
+  type ReviewRound,
 } from "./prompts.js";
 
 // Implementer agent
