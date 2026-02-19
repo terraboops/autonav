@@ -440,13 +440,8 @@ export class NavigatorAdapter {
 
     // Per-nav sandbox: query defaults to enabled unless explicitly disabled
     const querySandboxEnabled = navigator.config.sandbox?.query?.enabled !== false;
-    const navAllowedTools = navigator.config.sandbox?.allowedTools;
-
-    // Query is read-only: block write tools. navAllowedTools can override
-    // (e.g., a navigator that explicitly needs Write access for queries).
-    const queryDisallowed = ["Write", "Edit", "NotebookEdit"].filter(
-      (t) => !navAllowedTools?.includes(t)
-    );
+    // Query is read-only: block write tools
+    const queryDisallowed = ["Write", "Edit", "NotebookEdit"];
 
     const session = this.harness.run(
       {

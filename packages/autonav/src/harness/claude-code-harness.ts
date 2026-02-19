@@ -116,7 +116,6 @@ function configToSdkOptions(config: AgentConfig): Record<string, unknown> {
   if (config.additionalDirectories) options.additionalDirectories = config.additionalDirectories;
   if (config.maxTurns !== undefined) options.maxTurns = config.maxTurns;
   if (config.maxBudgetUsd !== undefined) options.maxBudgetUsd = config.maxBudgetUsd;
-  if (config.allowedTools) options.allowedTools = config.allowedTools;
   if (config.disallowedTools) options.disallowedTools = config.disallowedTools;
   if (config.mcpServers) options.mcpServers = config.mcpServers;
   if (config.permissionMode) options.permissionMode = config.permissionMode;

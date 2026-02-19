@@ -85,14 +85,13 @@ my-assistant/
 
 #### Sandbox Configuration
 
-The `config.json` file supports a `sandbox` field for controlling per-operation security profiles and declaring tool requirements. If you mention CLI tools during the interview (e.g., `linear`, `gh`, `kubectl`), the interview will automatically configure `sandbox.allowedTools` for you.
+The `config.json` file supports a `sandbox` field for controlling per-operation security profiles.
 
 You can also edit `config.json` directly:
 
 ```json
 {
   "sandbox": {
-    "allowedTools": ["Bash"],
     "query": { "enabled": true },
     "update": { "enabled": true },
     "chat": { "enabled": true },
@@ -102,7 +101,6 @@ You can also edit `config.json` directly:
 }
 ```
 
-- **`allowedTools`**: Tool names this navigator always needs (e.g., `["Bash"]` to run CLI commands like `linear` or `gh`). This overrides tool restrictions in operations that block tools by default.
 - **Per-operation profiles**: Enable or disable sandboxing per operation. Queries are read-only by default; updates get read-write access. Set `"enabled": false` to disable sandboxing for a specific operation.
 
 See the **[Security Model](security-model.md)** for the full breakdown of how each layer works.

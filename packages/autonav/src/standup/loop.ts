@@ -51,8 +51,6 @@ interface LoadedNav {
   workingDirectories: string[];
   /** Per-operation sandbox profile from config.json */
   sandboxEnabled: boolean;
-  /** Navigator-level allowed tools from config.json */
-  navAllowedTools?: string[];
 }
 
 /**
@@ -89,8 +87,6 @@ export function loadNavForStandup(dir: string): LoadedNav {
   let knowledgeBasePath = path.join(directory, "knowledge");
   let workingDirectories: string[] = [];
   let sandboxEnabled = true; // standup defaults to sandbox enabled
-  let navAllowedTools: string[] | undefined;
-
   if (fs.existsSync(configPath)) {
     try {
       const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
@@ -108,10 +104,6 @@ export function loadNavForStandup(dir: string): LoadedNav {
       if (config.sandbox?.standup?.enabled === false) {
         sandboxEnabled = false;
       }
-      // Read navigator-level allowed tools
-      if (Array.isArray(config.sandbox?.allowedTools)) {
-        navAllowedTools = config.sandbox.allowedTools;
-      }
     } catch {
       // Use defaults on parse error
     }
@@ -126,7 +118,6 @@ export function loadNavForStandup(dir: string): LoadedNav {
     identity: { name, description },
     workingDirectories,
     sandboxEnabled,
-    navAllowedTools,
   };
 }
 
@@ -171,13 +162,6 @@ async function runReportPhase(
     cwd: nav.directory,
     additionalDirectories: [...nav.workingDirectories, standupDir],
     permissionMode: "acceptEdits" as const,
-    allowedTools: [
-      ...new Set([
-        "Read", "Glob", "Grep", "Bash",
-        "mcp__autonav-standup-report__submit_status_report",
-        ...(nav.navAllowedTools ?? []),
-      ]),
-    ],
     mcpServers: {
       "autonav-standup-report": server,
     },
@@ -312,13 +296,6 @@ async function runSyncPhase(
     cwd: nav.directory,
     additionalDirectories: [...nav.workingDirectories, standupDir],
     permissionMode: "acceptEdits" as const,
-    allowedTools: [
-      ...new Set([
-        "Read", "Write", "Edit", "Glob", "Grep", "Bash",
-        "mcp__autonav-standup-sync__submit_sync_response",
-        ...(nav.navAllowedTools ?? []),
-      ]),
-    ],
     mcpServers: {
       "autonav-standup-sync": server,
     },

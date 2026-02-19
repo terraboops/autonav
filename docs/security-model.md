@@ -50,28 +50,6 @@ Override in `config.json`:
 }
 ```
 
-### Navigator-Level Allowed Tools
-
-Navigators can declare tools they always need via `sandbox.allowedTools`. The effect depends on the operation's restriction mechanism:
-
-- **Operations with `disallowedTools`** (query): Tools in `allowedTools` are removed from the disallowed list. For example, if query blocks `Write` but the navigator declares `"allowedTools": ["Write"]`, write access is restored for queries.
-- **Operations with `allowedTools`** (standup report/sync): Navigator tools are merged into the existing allowlist via `Set` — purely additive.
-- **Unrestricted operations** (update, chat, memento): `allowedTools` has no effect — all tools are already available.
-
-This lets a navigator declare "I need Bash access to run `linear`" without modifying framework code:
-
-```json
-{
-  "sandbox": {
-    "allowedTools": ["Bash"]
-  }
-}
-```
-
-The `allowedTools` array accepts tool names (e.g., `"Bash"`, `"Read"`, `"Write"`). It only affects operations that actively restrict tools — it never accidentally restricts an operation that was previously unrestricted.
-
-> **Source**: `packages/communication-layer/src/schemas/config.ts` (NavigatorConfigSchema), `src/adapter/navigator-adapter.ts` (query disallowedTools override), `src/standup/loop.ts` (report/sync allowedTools merge)
-
 ---
 
 ## Layer 1: Sandboxing
@@ -135,20 +113,20 @@ Every agent session sets `cwd` to the navigator's directory. This is the most fu
 
 ---
 
-## Layer 3: Tool Allowlists
+## Layer 3: Tool Restrictions
 
-Operations restrict which tools the agent can use via `allowedTools` and `disallowedTools`:
+Operations restrict which tools the agent can use via `disallowedTools`:
 
-| Context | Mechanism | Tools | Rationale |
+| Context | Mechanism | Effect | Rationale |
 |---|---|---|---|
 | Query | `disallowedTools` | Blocks Write, Edit, NotebookEdit | Read-only — queries should never modify state |
 | Update | No restriction | All tools available | Read-write — sandbox provides file-level restriction |
 | Chat | No restriction | All tools available | Interactive — user is present to approve actions |
 | Memento | No restriction | All tools available | Full access — worker needs unrestricted code access |
-| Standup report | `allowedTools` | Read, Glob, Grep, Bash, MCP tools | Read-only — explicit allowlist for reporting |
-| Standup sync | `allowedTools` | Read, Write, Edit, Glob, Grep, Bash, MCP tools | Sync phase may update files |
+| Standup report | No restriction | All tools available | Report phase reads and summarizes |
+| Standup sync | No restriction | All tools available | Sync phase may update files |
 
-> **Source**: `src/adapter/navigator-adapter.ts` (query disallowedTools), `src/standup/loop.ts` (allowedTools arrays in report and sync configs)
+> **Source**: `src/adapter/navigator-adapter.ts` (query disallowedTools)
 
 ---
 
@@ -263,7 +241,7 @@ Additionally, root-level directories (path depth <= 2) are rejected to prevent w
 |---|---|---|---|
 | Sandboxing | Unauthorized file/network access | OS syscalls ([nono](https://github.com/always-further/nono), SDK) or app-level permissions (OpenCode) | Yes |
 | Working directory | Agent escaping its directory | `cwd` scoping | No |
-| Tool allowlists | Agents using dangerous tools | `allowedTools` / `disallowedTools` | No |
+| Tool restrictions | Agents using dangerous tools | `disallowedTools` | No |
 | Permission modes | Unauthorized interactive actions | `permissionMode` | No |
 | Turn/budget limits | Runaway execution and cost | `maxTurns`, `maxBudgetUsd` | No |
 | Cycle detection | Infinite nav-to-nav loops | Depth counter (max 3) | No |

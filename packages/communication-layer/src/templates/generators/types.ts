@@ -22,6 +22,4 @@ export interface NavigatorVars {
   packName?: string;
   packVersion?: string;
 
-  // Sandbox configuration (from interview)
-  sandboxAllowedTools?: string[];
 }
