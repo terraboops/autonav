@@ -122,18 +122,11 @@ function configToSdkOptions(config: AgentConfig): Record<string, unknown> {
   if (config.permissionMode) options.permissionMode = config.permissionMode;
   if (config.stderr) options.stderr = config.stderr;
 
-  // Translate AgentConfig.sandbox to SDK SandboxSettings.
-  // ChibiHarness translates to nono; ClaudeCodeHarness translates to SDK sandbox.
-  // The SDK sandbox uses Seatbelt (macOS) / bubblewrap (Linux) and restricts
-  // writes to cwd by default. When AgentConfig.sandbox is not set (e.g., memento
-  // default), no sandbox options are passed — YOLO mode.
-  if (config.sandbox) {
-    options.sandbox = {
-      enabled: true,
-      autoAllowBashIfSandboxed: true,
-      allowUnsandboxedCommands: false,
-    };
-  }
+  // Explicitly disable SDK sandbox. The SDK's Seatbelt/bubblewrap sandbox blocks
+  // all network access by default and allowedDomains can't be reliably wired up
+  // yet. File-level sandboxing is handled by ChibiHarness via nono.
+  // ClaudeCodeHarness relies on cwd scoping, tool allowlists, and permission modes.
+  options.sandbox = { enabled: false };
 
   return options;
 }

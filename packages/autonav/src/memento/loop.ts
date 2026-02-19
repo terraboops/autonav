@@ -446,7 +446,6 @@ async function generateCommitMessage(codeDirectory: string, harness: Harness): P
         systemPrompt: "You generate concise conventional commit messages. Reply with only the commit message.",
         cwd: codeDirectory,
         permissionMode: "bypassPermissions",
-        allowedTools: [],
       },
       prompt
     );
@@ -552,7 +551,6 @@ ${truncatedDiff}
         systemPrompt: "You are a code reviewer. Be concise and actionable. Never use tools — respond directly.",
         cwd: navDirectory,
         permissionMode: "bypassPermissions",
-        allowedTools: [],
       },
       reviewPrompt
     );
@@ -690,8 +688,7 @@ async function reviewImplementation(
             "You are a code reviewer. Be concise and actionable. Never use tools — respond directly.",
           cwd: navDirectory,
           permissionMode: "bypassPermissions",
-          allowedTools: [],
-        },
+          },
         buildReviewPrompt(diff)
       );
 
@@ -947,7 +944,6 @@ async function queryNavForPlanWithStats(
         "autonav-nav-protocol": server,
       },
       permissionMode: "bypassPermissions",
-      disallowedTools: ["Write", "Edit", "Bash"],
       stderr: (data: string) => {
         stderrLines.push(data);
         if (DEBUG) {

@@ -16,11 +16,11 @@ Callers set `AgentConfig.sandbox` without knowing which harness is active. The h
 
 | Field | ChibiHarness | ClaudeCodeHarness | OpenCodeHarness |
 |---|---|---|---|
-| `sandbox.readPaths` | [`nono`](https://github.com/always-further/nono) `--read <path>` | SDK restricts writes to `cwd` | Denies `edit` + `bash` permissions |
-| `sandbox.writePaths` | [`nono`](https://github.com/always-further/nono) `--allow <path>` | SDK restricts writes to `cwd` | Allows all permissions |
-| `sandbox.blockNetwork` | [`nono`](https://github.com/always-further/nono) `--net-block` | Not used | Not supported |
-| Mechanism | Landlock (Linux), Seatbelt (macOS) | Seatbelt (macOS), bubblewrap (Linux) | OpenCode permission system |
-| Fallback | Runs unsandboxed if nono not on PATH | SDK handles platform detection | All permissions allowed |
+| `sandbox.readPaths` | [`nono`](https://github.com/always-further/nono) `--read <path>` | Not used (sandbox disabled) | Denies `edit` + `bash` permissions |
+| `sandbox.writePaths` | [`nono`](https://github.com/always-further/nono) `--allow <path>` | Not used (sandbox disabled) | Allows all permissions |
+| `sandbox.blockNetwork` | [`nono`](https://github.com/always-further/nono) `--net-block` | Not used (sandbox disabled) | Not supported |
+| Mechanism | Landlock (Linux), Seatbelt (macOS) | Disabled (cwd/tool/permission layers only) | OpenCode permission system |
+| Fallback | Runs unsandboxed if nono not on PATH | N/A | All permissions allowed |
 
 > **Note**: The OpenCode harness translates sandbox config into OpenCode's permission system (`"allow"` / `"deny"` per tool). This is **application-level**, not kernel-enforced — a determined agent could potentially bypass it. Read-only sandbox profiles deny `edit` and `bash`; read-write profiles allow all permissions.
 
@@ -98,21 +98,13 @@ nono run --silent --allow-cwd --read /path/to/nav -- chibi-json ...
 
 > **Source**: `src/harness/sandbox.ts` (buildSandboxArgs, isSandboxEnabled, wrapCommand)
 
-### ClaudeCodeHarness — SDK Sandbox
+### ClaudeCodeHarness — SDK Sandbox (Disabled)
 
-When `AgentConfig.sandbox` is set, the harness passes sandbox settings to the SDK:
+The SDK sandbox is currently **disabled** (`sandbox: { enabled: false }`). The SDK's Seatbelt/bubblewrap sandbox blocks all network access by default and the `allowedDomains` mechanism can't be reliably wired up through the programmatic API yet. Navigators that need to call external APIs (Linear, GitHub, Slack, etc.) would be completely broken with the SDK sandbox enabled.
 
-```typescript
-options.sandbox = {
-  enabled: true,
-  autoAllowBashIfSandboxed: true,
-  allowUnsandboxedCommands: false,
-};
-```
+The ClaudeCodeHarness relies on the other layers (cwd scoping, tool restrictions, permission modes, turn/budget limits) for isolation.
 
-The SDK uses Seatbelt (macOS) or bubblewrap (Linux) to restrict writes to `cwd` and subdirectories by default.
-
-> **Source**: `src/harness/claude-code-harness.ts:130` (configToSdkOptions)
+> **Source**: `src/harness/claude-code-harness.ts` (configToSdkOptions)
 
 ### OpenCodeHarness — Permission System
 
@@ -288,4 +280,4 @@ Additionally, root-level directories (path depth <= 2) are rejected to prevent w
 - **`blockNetwork` is disabled for chibi.** The chibi subprocess makes its own API calls to OpenRouter, so blocking network would prevent it from functioning.
 - **Graceful fallback means no sandbox.** If [nono](https://github.com/always-further/nono) is not installed, ChibiHarness runs without kernel sandboxing. The other layers still apply.
 - **OpenCode sandbox is application-level only.** The OpenCode harness uses permission flags (`edit: "deny"`, `bash: "deny"`) rather than kernel enforcement. This prevents casual misuse but is not as strong as Landlock/Seatbelt.
-- **SDK sandbox field is forward-looking.** The Claude Code Agent SDK's `Options` type does not yet expose a `sandbox` field in its public types. The settings are passed through as `Record<string, unknown>` — they take effect when the SDK adds support.
+- **SDK sandbox is disabled.** The SDK's Seatbelt/bubblewrap sandbox blocks all network access by default and `allowedDomains` can't be reliably wired through the programmatic API. Re-enabling requires investigation into loading `.claude/settings.json` via `settingSources`.
