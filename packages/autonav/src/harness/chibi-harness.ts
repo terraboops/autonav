@@ -300,6 +300,7 @@ class ChibiSession implements HarnessSession {
       this.contextName,
       this.config.cwd,
       this.ephemeralHome?.homePath,
+      undefined,
       this.config.model,
     );
 
