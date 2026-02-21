@@ -57,7 +57,7 @@ $ autonav memento ./my-app ./platform-nav --branch feat/monitoring --task "Add h
 
 ```bash
 # 1. Install
-npm install -g @autonav/core
+npm install -g @autonav/core@latest
 
 # 2. Create a navigator
 autonav init my-assistant
