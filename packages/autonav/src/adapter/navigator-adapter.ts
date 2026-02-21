@@ -69,7 +69,8 @@ async function initializeLangSmith(): Promise<boolean> {
  */
 export interface NavigatorAdapterOptions {
   /**
-   * Claude model to use (defaults to claude-sonnet-4-5)
+   * Model to use. When omitted, each harness uses its own default
+   * (claude-sonnet-4-5 for ClaudeCodeHarness; user's configured default for ChibiHarness).
    */
   model?: string;
 
