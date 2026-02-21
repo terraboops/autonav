@@ -14,9 +14,13 @@
  *           and error objects (type: "error", message: string)
  *
  * Session lifecycle:
- *   1. set_system_prompt (separate invocation, no output)
+ *   1. set_system_prompt (separate invocation, no output) — also sets destroy_after_seconds_inactive
  *   2. send_prompt (separate invocation, streams JSONL output)
  *   3. For multi-turn: send_prompt again with same context name
+ *
+ * Context cleanup:
+ *   Contexts self-destruct after CONTEXT_TTL_SECONDS of inactivity (chibi GC handles this).
+ *   No explicit destroy_context call is needed.
  */
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
@@ -31,6 +35,9 @@ import type { ToolDefinition } from "./tool-server.js";
 import { createEphemeralHome, type EphemeralHome } from "./ephemeral-home.js";
 import { wrapCommand, isSandboxEnabled } from "./sandbox.js";
 
+/** Auto-destroy context after 12 hours of inactivity. */
+const CONTEXT_TTL_SECONDS = 12 * 60 * 60;
+
 const CHIBI_TOOL_MARKER = "__chibi_tools__" as const;
 
 interface ChibiToolServer {
@@ -41,12 +48,16 @@ interface ChibiToolServer {
 
 /**
  * Build the chibi-json input object for a command.
+ *
+ * When destroyAfterSecondsInactive is set, it is passed in `flags` so chibi
+ * registers the TTL on the context entry at touch time.
  */
 function buildInput(
   command: Record<string, unknown> | string,
   context: string,
   projectRoot?: string,
   home?: string,
+  destroyAfterSecondsInactive?: number,
 ): string {
   const input: Record<string, unknown> = { command, context };
   if (projectRoot) {
@@ -54,6 +65,9 @@ function buildInput(
   }
   if (home) {
     input.home = home;
+  }
+  if (destroyAfterSecondsInactive !== undefined) {
+    input.flags = { destroy_after_seconds_inactive: destroyAfterSecondsInactive };
   }
   return JSON.stringify(input);
 }
@@ -241,13 +255,16 @@ class ChibiSession implements HarnessSession {
       }
     }
 
-    // Set system prompt (separate synchronous invocation)
+    // Set system prompt (separate synchronous invocation).
+    // Also registers the inactivity TTL on the context entry so chibi GC
+    // auto-destroys it after CONTEXT_TTL_SECONDS of disuse.
     if (config.systemPrompt) {
       const input = buildInput(
         { set_system_prompt: { prompt: config.systemPrompt } },
         this.contextName,
         config.cwd,
         this.ephemeralHome.homePath,
+        CONTEXT_TTL_SECONDS,
       );
       try {
         runSync(input, { env: this.extraEnv, sandboxConfig: this.sandboxConfig });
@@ -407,18 +424,8 @@ class ChibiSession implements HarnessSession {
       });
     }
 
-    // Clean up the context
-    try {
-      const destroyInput = buildInput(
-        { destroy_context: { name: this.contextName } },
-        this.contextName,
-        undefined,
-        this.ephemeralHome?.homePath,
-      );
-      runSync(destroyInput, { env: this.extraEnv, sandboxConfig: this.sandboxConfig });
-    } catch {
-      // Best-effort cleanup
-    }
+    // Context cleanup is handled by chibi's GC — destroy_after_seconds_inactive
+    // was set at session start, so the context auto-destructs after 12h of inactivity.
 
     // Clean up ephemeral home directory
     this.ephemeralHome?.cleanup();
