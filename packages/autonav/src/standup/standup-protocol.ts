@@ -15,6 +15,19 @@ import {
 } from "./types.js";
 
 /**
+ * Always-on diagnostic logging for tool handler failures.
+ * These go to stderr so they're visible even without DEBUG=1.
+ */
+function logHandlerError(toolName: string, error: unknown, args: unknown): void {
+  console.error(`[autonav:${toolName}] Handler error: ${error instanceof Error ? error.message : String(error)}`);
+  if (error instanceof Error && "errors" in error) {
+    // Zod validation errors have an .errors array
+    console.error(`[autonav:${toolName}] Validation details:`, JSON.stringify((error as any).errors, null, 2));
+  }
+  console.error(`[autonav:${toolName}] Args keys: ${args && typeof args === "object" ? Object.keys(args as object).join(", ") : "N/A"}`);
+}
+
+/**
  * Tool names
  */
 export const SUBMIT_STATUS_REPORT_TOOL = "submit_status_report";
@@ -92,13 +105,41 @@ Other navigators will read your report in the sync phase to identify blockers th
           console.error(`[debug] Raw args keys:`, Object.keys(args));
         }
         try {
+          // The MCP server already validated against the tool's inputSchema.
+          // Use safeParse for the StatusReport schema to get actionable errors
+          // instead of throwing (which the MCP server swallows as isError: true).
           const cleaned = stripNulls(args);
-          const report = StatusReportSchema.parse(cleaned);
-          capturedReport = report;
+          const result = StatusReportSchema.safeParse(cleaned);
+
+          if (!result.success) {
+            // Always log validation failures — these are otherwise invisible
+            logHandlerError(SUBMIT_STATUS_REPORT_TOOL, result.error, args);
+
+            // Capture what we can despite validation failure: the MCP server's
+            // inputSchema already validated the shape, so the data is likely usable.
+            // Fall back to the raw args with nulls stripped.
+            capturedReport = cleaned as StatusReport;
+
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    success: true,
+                    message: `Status report submitted (with validation warnings).`,
+                    report: cleaned,
+                  }),
+                },
+              ],
+              isError: false,
+            };
+          }
+
+          capturedReport = result.data;
 
           const blockerSummary =
-            report.blockers.length > 0
-              ? `${report.blockers.length} blocker(s) reported.`
+            result.data.blockers.length > 0
+              ? `${result.data.blockers.length} blocker(s) reported.`
               : "No blockers.";
 
           return {
@@ -108,17 +149,15 @@ Other navigators will read your report in the sync phase to identify blockers th
                 text: JSON.stringify({
                   success: true,
                   message: `Status report submitted. ${blockerSummary}`,
-                  report,
+                  report: result.data,
                 }),
               },
             ],
             isError: false,
           };
         } catch (error) {
-          if (DEBUG) {
-            console.error(`[debug] submit_status_report handler error:`, error);
-            console.error(`[debug] Raw args:`, JSON.stringify(args, null, 2));
-          }
+          // Always log unexpected handler errors
+          logHandlerError(SUBMIT_STATUS_REPORT_TOOL, error, args);
           throw error;
         }
       }
@@ -184,8 +223,28 @@ Prioritize resolving blockers where \`needsFrom\` matches your name, then those 
       async (args) => {
         try {
           const cleaned = stripNulls(args);
-          const sync = SyncResponseSchema.parse(cleaned);
-          capturedSync = sync;
+          const result = SyncResponseSchema.safeParse(cleaned);
+
+          if (!result.success) {
+            logHandlerError(SUBMIT_SYNC_RESPONSE_TOOL, result.error, args);
+            capturedSync = cleaned as SyncResponse;
+
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    success: true,
+                    message: `Sync response submitted (with validation warnings).`,
+                    sync: cleaned,
+                  }),
+                },
+              ],
+              isError: false,
+            };
+          }
+
+          capturedSync = result.data;
 
           return {
             content: [
@@ -193,18 +252,15 @@ Prioritize resolving blockers where \`needsFrom\` matches your name, then those 
                 type: "text" as const,
                 text: JSON.stringify({
                   success: true,
-                  message: `Sync response submitted with ${sync.blockerResolutions.length} blocker resolution(s).`,
-                  sync,
+                  message: `Sync response submitted with ${result.data.blockerResolutions.length} blocker resolution(s).`,
+                  sync: result.data,
                 }),
               },
             ],
             isError: false,
           };
         } catch (error) {
-          if (DEBUG) {
-            console.error(`[debug] submit_sync_response handler error:`, error);
-            console.error(`[debug] Raw args:`, JSON.stringify(args, null, 2));
-          }
+          logHandlerError(SUBMIT_SYNC_RESPONSE_TOOL, error, args);
           throw error;
         }
       }

@@ -162,6 +162,7 @@ async function runReportPhase(
     cwd: nav.directory,
     additionalDirectories: [...nav.workingDirectories, standupDir],
     permissionMode: "acceptEdits" as const,
+    allowedTools: ["mcp__autonav-standup-report__submit_status_report"],
     mcpServers: {
       "autonav-standup-report": server,
     },
@@ -187,10 +188,16 @@ async function runReportPhase(
   const session = harness.run(agentConfig, prompt);
 
   let resultEvent: (AgentEvent & { type: "result" }) | undefined;
+  let submitToolCallCount = 0;
+  let submitToolErrorCount = 0;
+  let lastToolError = "";
 
   for await (const event of session) {
     if (event.type === "tool_use") {
       const shortToolName = event.name.split("__").pop() || event.name;
+      if (shortToolName === "submit_status_report") {
+        submitToolCallCount++;
+      }
       if (verbose) {
         console.log(`[Report:${nav.name}] Tool: ${shortToolName}`);
       }
@@ -198,7 +205,13 @@ async function runReportPhase(
     }
     if (event.type === "tool_result") {
       if (event.isError) {
-        debug(`[Report:${nav.name}] Tool ERROR result:`, event.content.substring(0, 500));
+        submitToolErrorCount++;
+        lastToolError = event.content.substring(0, 500);
+        // Always log tool errors — these reveal why tools fail
+        if (verbose) {
+          console.log(`[Report:${nav.name}] Tool ERROR: ${lastToolError}`);
+        }
+        debug(`[Report:${nav.name}] Tool ERROR result:`, lastToolError);
       } else if (DEBUG) {
         debug(`[Report:${nav.name}] Tool result:`, event.content.substring(0, 300));
       }
@@ -232,8 +245,11 @@ async function runReportPhase(
 
   const report = protocol.getCapturedReport();
   if (!report) {
+    const diagnostic = submitToolCallCount > 0
+      ? `Tool was called ${submitToolCallCount} time(s) with ${submitToolErrorCount} error(s).${lastToolError ? ` Last error: ${lastToolError}` : ""}`
+      : "Tool was never called by the navigator.";
     throw new Error(
-      `${nav.name} did not submit a status report. Navigator must use the submit_status_report tool.`
+      `${nav.name} did not submit a status report. ${diagnostic}`
     );
   }
 
@@ -296,6 +312,7 @@ async function runSyncPhase(
     cwd: nav.directory,
     additionalDirectories: [...nav.workingDirectories, standupDir],
     permissionMode: "acceptEdits" as const,
+    allowedTools: ["mcp__autonav-standup-sync__submit_sync_response"],
     mcpServers: {
       "autonav-standup-sync": server,
     },
