@@ -51,6 +51,10 @@ interface ChibiToolServer {
  *
  * When destroyAfterSecondsInactive is set, it is passed in `flags` so chibi
  * registers the TTL on the context entry at touch time.
+ *
+ * When `model` is provided it is passed via `config.model` so chibi uses
+ * that model for the invocation. When omitted chibi falls back to whatever
+ * model is configured in the user's config.toml (i.e. the user's default).
  */
 function buildInput(
   command: Record<string, unknown> | string,
@@ -58,6 +62,7 @@ function buildInput(
   projectRoot?: string,
   home?: string,
   destroyAfterSecondsInactive?: number,
+  model?: string,
 ): string {
   const input: Record<string, unknown> = { command, context };
   if (projectRoot) {
@@ -68,6 +73,9 @@ function buildInput(
   }
   if (destroyAfterSecondsInactive !== undefined) {
     input.flags = { destroy_after_seconds_inactive: destroyAfterSecondsInactive };
+  }
+  if (model) {
+    input.config = { model };
   }
   return JSON.stringify(input);
 }
@@ -265,6 +273,7 @@ class ChibiSession implements HarnessSession {
         config.cwd,
         this.ephemeralHome.homePath,
         CONTEXT_TTL_SECONDS,
+        config.model,
       );
       try {
         runSync(input, { env: this.extraEnv, sandboxConfig: this.sandboxConfig });
@@ -291,6 +300,8 @@ class ChibiSession implements HarnessSession {
       this.contextName,
       this.config.cwd,
       this.ephemeralHome?.homePath,
+      undefined,
+      this.config.model,
     );
 
     const { command, args } = wrapCommand("chibi-json", [], this.sandboxConfig);
