@@ -133,6 +133,7 @@ export async function run(args: string[]): Promise<void> {
     instructionsPath?: string;
     relatedNavigators?: Array<{ name: string; description?: string }>;
     sandbox?: { chat?: { enabled: boolean } };
+    harness?: { type?: string; model?: string };
   };
   let configContent: string;
   try {
@@ -219,6 +220,7 @@ export async function run(args: string[]): Promise<void> {
       mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
       sandboxEnabled: chatSandboxEnabled,
       configJson: configContent,
+      model: config.harness?.model,
     });
 
     console.log("\n👋 Conversation ended.\n");

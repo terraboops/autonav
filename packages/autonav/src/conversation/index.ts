@@ -37,6 +37,8 @@ export interface ConversationOptions {
   sandboxEnabled?: boolean;
   /** Raw config.json content for config-aware prompts */
   configJson?: string;
+  /** Model override for the harness. When undefined, the harness uses its own default. */
+  model?: string;
 }
 
 /**
