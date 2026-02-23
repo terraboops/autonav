@@ -1451,19 +1451,33 @@ export async function runMementoLoop(
   const defaultBranch = getDefaultBranch({ cwd: codeDirectory });
   const worktreesBase = path.join(resolveConfigDir(), "worktrees");
 
-  // Track the effective branch and worktree for this run
-  let activeBranch: string | undefined = options.branch;
-  let worktreePath: string | null = null;
+  // Per-iteration PR URLs (one PR per iteration when --pr is used)
+  const prUrls: string[] = [];
 
-  // The working directory for the implementer — starts as codeDirectory,
-  // switches to worktree once created after the first plan
+  // Safety tracker: if an error interrupts mid-iteration, clean up this worktree
+  let currentIterWorktree: string | null = null;
+
+  // The working directory for the implementer — resets to codeDirectory each iteration,
+  // switches to a fresh worktree after the plan is received
   let workDir = codeDirectory;
 
   const errors: string[] = [];
 
+  // Graceful shutdown: finish current iteration's PR before exiting
+  let shuttingDown = false;
+  const sigintHandler = (): void => {
+    if (shuttingDown) {
+      process.stdout.write("\x1B[?25h");
+      process.exit(1);
+    }
+    shuttingDown = true;
+    console.log(chalk.yellow("\n\nGraceful shutdown after this iteration..."));
+  };
+  process.on("SIGINT", sigintHandler);
+
   try {
-    // Main loop - only max-iterations stops the loop (0 = unlimited = run forever)
-    while (maxIterations === 0 || state.iteration < maxIterations) {
+    // Main loop - only max-iterations or SIGINT stops the loop (0 = unlimited = run forever)
+    while (!shuttingDown && (maxIterations === 0 || state.iteration < maxIterations)) {
       state.iteration += 1;
 
       if (verbose) {
@@ -1507,6 +1521,8 @@ export async function runMementoLoop(
       let iterationTokens = 0;
       let implementerTokens = 0;
       let implementerSummary = "";
+      let iterBranch = "";
+      let iterWorktreePath = "";
 
       try {
         // Query navigator for plan (with rate limit retry)
@@ -1556,28 +1572,26 @@ export async function runMementoLoop(
         // Record plan in memory (for PR body)
         state.planHistory.push({ iteration: state.iteration, summary: plan.summary });
 
-        // Create worktree after first plan returns
-        if (state.iteration === 1 && !worktreePath) {
-          const branchName = activeBranch || slugifyBranchName(plan.summary);
-          activeBranch = branchName;
-          worktreePath = path.join(worktreesBase, branchName);
+        // Create per-iteration worktree forked from default branch
+        iterBranch = options.branch
+          ? `${options.branch}-${state.iteration}`
+          : `memento/${state.iteration}-${slugifyBranchName(plan.summary)}`;
+        iterWorktreePath = path.join(worktreesBase, iterBranch);
+        fs.mkdirSync(worktreesBase, { recursive: true });
 
-          // Ensure worktrees base directory exists
-          fs.mkdirSync(worktreesBase, { recursive: true });
+        if (verbose) {
+          console.log(`[Memento] Creating worktree: ${iterWorktreePath}`);
+          console.log(`[Memento] Branch: ${iterBranch} (from ${defaultBranch})`);
+        }
 
-          if (verbose) {
-            console.log(`[Memento] Creating worktree: ${worktreePath}`);
-            console.log(`[Memento] Branch: ${branchName} (from ${defaultBranch})`);
-          }
+        createWorktree(codeDirectory, iterWorktreePath, iterBranch, defaultBranch);
+        workDir = iterWorktreePath;
+        currentIterWorktree = iterWorktreePath;
 
-          createWorktree(codeDirectory, worktreePath, branchName, defaultBranch);
-          workDir = worktreePath;
-
-          if (!verbose) {
-            animation.stop();
-            console.log(chalk.dim(`  └─ Branch: ${branchName}`));
-            animation.start();
-          }
+        if (!verbose) {
+          animation.stop();
+          console.log(chalk.dim(`  └─ Branch: ${iterBranch}`));
+          animation.start();
         }
 
         // Show what the implementer will be working on (truncate to ~60 chars)
@@ -1674,50 +1688,53 @@ export async function runMementoLoop(
         isComplete: plan?.isComplete,
         completionMessage: plan?.completionMessage,
       });
+
+      // Per-iteration PR creation
+      if (pr && commitHash) {
+        if (isGhAvailable()) {
+          pushBranch(iterBranch, { cwd: workDir, verbose, setUpstream: true });
+          const prTitle = plan?.summary
+            ? (plan.summary.length > 70 ? `${plan.summary.substring(0, 67)}...` : plan.summary)
+            : `memento iteration ${state.iteration}`;
+          const prBody = `## Summary\n\n${plan?.summary || task}\n\n---\n*Created by autonav memento loop (iteration ${state.iteration})*`;
+          const url = createPullRequest({
+            cwd: workDir,
+            verbose,
+            title: prTitle,
+            body: prBody,
+          });
+          prUrls.push(url);
+          console.log(`PR created: ${url}`);
+        } else {
+          console.warn("Warning: gh CLI not available. Skipping PR.");
+        }
+      }
+
+      // Cleanup iteration worktree
+      try {
+        removeWorktree(codeDirectory, iterWorktreePath);
+      } catch (err) {
+        if (verbose) {
+          console.log(
+            chalk.yellow(
+              `[Memento] Worktree cleanup failed: ${err instanceof Error ? err.message : err}`
+            )
+          );
+        }
+      }
+      currentIterWorktree = null;
+      workDir = codeDirectory; // reset for next iteration
     }
 
-    // Loop exited - must have hit max iterations
-    console.log(`\nMax iterations (${maxIterations}) reached.`);
+    // Loop exited
+    if (shuttingDown) {
+      console.log(chalk.yellow("\nShutdown complete."));
+    } else if (maxIterations > 0) {
+      console.log(`\nMax iterations (${maxIterations}) reached.`);
+    }
 
-    // Handle PR creation if requested
-    let prUrl: string | undefined;
-
-    if (pr && activeBranch) {
-      if (!isGhAvailable()) {
-        console.warn(
-          "\nWarning: gh CLI not available. Cannot create PR. Install and authenticate gh CLI."
-        );
-      } else {
-        console.log("\nCreating pull request...");
-
-        // Push branch (from worktree where commits live)
-        pushBranch(activeBranch, {
-          cwd: workDir,
-          verbose,
-          setUpstream: true,
-        });
-
-        // Create PR
-        const prBody = `## Summary
-
-${state.completionMessage || task}
-
-## Iterations
-
-${state.planHistory.map((h) => `- **${h.iteration}**: ${h.summary}`).join("\n")}
-
----
-*Created by autonav memento loop*`;
-
-        prUrl = createPullRequest({
-          cwd: workDir,
-          verbose,
-          title: task.length > 70 ? `${task.substring(0, 67)}...` : task,
-          body: prBody,
-        });
-
-        console.log(`PR created: ${prUrl}`);
-      }
+    if (prUrls.length > 0) {
+      console.log(`\nCreated ${prUrls.length} PR(s).`);
     }
 
     const durationMs = Date.now() - startTime;
@@ -1726,8 +1743,8 @@ ${state.planHistory.map((h) => `- **${h.iteration}**: ${h.summary}`).join("\n")}
       success: true, // Completed max iterations without fatal error
       iterations: state.iteration,
       completionMessage: state.completionMessage,
-      prUrl,
-      branch: activeBranch || getCurrentBranch({ cwd: workDir }),
+      prUrls: prUrls.length > 0 ? prUrls : undefined,
+      branch: prUrls.length > 0 ? "multiple" : getCurrentBranch({ cwd: codeDirectory }),
       durationMs,
       errors: errors.length > 0 ? errors : undefined,
     };
@@ -1739,18 +1756,22 @@ ${state.planHistory.map((h) => `- **${h.iteration}**: ${h.summary}`).join("\n")}
     return {
       success: false,
       iterations: state.iteration,
-      branch: activeBranch || getCurrentBranch({ cwd: workDir }),
+      prUrls: prUrls.length > 0 ? prUrls : undefined,
+      branch: getCurrentBranch({ cwd: codeDirectory }),
       durationMs,
       errors,
     };
   } finally {
-    // Clean up worktree on exit
-    if (worktreePath) {
+    // Remove SIGINT handler
+    process.removeListener("SIGINT", sigintHandler);
+
+    // Safety cleanup: if an error interrupted mid-iteration, clean up the worktree
+    if (currentIterWorktree) {
       if (verbose) {
-        console.log(`[Memento] Cleaning up worktree: ${worktreePath}`);
+        console.log(`[Memento] Cleaning up interrupted worktree: ${currentIterWorktree}`);
       }
       try {
-        removeWorktree(codeDirectory, worktreePath);
+        removeWorktree(codeDirectory, currentIterWorktree);
       } catch (err) {
         if (verbose) {
           console.log(
