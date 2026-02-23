@@ -7,7 +7,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Box, Text, useApp, useInput } from "ink";
+import { Box, Text, Static, useApp, useInput } from "ink";
 import { type Harness, type HarnessSession, ClaudeCodeHarness } from "../harness/index.js";
 import { buildConversationSystemPrompt } from "./prompts.js";
 import {
@@ -190,7 +190,7 @@ function pickMood(
 interface Message {
   role: "user" | "assistant" | "system" | "activity";
   content: string;
-  streaming?: boolean;
+  id: number;
 }
 
 interface ActivityState {
@@ -221,7 +221,11 @@ export function ConversationApp({
   sandboxEnabled = true,
   configJson,
 }: ConversationAppProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  // Finalized messages go into <Static> — printed once, never repainted.
+  // Only the in-progress streaming message lives in the dynamic region.
+  const [finalizedMessages, setFinalizedMessages] = useState<Message[]>([]);
+  const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
+  const msgIdRef = useRef<number>(0);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [activity, setActivity] = useState<ActivityState | null>(null);
@@ -235,6 +239,16 @@ export function ConversationApp({
   const exitHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [exitHint, setExitHint] = useState<false | "c" | "d">(false);
   const { exit } = useApp();
+
+  /** Finalize the current streaming message — move it to the static region. */
+  const finalizeStreamingMessage = useCallback(() => {
+    setStreamingMessage((prev) => {
+      if (prev) {
+        setFinalizedMessages((msgs) => [...msgs, prev]);
+      }
+      return null;
+    });
+  }, []);
 
   // Build the full system prompt
   const systemPrompt = buildConversationSystemPrompt(
@@ -265,11 +279,13 @@ export function ConversationApp({
           setActivity({ type: "tool", detail: mood });
           hadToolsSinceTextRef.current = true;
 
-          // Format tool params for display
+          // Tool activity lines are ephemeral — they go directly into finalized
+          // (static) so they don't trigger repaints of the streaming region.
           const paramSummary = formatToolParams(event.name, event.input);
-          setMessages((prev) => [
+          const id = ++msgIdRef.current;
+          setFinalizedMessages((prev) => [
             ...prev,
-            { role: "activity", content: paramSummary },
+            { role: "activity", content: paramSummary, id },
           ]);
         } else if (event.type === "tool_result" && event.isError) {
           moodRef.current.lastError = true;
@@ -278,15 +294,10 @@ export function ConversationApp({
           if (event.text && event.text.trim()) {
             setActivity(null);
 
-            // If tools ran since last text, finalize previous message
-            // and start a new one so tool calls appear between text blocks
+            // If tools ran since last text, finalize the current streaming
+            // message so it lands in Static before starting a new one.
             if (hadToolsSinceTextRef.current && streamingTextRef.current) {
-              // Finalize the previous streaming message
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.streaming ? { ...m, streaming: false } : m
-                )
-              );
+              finalizeStreamingMessage();
               streamingTextRef.current = "";
             }
             hadToolsSinceTextRef.current = false;
@@ -299,44 +310,13 @@ export function ConversationApp({
             }
 
             const accumulated = streamingTextRef.current;
-
-            setMessages((prev) => {
-              // Find existing streaming message to update (search from end)
-              let lastStreamingIdx = -1;
-              for (let j = prev.length - 1; j >= 0; j--) {
-                if (prev[j]?.role === "assistant" && prev[j]?.streaming) {
-                  lastStreamingIdx = j;
-                  break;
-                }
-              }
-
-              if (lastStreamingIdx >= 0) {
-                // Update existing streaming message
-                const updated = [...prev];
-                updated[lastStreamingIdx] = {
-                  role: "assistant",
-                  content: accumulated,
-                  streaming: true,
-                };
-                return updated;
-              }
-
-              // Create new streaming message
-              return [
-                ...prev,
-                { role: "assistant", content: accumulated, streaming: true },
-              ];
-            });
+            const id = msgIdRef.current; // keep same id while streaming same block
+            setStreamingMessage({ role: "assistant", content: accumulated, id });
           }
         } else if (event.type === "result") {
           debugLog("Result received:", event.success);
-
-          // Mark streaming message as complete
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.streaming ? { ...m, streaming: false } : m
-            )
-          );
+          // Move the streaming message into the static region.
+          finalizeStreamingMessage();
           break;
         }
       }
@@ -353,7 +333,7 @@ export function ConversationApp({
       setActivity(null);
       setIsLoading(false);
     }
-  }, []);
+  }, [finalizeStreamingMessage]);
 
   // Handle special commands
   const handleCommand = useCallback(
@@ -361,9 +341,11 @@ export function ConversationApp({
       const cmd = command.toLowerCase().trim();
 
       if (cmd === "/help") {
-        setMessages((prev) => [
+        const id = ++msgIdRef.current;
+        setFinalizedMessages((prev) => [
           ...prev,
           {
+            id,
             role: "system",
             content: `Available commands:
   /help    - Show this help message
@@ -378,9 +360,11 @@ Or just type naturally to chat with your navigator.`,
       }
 
       if (cmd === "/status") {
-        setMessages((prev) => [
+        const id = ++msgIdRef.current;
+        setFinalizedMessages((prev) => [
           ...prev,
           {
+            id,
             role: "system",
             content: `Navigator: ${navigatorName}
 Path: ${navigatorPath}
@@ -397,12 +381,10 @@ Model: ${CONVERSATION_MODEL}`,
           sessionRef.current.close().catch(() => {});
           sessionRef.current = null;
         }
-        setMessages([
-          {
-            role: "system",
-            content: "Conversation cleared. Start fresh!",
-          },
-        ]);
+        const id = ++msgIdRef.current;
+        setFinalizedMessages([{ id, role: "system", content: "Conversation cleared. Start fresh!" }]);
+        setStreamingMessage(null);
+        streamingTextRef.current = "";
         return true;
       }
 
@@ -433,8 +415,9 @@ Model: ${CONVERSATION_MODEL}`,
         }
       }
 
-      // Add user message to history
-      setMessages((prev) => [...prev, { role: "user", content: value }]);
+      // Add user message to history (finalized immediately — never needs repainting)
+      const id = ++msgIdRef.current;
+      setFinalizedMessages((prev) => [...prev, { id, role: "user", content: value }]);
       setIsLoading(true);
       setError(null);
 
@@ -514,58 +497,76 @@ Model: ${CONVERSATION_MODEL}`,
     };
   }, []);
 
-  // Determine if we should show the banner (only when no messages yet)
-  const showBanner = messages.length === 0;
+  // Show banner only until the first message arrives
+  const showBanner = finalizedMessages.length === 0 && streamingMessage === null;
 
   return (
     <Box flexDirection="column" padding={1}>
-      {/* Banner — shown only on startup, scrolls away with messages */}
-      {showBanner && (
-        <ChatBanner
-          navigatorName={navigatorName}
-          model={CONVERSATION_MODEL}
-        />
-      )}
+      {/* ── Static region ───────────────────────────────────────────────────
+          Messages here are printed once and never redrawn.
+          The ActivityIndicator's 80ms ticks only repaint the live region
+          below, eliminating the full-history flash on every frame.       */}
+      <Static items={finalizedMessages}>
+        {(msg) => {
+          const isEndOfTurn =
+            msg.role === "assistant" &&
+            (() => {
+              const idx = finalizedMessages.indexOf(msg);
+              const next = finalizedMessages[idx + 1];
+              return next !== undefined && next.role !== "activity";
+            })();
 
-      {/* Conversation history */}
-      {messages.map((msg, i) => {
-        // Check if this is the last message before a role switch (for dividers)
-        const next = messages[i + 1];
-        const isEndOfTurn =
-          msg.role === "assistant" &&
-          !msg.streaming &&
-          next !== undefined &&
-          next.role !== "activity";
-
-        return (
-          <Box key={i} flexDirection="column">
-            {msg.role === "user" ? (
-              <UserResponse content={msg.content} />
-            ) : msg.role === "assistant" ? (
-              <Box flexDirection="column" marginBottom={1}>
-                <Box marginBottom={0}>
-                  <Text color={colors.accent}>
-                    {boxChars.single.vertical} {navigatorName}
+          return (
+            <Box key={msg.id} flexDirection="column">
+              {msg.role === "user" ? (
+                <UserResponse content={msg.content} />
+              ) : msg.role === "assistant" ? (
+                <Box flexDirection="column" marginBottom={1}>
+                  <Box marginBottom={0}>
+                    <Text color={colors.accent}>
+                      {boxChars.single.vertical} {navigatorName}
+                    </Text>
+                  </Box>
+                  <Box marginLeft={2}>
+                    <MarkdownText content={msg.content} />
+                  </Box>
+                </Box>
+              ) : msg.role === "activity" ? (
+                <Box marginLeft={4} marginBottom={0}>
+                  <Text color={colors.dimmed}>
+                    {boxChars.single.vertical}{" "}{"\u2699\uFE0F"}{"  "}{msg.content}
                   </Text>
                 </Box>
-                <Box marginLeft={2}>
-                  <MarkdownText content={msg.content} />
-                </Box>
-              </Box>
-            ) : msg.role === "activity" ? (
-              <Box marginLeft={4} marginBottom={0}>
-                <Text color={colors.dimmed}>
-                  {boxChars.single.vertical}{" "}{"\u2699\uFE0F"}{"  "}{msg.content}
-                </Text>
-              </Box>
-            ) : (
-              <SystemMessage content={msg.content} />
-            )}
+              ) : (
+                <SystemMessage content={msg.content} />
+              )}
+              {isEndOfTurn && <Divider />}
+            </Box>
+          );
+        }}
+      </Static>
 
-            {isEndOfTurn && <Divider />}
+      {/* Banner — shown before any messages, lives in the dynamic region
+          so it gets replaced naturally once the first message arrives.   */}
+      {showBanner && (
+        <ChatBanner navigatorName={navigatorName} model={CONVERSATION_MODEL} />
+      )}
+
+      {/* ── Live region ─────────────────────────────────────────────────────
+          Only the streaming assistant message (if any) lives here,
+          so redraws stay proportional to this small area, not history. */}
+      {streamingMessage && (
+        <Box flexDirection="column" marginBottom={1}>
+          <Box marginBottom={0}>
+            <Text color={colors.accent}>
+              {boxChars.single.vertical} {navigatorName}
+            </Text>
           </Box>
-        );
-      })}
+          <Box marginLeft={2}>
+            <MarkdownText content={streamingMessage.content} />
+          </Box>
+        </Box>
+      )}
 
       {/* Error display */}
       {error && (
