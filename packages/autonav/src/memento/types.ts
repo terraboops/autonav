@@ -93,8 +93,8 @@ export interface MementoResult {
   /** Completion message from nav */
   completionMessage?: string;
 
-  /** PR URL if --pr was used */
-  prUrl?: string;
+  /** PR URLs if --pr was used (one per iteration) */
+  prUrls?: string[];
 
   /** Git branch name */
   branch?: string;
