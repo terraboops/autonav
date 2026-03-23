@@ -67,8 +67,11 @@ const skills = getAllSkills();
 {
   version: string;
   name: string;
-  knowledgeBase: string;
-  confidenceThreshold?: number;
+  knowledgeBasePath: string;
+  instructionsPath?: string;
+  permissions?: { allowedCommands?: string[]; allowedPaths?: string[] };
+  sandbox?: { dangerouslyDisableSandbox?: boolean; chat?: { enabled: boolean; ... } };
+  harness?: { type: "claude-code" | "chibi" | "opencode"; model?: string };
 }
 ```
 

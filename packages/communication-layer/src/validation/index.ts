@@ -36,7 +36,19 @@ export function checkSourcesExist(
   // Get navigator root (parent of knowledge base)
   const navigatorRoot = path.dirname(knowledgeBasePath);
 
+  // Meta-sources that refer to the navigator's own configuration/prompt
+  // rather than files in the knowledge base. These are always valid.
+  const metaSources = new Set([
+    "system-prompt", "system prompt", "system_prompt",
+    "claude.md", "config.json", "instructions",
+  ]);
+
   for (const source of response.sources) {
+    // Accept meta-sources without file existence check
+    if (metaSources.has(source.file.toLowerCase())) {
+      continue;
+    }
+
     // Try knowledge base first (for backwards compatibility with knowledge packs)
     let fullPath = path.resolve(knowledgeBasePath, source.file);
     let exists = fs.existsSync(fullPath);

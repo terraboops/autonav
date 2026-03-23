@@ -440,9 +440,14 @@ export class NavigatorAdapter {
     }
 
     // Per-nav sandbox: query defaults to enabled unless explicitly disabled
-    const querySandboxEnabled = navigator.config.sandbox?.query?.enabled !== false;
+    const queryProfile = navigator.config.sandbox?.query;
+    const querySandboxEnabled = queryProfile?.enabled !== false;
     // Query is read-only: block write tools
     const queryDisallowed = ["Write", "Edit", "NotebookEdit"];
+
+    // Build full sandbox config from navigator permissions + per-operation profile
+    const navConfig = navigator.config as Record<string, unknown>;
+    const permissions = navConfig.permissions as { allowedCommands?: string[]; allowedPaths?: string[] } | undefined;
 
     const session = this.harness.run(
       {
@@ -450,13 +455,20 @@ export class NavigatorAdapter {
         maxTurns,
         systemPrompt,
         cwd: navigator.navigatorPath,
+        additionalDirectories: permissions?.allowedPaths,
         mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
         permissionMode: "bypassPermissions",
         stderr: debug ? (data: string) => process.stderr.write(`[harness] ${data}`) : undefined,
         disallowedTools: queryDisallowed,
         ...(querySandboxEnabled ? {
           sandbox: {
-            readPaths: [navigator.navigatorPath],
+            enabled: true,
+            readPaths: [
+              navigator.navigatorPath,
+              navigator.knowledgeBasePath,
+              ...(permissions?.allowedPaths ?? []),
+            ],
+            allowedCommands: permissions?.allowedCommands,
           },
         } : {}),
       },
@@ -665,6 +677,8 @@ Your task: ${message}`;
 
     // Per-nav sandbox: update defaults to enabled unless explicitly disabled
     const updateSandboxEnabled = navigator.config.sandbox?.update?.enabled !== false;
+    const updateNavConfig = navigator.config as Record<string, unknown>;
+    const updatePermissions = updateNavConfig.permissions as { allowedCommands?: string[]; allowedPaths?: string[] } | undefined;
 
     const session = this.harness.run(
       {
@@ -675,7 +689,13 @@ Your task: ${message}`;
         permissionMode: "bypassPermissions",
         ...(updateSandboxEnabled ? {
           sandbox: {
+            enabled: true,
+            readPaths: [
+              navigator.knowledgeBasePath,
+              ...(updatePermissions?.allowedPaths ?? []),
+            ],
             writePaths: [navigator.navigatorPath],
+            allowedCommands: updatePermissions?.allowedCommands,
           },
         } : {}),
       },

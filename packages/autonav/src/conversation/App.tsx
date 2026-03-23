@@ -8,7 +8,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Box, Text, Static, useApp, useInput } from "ink";
-import { type Harness, type HarnessSession, ClaudeCodeHarness } from "../harness/index.js";
+import { type Harness, type HarnessSession, type SandboxConfig, ClaudeCodeHarness } from "../harness/index.js";
 import { buildConversationSystemPrompt } from "./prompts.js";
 import {
   ChatBanner,
@@ -205,8 +205,10 @@ interface ConversationAppProps {
   knowledgeBasePath: string;
   harness?: Harness;
   mcpServers?: Record<string, unknown>;
-  /** Whether sandbox is enabled for chat (default: true) */
-  sandboxEnabled?: boolean;
+  /** Full sandbox config for chat (undefined = no sandbox) */
+  sandboxConfig?: SandboxConfig;
+  /** CLI commands the navigator is allowed to run without permission prompts */
+  allowedCommands?: string[];
   /** Raw config.json content for config-aware prompts */
   configJson?: string;
 }
@@ -218,7 +220,8 @@ export function ConversationApp({
   knowledgeBasePath,
   harness,
   mcpServers,
-  sandboxEnabled = true,
+  sandboxConfig,
+  allowedCommands,
   configJson,
 }: ConversationAppProps) {
   // Finalized messages go into <Static> — printed once, never repainted.
@@ -431,6 +434,22 @@ Model: ${CONVERSATION_MODEL}`,
           events = sessionRef.current.send(value);
         } else {
           // First message: create new session
+          // Map allowedCommands → SDK allowedTools so the permission system
+          // doesn't prompt for these. Format: "Bash(command *)" allows any
+          // bash invocation starting with that command.
+          const allowedTools = allowedCommands?.length
+            ? allowedCommands.map((cmd) => `Bash(${cmd}:*)`)
+            : undefined;
+
+          debugLog("allowedCommands prop:", allowedCommands);
+          debugLog("allowedTools for SDK:", allowedTools);
+
+          // Tell the SDK about all paths nono allows so the SDK's own
+          // directory scoping doesn't block access that nono permits.
+          const additionalDirectories = sandboxConfig?.readPaths
+            ?.concat(sandboxConfig?.writePaths ?? [])
+            .filter((p) => p !== navigatorPath);
+
           const session = harnessRef.current.run(
             {
               model: CONVERSATION_MODEL,
@@ -438,12 +457,10 @@ Model: ${CONVERSATION_MODEL}`,
               permissionMode: "acceptEdits",
               cwd: navigatorPath,
               mcpServers,
-              // Per-nav sandbox: chat defaults to enabled (read-only access)
-              ...(sandboxEnabled ? {
-                sandbox: {
-                  readPaths: [navigatorPath],
-                },
-              } : {}),
+              allowedTools,
+              additionalDirectories,
+              // Per-nav sandbox: full config from nav-chat.ts
+              ...(sandboxConfig ? { sandbox: sandboxConfig } : {}),
             },
             value
           );

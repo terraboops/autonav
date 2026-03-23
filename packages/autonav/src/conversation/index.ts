@@ -8,7 +8,7 @@
 import React from "react";
 import { render } from "ink";
 import { ConversationApp } from "./App.js";
-import type { Harness } from "../harness/index.js";
+import type { Harness, SandboxConfig } from "../harness/index.js";
 
 export { buildConversationSystemPrompt } from "./prompts.js";
 
@@ -33,8 +33,10 @@ export interface ConversationOptions {
   knowledgeBasePath: string;
   harness?: Harness;
   mcpServers?: Record<string, unknown>;
-  /** Whether sandbox is enabled for chat (default: true) */
-  sandboxEnabled?: boolean;
+  /** Full sandbox config for chat (undefined = no sandbox) */
+  sandboxConfig?: SandboxConfig;
+  /** CLI commands the navigator is allowed to run without permission prompts (e.g., ["linear", "dig"]) */
+  allowedCommands?: string[];
   /** Raw config.json content for config-aware prompts */
   configJson?: string;
   /** Model override for the harness. When undefined, the harness uses its own default. */

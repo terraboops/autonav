@@ -2,8 +2,8 @@
 
 import { Command } from "commander";
 import chalk from "chalk";
-import * as path from "node:path";
 import { mendNavigator, type MendCheckResult } from "../mend/index.js";
+import { resolveNavigatorArg } from "./resolve-nav.js";
 
 const program = new Command();
 
@@ -11,16 +11,16 @@ program
   .name("autonav mend")
   .description("Health check and repair for navigators")
   .version("1.0.0")
-  .argument("<navigator>", "Path to the navigator directory")
+  .argument("[navigator]", "Path to the navigator directory (auto-detects from cwd)")
   .option("--auto-fix", "Automatically fix issues when possible")
   .option("--review", "Run LLM-powered quality review of CLAUDE.md (uses Claude Opus)")
   .option("--no-color", "Disable colored output")
-  .action(async (navigatorPath: string, options: { autoFix?: boolean; review?: boolean; noColor?: boolean }) => {
+  .action(async (navigatorArg: string | undefined, options: { autoFix?: boolean; review?: boolean; noColor?: boolean }) => {
     if (options.noColor) {
       chalk.level = 0;
     }
 
-    const navPath = path.resolve(navigatorPath);
+    const navPath = resolveNavigatorArg(navigatorArg);
 
     console.log(chalk.bold(`🔧 Mending navigator: ${navPath}`));
     console.log("");
@@ -160,7 +160,7 @@ program
       if (fixableCount > 0 && !options.autoFix) {
         console.log("");
         console.log(chalk.yellow(`💡 ${fixableCount} issue(s) can be auto-fixed. Run with --auto-fix flag:`));
-        console.log(chalk.dim(`   autonav mend ${navigatorPath} --auto-fix`));
+        console.log(chalk.dim(`   autonav mend ${navPath} --auto-fix`));
       }
 
       process.exit(1);

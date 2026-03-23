@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
@@ -17,6 +19,7 @@ import {
 } from "../query-engine/index.js";
 import { HallucinationError } from "@autonav/communication-layer";
 import { resolveAndCreateHarness } from "../harness/index.js";
+import { resolveNavigatorArg } from "./resolve-nav.js";
 
 /**
  * Command line options
@@ -88,8 +91,8 @@ program
   .name("autonav query")
   .description("Query a Platform AI navigator")
   .version("1.0.0")
-  .argument("<navigator>", "Path to the navigator directory")
-  .argument("<question>", "Question to ask the navigator")
+  .argument("[navigator]", "Path to the navigator directory (auto-detects from cwd)")
+  .argument("[question]", "Question to ask the navigator")
   .option("--compact", "Compact output (answer + minimal sources)")
   .option("--json", "Full JSON output with all response fields")
   .option("--raw", "Output only the answer text, nothing else (for agent-to-agent use)")
@@ -107,8 +110,37 @@ program
   )
   .option("--verbose", "Show additional debug information")
   .option("--harness <type>", "Agent runtime to use (claude-code|chibi|opencode)")
-  .action(async (navigator: string, question: string, options: QueryCommandOptions) => {
-    await executeQuery(navigator, question, options);
+  .action(async (firstArg: string | undefined, secondArg: string | undefined, options: QueryCommandOptions) => {
+    let navigatorPath: string;
+    let question: string;
+
+    if (firstArg && secondArg) {
+      // Two args: navigator + question
+      navigatorPath = resolveNavigatorArg(firstArg);
+      question = secondArg;
+    } else if (firstArg) {
+      // One arg: could be question (if cwd is navigator) or navigator path
+      const cwdConfig = path.join(process.cwd(), "config.json");
+      if (fs.existsSync(cwdConfig)) {
+        // cwd is a navigator, treat the arg as the question
+        navigatorPath = resolveNavigatorArg();
+        question = firstArg;
+      } else {
+        // Not in a navigator dir — missing question arg
+        console.error("Error: Question is required\n");
+        console.error("Usage: autonav query <navigator> <question>");
+        console.error("       autonav query <question>  (from inside a navigator)\n");
+        process.exit(1);
+      }
+    } else {
+      // No args at all
+      console.error("Error: Question is required\n");
+      console.error("Usage: autonav query <navigator> <question>");
+      console.error("       autonav query <question>  (from inside a navigator)\n");
+      process.exit(1);
+    }
+
+    await executeQuery(navigatorPath, question, options);
   });
 
 /**

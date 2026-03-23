@@ -29,8 +29,11 @@ Guide the user through understanding their needs so you can create a well-config
 3. **Knowledge Structure**: How should knowledge be organized? (by topic, project, chronologically, as a journal, etc.)
 4. **Knowledge Sources**: What documentation will be added? How should new knowledge be captured over time?
 5. **Audience**: Who will use this? How should it communicate? (formal, casual, technical depth)
-6. **Autonomy**: How autonomous should it be? Should it create/modify files freely, or ask first?
-7. **Tools & CLI integrations**: Does the navigator need access to any CLI tools? (e.g., linear, gh, kubectl, npm).
+6. **Sandboxing & Permissions**: What should this navigator be allowed to do?
+   - File access: read-only, or read+write to its knowledge directory?
+   - Network: should it be able to make network requests?
+   - CLI tools: any specific tools it needs? (gh, kubectl, npm, etc.)
+   - Operations: which modes need sandboxing? (query is read-only by default, chat has full access)
 
 ## Philosophy
 Navs are "self-organizing notebooks that talk back" - they edit their own knowledge files, learn from conversations, and maintain their own context. Help the user think through how they want this self-organization to work.
@@ -66,7 +69,7 @@ The JSON must include:
   "scope": "Topics in scope and explicitly out of scope",
   "knowledgeStructure": "How knowledge should be organized (by topic, chronologically, by project, etc.)",
   "audience": "Who uses this navigator and how it should communicate",
-  "autonomy": "Autonomy level - can it create files freely or should it ask first",
+  "sandbox": "Sandbox preferences - file access level, network access, required CLI tools, and per-operation sandbox settings",
   "claudeMd": "The complete CLAUDE.md content as a string with proper newlines (\\n)",
   "suggestedDirectories": ["optional", "array", "of", "subdirectories"]
 }
@@ -88,7 +91,7 @@ The claudeMd field should be a complete, personalized CLAUDE.md file based on wh
 - Domain-specific scope definition
 - Knowledge organization guidance
 - Response format expectations (MUST use submit_answer tool, NOT plain text/JSON)
-- Self-organization rules based on their autonomy preference
+- Sandbox and permissions rules based on their access preferences
 
 **CRITICAL**: The CLAUDE.md MUST include a "Response Format" section instructing the navigator to use the submit_answer tool for all responses. Never instruct navigators to output raw JSON - they must always use the submit_answer tool with answer, sources, and confidence parameters.
 
@@ -134,7 +137,7 @@ Since this pack provides domain knowledge, you can focus more on:
 - How the user will use this specific domain knowledge
 - Their experience level with the domain
 - Specific customizations or preferences
-- How autonomous the navigator should be with the pack's knowledge
+- What access and permissions the navigator needs for the pack's knowledge
 `;
     }
 
@@ -182,7 +185,7 @@ export interface NavigatorConfig {
   scope: string;
   knowledgeStructure?: string;
   audience?: string;
-  autonomy?: string;
+  sandbox?: string;
   claudeMd: string;
   suggestedDirectories?: string[];
 }

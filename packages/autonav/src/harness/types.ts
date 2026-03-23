@@ -35,6 +35,10 @@ export interface SandboxConfig {
   writePaths?: string[];
   /** Block all network access */
   blockNetwork?: boolean;
+  /** CLI tools nono should permit (e.g., "linear", "gh") */
+  allowedCommands?: string[];
+  /** Future: network host allowlist (not yet supported by nono) */
+  allowedHosts?: string[];
 }
 
 /**

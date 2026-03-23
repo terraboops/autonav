@@ -929,6 +929,20 @@ export async function run(args: string[]): Promise<void> {
             }
           }
 
+          // Only show explainer for fresh interviews (not resuming)
+          if (!savedProgress && !options.quiet) {
+            console.log(`
+What's a navigator?
+A directory that becomes a specialized AI assistant. You fill it with
+knowledge (markdown files), and it becomes an expert on that topic.
+
+Examples:
+  • homelab — knows your network setup, configs, and runbooks
+  • codebase — understands your architecture and deployment pipeline
+  • personal — tracks your notes, goals, and projects
+`);
+          }
+
           const interviewHarness = await resolveAndCreateHarness();
           interviewConfig = await runInterviewTUI(navigatorName, {
             navigatorPath,
@@ -1151,9 +1165,18 @@ This is your knowledge base directory. Add your documentation files here.
         console.log("  3. Edit CLAUDE.md to customize behavior");
         console.log("  4a. Use Claude Code: claude");
         console.log(`  4b. Or query directly: autonav query ${navigatorName} "test question"\n`);
+
+        console.log("Quick start:");
+        console.log(`  $ echo "# My Setup\\nRouter: 192.168.1.1" > knowledge/setup.md`);
+        console.log(`  $ autonav chat ${navigatorName}`);
+        console.log(`  > "What's my router IP?"\n`);
       } else {
         console.log("  2a. Use Claude Code: claude");
         console.log(`  2b. Or query directly: autonav query ${navigatorName} "test question"\n`);
+
+        console.log("Quick start:");
+        console.log(`  $ autonav chat ${navigatorName}`);
+        console.log(`  > "What do you know about?"\n`);
       }
 
       console.log("💡 Tips:");

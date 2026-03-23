@@ -70,7 +70,7 @@ console.log(response.sources);
 my-docs/
 ├── config.json       # Name, version, settings
 ├── CLAUDE.md         # System prompt
-├── knowledge-base/   # Your documentation
+├── knowledge/        # Your documentation
 └── .claude/
     └── plugins.json  # Plugin configuration
 ```
