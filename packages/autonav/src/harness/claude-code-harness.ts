@@ -10,7 +10,7 @@ import { query, tool, createSdkMcpServer, type Query, type SDKMessage, type SDKR
 import * as os from "node:os";
 import type { Harness, HarnessSession, AgentConfig, AgentEvent } from "./types.js";
 import type { ToolDefinition } from "./tool-server.js";
-import { isSandboxEnabled, writeProfile, createSdkWrapper } from "./sandbox.js";
+import { isSandboxEnabled, writeProfile, createSdkWrapper, buildNonoFlags } from "./sandbox.js";
 
 /**
  * Flatten an SDK message into zero or more AgentEvents.
@@ -125,16 +125,33 @@ function configToSdkOptions(config: AgentConfig): Record<string, unknown> {
   if (config.stderr) options.stderr = config.stderr;
 
   // Use nono wrapper for sandboxing when a sandbox config is provided.
-  // The wrapper script runs `nono run --config <profile> -- claude` so that
-  // nono enforces the sandbox on the Claude Code subprocess.
+  // The SDK only uses pathToClaudeCodeExecutable directly as the spawn
+  // command for native binaries — shell scripts get run with `node` instead.
+  // So we use the trellis pattern: set NONO_PROFILE and NONO_FLAGS env vars,
+  // and point pathToClaudeCodeExecutable at a wrapper script that reads them.
   if (config.sandbox && isSandboxEnabled(config.sandbox)) {
     const profileDir = os.tmpdir();
+    if (config.stderr) {
+      config.stderr(`[nono] SandboxConfig: ${JSON.stringify({ readPaths: config.sandbox.readPaths, writePaths: config.sandbox.writePaths, allowedCommands: config.sandbox.allowedCommands })}\n`);
+    }
     const profilePath = writeProfile(config.sandbox, profileDir);
     const wrapperPath = createSdkWrapper(profilePath, profileDir, config.sandbox);
+    const nonoFlags = buildNonoFlags(config.sandbox);
+
     options.pathToClaudeCodeExecutable = wrapperPath;
+    options.env = {
+      ...process.env,
+      NONO_PROFILE: profilePath,
+      NONO_FLAGS: nonoFlags,
+    };
   }
 
-  // Always disable SDK's own sandbox — nono handles enforcement
+  // Disable the Claude Code SDK's built-in sandbox (Seatbelt/bubblewrap).
+  // Autonav uses nono-ts for kernel-enforced sandboxing instead — it provides
+  // the same Seatbelt/Landlock enforcement with navigator-aware configuration
+  // (permissions.allowedCommands, permissions.allowedPaths, per-operation profiles).
+  // The SDK's additionalDirectories and allowedTools are still used to inform
+  // Claude Code's tool routing, but nono is the security boundary.
   options.sandbox = { enabled: false };
 
   return options;
@@ -164,20 +181,35 @@ class ClaudeCodeSession implements HarnessSession {
 
   async *[Symbol.asyncIterator](): AsyncIterator<AgentEvent> {
     let lastAssistantText = "";
+    const toolCalls: string[] = [];
 
     for await (const message of this.queryInstance) {
       const events = flattenMessage(message);
       for (const event of events) {
         if (event.type === "text") {
           lastAssistantText = event.text;
+        } else if (event.type === "tool_use") {
+          toolCalls.push(`[Used tool: ${event.name}(${JSON.stringify(event.input).substring(0, 200)})]`);
+        } else if (event.type === "tool_result" && event.content) {
+          const summary = event.content.length > 300
+            ? event.content.substring(0, 300) + "..."
+            : event.content;
+          toolCalls.push(`[Tool result: ${summary}]`);
         }
         yield event;
       }
     }
 
-    // Record assistant response for multi-turn context
+    // Record assistant response including tool activity for multi-turn context
+    const parts: string[] = [];
+    if (toolCalls.length > 0) {
+      parts.push(toolCalls.join("\n"));
+    }
     if (lastAssistantText) {
-      this.conversationHistory.push(`Assistant: ${lastAssistantText}`);
+      parts.push(lastAssistantText);
+    }
+    if (parts.length > 0) {
+      this.conversationHistory.push(`Assistant: ${parts.join("\n\n")}`);
     }
   }
 
@@ -202,17 +234,32 @@ class ClaudeCodeSession implements HarnessSession {
     return {
       async *[Symbol.asyncIterator]() {
         let lastText = "";
+        const toolCalls: string[] = [];
         for await (const message of session.queryInstance) {
           const events = flattenMessage(message);
           for (const event of events) {
             if (event.type === "text") {
               lastText = event.text;
+            } else if (event.type === "tool_use") {
+              toolCalls.push(`[Used tool: ${event.name}(${JSON.stringify(event.input).substring(0, 200)})]`);
+            } else if (event.type === "tool_result" && event.content) {
+              const summary = event.content.length > 300
+                ? event.content.substring(0, 300) + "..."
+                : event.content;
+              toolCalls.push(`[Tool result: ${summary}]`);
             }
             yield event;
           }
         }
+        const parts: string[] = [];
+        if (toolCalls.length > 0) {
+          parts.push(toolCalls.join("\n"));
+        }
         if (lastText) {
-          session.conversationHistory.push(`Assistant: ${lastText}`);
+          parts.push(lastText);
+        }
+        if (parts.length > 0) {
+          session.conversationHistory.push(`Assistant: ${parts.join("\n\n")}`);
         }
       },
     };

@@ -255,6 +255,22 @@ function commandFlags(config?: SandboxConfig): string[] {
 }
 
 /**
+ * Build nono CLI flags string for env var passing (NONO_FLAGS).
+ *
+ * Used by ClaudeCodeHarness where the wrapper script reads NONO_FLAGS
+ * from the environment (trellis pattern).
+ */
+export function buildNonoFlags(config: SandboxConfig): string {
+  // Note: do NOT include --exec here. The SDK spawns claude with pipes
+  // (not TTY), and --exec causes nono to do execvp() which can interfere
+  // with pipe-based stdio management. --exec is only for interactive
+  // terminal sessions (e.g., running `nono run -- claude` directly).
+  const parts: string[] = ["--allow-cwd"];
+  parts.push(...commandFlags(config));
+  return parts.join(" ");
+}
+
+/**
  * Wrap a command with nono sandbox if enabled.
  *
  * Uses profile-based approach:
@@ -304,13 +320,35 @@ export function wrapCommand(
  *
  * @returns Absolute path to the wrapper script.
  */
-export function createSdkWrapper(profilePath: string, dir: string, config?: SandboxConfig): string {
+export function createSdkWrapper(_profilePath: string, dir: string, _config?: SandboxConfig): string {
   const wrapperPath = path.join(dir, "nono-claude-wrapper.sh");
-  const cmdFlags = commandFlags(config).join(" ");
-  const extraFlags = cmdFlags ? ` ${cmdFlags}` : "";
+  // Use nono's built-in claude-code profile as a base — it provides all
+  // the paths claude needs (config, keychain, tmp dirs, etc.) and is
+  // maintained by the nono team. Our custom --config adds navigator-specific
+  // paths on top, and NONO_FLAGS adds --allow-command flags.
+  //
+  // Workaround: nono --silent doesn't suppress WARN messages for missing
+  // optional profile paths (e.g., ~/.vscode) and they go to stdout,
+  // corrupting the SDK's JSON stream. We use --exec so nono replaces
+  // itself with claude (no monitoring layer), and pre-create the dirs
+  // nono expects so it doesn't warn. This is simpler and avoids fd
+  // juggling that can interfere with multi-turn pipe management.
   const script = `#!/usr/bin/env bash
 set -euo pipefail
-exec nono run --config "${profilePath}" --silent --exec --allow-cwd${extraFlags} -- claude "$@"
+# Pre-create optional paths the claude-code profile references to
+# avoid nono WARN messages on stdout that corrupt the SDK JSON stream.
+mkdir -p "\${HOME}/.vscode" 2>/dev/null || true
+mkdir -p "\${HOME}/Library/Application Support/Code" 2>/dev/null || true
+touch "\${HOME}/.gitignore_global" 2>/dev/null || true
+exec nono run \\
+    --silent \\
+    --no-diagnostics \\
+    --exec \\
+    --profile claude-code \\
+    --config "\${NONO_PROFILE}" \\
+    \${NONO_FLAGS:-} \\
+    --allow "\${HOME}/.claude-personal" \\
+    -- claude "$@"
 `;
   fs.writeFileSync(wrapperPath, script, "utf-8");
   fs.chmodSync(wrapperPath, 0o755);

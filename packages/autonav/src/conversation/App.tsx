@@ -438,8 +438,17 @@ Model: ${CONVERSATION_MODEL}`,
           // doesn't prompt for these. Format: "Bash(command *)" allows any
           // bash invocation starting with that command.
           const allowedTools = allowedCommands?.length
-            ? allowedCommands.map((cmd) => `Bash(${cmd} *)`)
+            ? allowedCommands.map((cmd) => `Bash(${cmd}:*)`)
             : undefined;
+
+          debugLog("allowedCommands prop:", allowedCommands);
+          debugLog("allowedTools for SDK:", allowedTools);
+
+          // Tell the SDK about all paths nono allows so the SDK's own
+          // directory scoping doesn't block access that nono permits.
+          const additionalDirectories = sandboxConfig?.readPaths
+            ?.concat(sandboxConfig?.writePaths ?? [])
+            .filter((p) => p !== navigatorPath);
 
           const session = harnessRef.current.run(
             {
@@ -449,6 +458,7 @@ Model: ${CONVERSATION_MODEL}`,
               cwd: navigatorPath,
               mcpServers,
               allowedTools,
+              additionalDirectories,
               // Per-nav sandbox: full config from nav-chat.ts
               ...(sandboxConfig ? { sandbox: sandboxConfig } : {}),
             },

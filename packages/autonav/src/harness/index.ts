@@ -46,6 +46,7 @@ export {
   wrapCommand,
   writeProfile,
   createSdkWrapper,
+  buildNonoFlags,
   buildCapabilitySet,
   querySandbox,
   querySandboxNetwork,
