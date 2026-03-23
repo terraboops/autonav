@@ -10,7 +10,7 @@ import { query, tool, createSdkMcpServer, type Query, type SDKMessage, type SDKR
 import * as os from "node:os";
 import type { Harness, HarnessSession, AgentConfig, AgentEvent } from "./types.js";
 import type { ToolDefinition } from "./tool-server.js";
-import { isSandboxEnabled, writeProfile, createSdkWrapper, buildNonoFlags } from "./sandbox.js";
+import { resolveSandboxProvider, writeProfile, createSdkWrapper, buildNonoFlags } from "./sandbox.js";
 
 /**
  * Flatten an SDK message into zero or more AgentEvents.
@@ -124,15 +124,18 @@ function configToSdkOptions(config: AgentConfig): Record<string, unknown> {
   if (config.permissionMode) options.permissionMode = config.permissionMode;
   if (config.stderr) options.stderr = config.stderr;
 
-  // Use nono wrapper for sandboxing when a sandbox config is provided.
-  // The SDK only uses pathToClaudeCodeExecutable directly as the spawn
-  // command for native binaries — shell scripts get run with `node` instead.
-  // So we use the trellis pattern: set NONO_PROFILE and NONO_FLAGS env vars,
-  // and point pathToClaudeCodeExecutable at a wrapper script that reads them.
-  if (config.sandbox && isSandboxEnabled(config.sandbox)) {
+  // Resolve sandbox provider — determines which enforcement mechanism to use.
+  // Throws if provider is "nono" but nono CLI is missing (no silent fallback).
+  const sandboxResolution = config.sandbox
+    ? resolveSandboxProvider(config.sandbox)
+    : { provider: "none" as const, active: false };
+
+  if (sandboxResolution.provider === "nono" && sandboxResolution.active && config.sandbox) {
+    // nono: kernel-enforced sandbox via wrapper script.
+    // Uses trellis pattern: NONO_PROFILE + NONO_FLAGS env vars.
     const profileDir = os.tmpdir();
     if (config.stderr) {
-      config.stderr(`[nono] SandboxConfig: ${JSON.stringify({ readPaths: config.sandbox.readPaths, writePaths: config.sandbox.writePaths, allowedCommands: config.sandbox.allowedCommands })}\n`);
+      config.stderr(`[nono] SandboxConfig: ${JSON.stringify({ provider: "nono", readPaths: config.sandbox.readPaths, writePaths: config.sandbox.writePaths, allowedCommands: config.sandbox.allowedCommands })}\n`);
     }
     const profilePath = writeProfile(config.sandbox, profileDir);
     const wrapperPath = createSdkWrapper(profilePath, profileDir, config.sandbox);
@@ -144,15 +147,19 @@ function configToSdkOptions(config: AgentConfig): Record<string, unknown> {
       NONO_PROFILE: profilePath,
       NONO_FLAGS: nonoFlags,
     };
+    // Disable SDK sandbox — nono is the security boundary.
+    options.sandbox = { enabled: false };
+  } else if (sandboxResolution.provider === "claude-code" && sandboxResolution.active) {
+    // Claude Code SDK's built-in sandbox (Seatbelt/bubblewrap).
+    // No nono dependency needed — the SDK handles enforcement.
+    if (config.stderr) {
+      config.stderr(`[sandbox] Using Claude Code SDK sandbox (provider: "claude-code")\n`);
+    }
+    options.sandbox = { enabled: true };
+  } else {
+    // No sandbox — either provider is "none" or sandbox is disabled.
+    options.sandbox = { enabled: false };
   }
-
-  // Disable the Claude Code SDK's built-in sandbox (Seatbelt/bubblewrap).
-  // Autonav uses nono-ts for kernel-enforced sandboxing instead — it provides
-  // the same Seatbelt/Landlock enforcement with navigator-aware configuration
-  // (permissions.allowedCommands, permissions.allowedPaths, per-operation profiles).
-  // The SDK's additionalDirectories and allowedTools are still used to inform
-  // Claude Code's tool routing, but nono is the security boundary.
-  options.sandbox = { enabled: false };
 
   return options;
 }

@@ -112,16 +112,18 @@ export const NavigatorConfigSchema = z.object({
   /**
    * Per-operation sandbox profiles.
    *
-   * Controls kernel-enforced sandboxing (nono) for each operation.
-   * nono provides Seatbelt (macOS) and Landlock (Linux) enforcement.
+   * Provider determines the enforcement mechanism:
+   *   - "nono" (default): kernel-enforced via nono (Seatbelt/Landlock). Errors if nono CLI missing.
+   *   - "claude-code": Claude Code SDK's built-in sandbox. No nono dependency needed.
+   *   - "none": no sandbox enforcement.
    *
    * Defaults: sandbox ON for query/update/chat/standup, OFF for memento.
    * Override per-nav in config.json.
-   *
-   * Set dangerouslyDisableSandbox: true to disable all sandboxing.
    */
   sandbox: z.object({
-    /** Disable sandboxing entirely (not recommended) */
+    /** Sandbox enforcement mechanism. Default: "nono" (kernel-enforced). */
+    provider: z.enum(['nono', 'claude-code', 'none']).optional().default('nono').describe('Sandbox provider'),
+    /** Disable sandboxing entirely (alias for provider: "none", kept for backward compat) */
     dangerouslyDisableSandbox: z.boolean().optional().describe('Disable all sandboxing'),
     query: z.object({
       enabled: z.boolean(),

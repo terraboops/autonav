@@ -12,6 +12,7 @@ export type {
   AgentEvent,
   HarnessType,
   SandboxConfig,
+  SandboxProvider,
 } from "./types.js";
 
 export { ClaudeCodeHarness } from "./claude-code-harness.js";
@@ -43,6 +44,9 @@ export {
 export {
   isNonoAvailable,
   isSandboxEnabled,
+  resolveSandboxProvider,
+  getNonoVersion,
+  getNonoInstallInstructions,
   wrapCommand,
   writeProfile,
   createSdkWrapper,

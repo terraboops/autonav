@@ -3,7 +3,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { runConversationTUI, isInteractiveTerminal } from "../conversation/index.js";
-import { resolveAndCreateHarness, isSandboxEnabled, getSandboxSummary, type SandboxConfig } from "../harness/index.js";
+import { resolveAndCreateHarness, resolveSandboxProvider, getSandboxSummary, type SandboxConfig } from "../harness/index.js";
 import { createRelatedNavsMcpServer } from "../tools/related-navs.js";
 import { createRelatedNavsConfigServer } from "../tools/related-navs-config.js";
 import { createCrossNavMcpServer } from "../tools/cross-nav.js";
@@ -112,6 +112,7 @@ export async function run(args: string[]): Promise<void> {
       allowedPaths?: string[];
     };
     sandbox?: {
+      provider?: "nono" | "claude-code" | "none";
       dangerouslyDisableSandbox?: boolean;
       chat?: {
         enabled?: boolean;
@@ -197,14 +198,25 @@ export async function run(args: string[]): Promise<void> {
     );
     mcpServers["autonav-related-navs-config"] = relatedNavsConfigMcp.server;
 
-    // Build full SandboxConfig from navigator config
+    // Build full SandboxConfig from navigator config.
+    // dangerouslyDisableSandbox is an alias for provider: "none".
+    const sandboxProvider = config.sandbox?.dangerouslyDisableSandbox
+      ? "none" as const
+      : (config.sandbox?.provider ?? "nono" as const);
+
     const sandboxConfig: SandboxConfig | undefined = (() => {
-      if (config.sandbox?.dangerouslyDisableSandbox) return undefined;
+      if (sandboxProvider === "none") return undefined;
       const chatSandbox = config.sandbox?.chat;
       if (chatSandbox?.enabled === false) return undefined;
 
+      const allCommands = [
+        ...(config.permissions?.allowedCommands ?? []),
+        ...(chatSandbox?.allowedCommands ?? []),
+      ];
+
       return {
         enabled: true,
+        provider: sandboxProvider,
         readPaths: [
           navigatorPath,
           knowledgeBasePath,
@@ -214,15 +226,15 @@ export async function run(args: string[]): Promise<void> {
         writePaths: chatSandbox?.accessLevel === "readwrite"
           ? [navigatorPath, ...(chatSandbox?.extraWritePaths ?? [])]
           : undefined,
-        allowedCommands: [
-          ...(config.permissions?.allowedCommands ?? []),
-          ...(chatSandbox?.allowedCommands ?? []),
-        ].length > 0
-          ? [...(config.permissions?.allowedCommands ?? []), ...(chatSandbox?.allowedCommands ?? [])]
-          : undefined,
+        allowedCommands: allCommands.length > 0 ? allCommands : undefined,
         blockNetwork: chatSandbox?.blockNetwork,
       };
     })();
+
+    // Validate sandbox provider early — errors with install instructions if nono is required but missing.
+    if (sandboxConfig) {
+      resolveSandboxProvider(sandboxConfig);
+    }
 
     // Always register sandbox_query tool — navigators should always be able
     // to diagnose their sandbox status, whether sandbox is active or not.
@@ -231,9 +243,12 @@ export async function run(args: string[]): Promise<void> {
 
     // Inject sandbox summary into system prompt when sandbox is active
     let augmentedSystemPrompt = systemPrompt;
-    if (sandboxConfig && isSandboxEnabled(sandboxConfig)) {
-      const summary = getSandboxSummary(sandboxConfig);
-      augmentedSystemPrompt += `\n\n## Sandbox Policy (active)\n${summary}\nUse the sandbox_query tool to check specific operations.\nConfig changes require user approval and take effect on next launch.\n`;
+    if (sandboxConfig) {
+      const providerLabel = sandboxConfig.provider === "claude-code" ? "Claude Code SDK" : "nono (kernel-enforced)";
+      const summary = sandboxConfig.provider === "nono"
+        ? getSandboxSummary(sandboxConfig)
+        : `Provider: ${providerLabel}\nPaths and commands configured via config.json permissions.`;
+      augmentedSystemPrompt += `\n\n## Sandbox Policy (active — ${providerLabel})\n${summary}\nUse the sandbox_query tool to check specific operations.\nConfig changes require user approval and take effect on next launch.\n`;
     }
 
     // Collect allowed commands from both top-level permissions and chat-specific config.

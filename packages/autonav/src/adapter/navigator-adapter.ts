@@ -449,10 +449,16 @@ export class NavigatorAdapter {
     // Build full sandbox config from navigator permissions + per-operation profile
     const navConfig = navigator.config as Record<string, unknown>;
     const permissions = navConfig.permissions as { allowedCommands?: string[]; allowedPaths?: string[] } | undefined;
+    const sandboxSection = navConfig.sandbox as { provider?: string; dangerouslyDisableSandbox?: boolean } | undefined;
+    const sandboxProvider = (
+      sandboxSection?.dangerouslyDisableSandbox ? "none"
+      : sandboxSection?.provider ?? "nono"
+    ) as SandboxConfig["provider"];
 
     // Build sandbox config for the sandbox_query tool
-    const querySandboxConfig: SandboxConfig | undefined = querySandboxEnabled ? {
+    const querySandboxConfig: SandboxConfig | undefined = querySandboxEnabled && sandboxProvider !== "none" ? {
       enabled: true,
+      provider: sandboxProvider,
       readPaths: [navigator.navigatorPath, navigator.knowledgeBasePath, ...(permissions?.allowedPaths ?? [])],
       allowedCommands: permissions?.allowedCommands,
     } : undefined;
@@ -472,9 +478,10 @@ export class NavigatorAdapter {
         permissionMode: "bypassPermissions",
         stderr: debug ? (data: string) => process.stderr.write(`[harness] ${data}`) : undefined,
         disallowedTools: queryDisallowed,
-        ...(querySandboxEnabled ? {
+        ...(querySandboxEnabled && sandboxProvider !== "none" ? {
           sandbox: {
             enabled: true,
+            provider: sandboxProvider,
             readPaths: [
               navigator.navigatorPath,
               navigator.knowledgeBasePath,
@@ -691,6 +698,11 @@ Your task: ${message}`;
     const updateSandboxEnabled = navigator.config.sandbox?.update?.enabled !== false;
     const updateNavConfig = navigator.config as Record<string, unknown>;
     const updatePermissions = updateNavConfig.permissions as { allowedCommands?: string[]; allowedPaths?: string[] } | undefined;
+    const updateSandboxSection = updateNavConfig.sandbox as { provider?: string; dangerouslyDisableSandbox?: boolean } | undefined;
+    const updateProvider = (
+      updateSandboxSection?.dangerouslyDisableSandbox ? "none"
+      : updateSandboxSection?.provider ?? "nono"
+    ) as SandboxConfig["provider"];
 
     const session = this.harness.run(
       {
@@ -699,9 +711,10 @@ Your task: ${message}`;
         systemPrompt,
         cwd: navigator.navigatorPath,
         permissionMode: "bypassPermissions",
-        ...(updateSandboxEnabled ? {
+        ...(updateSandboxEnabled && updateProvider !== "none" ? {
           sandbox: {
             enabled: true,
+            provider: updateProvider,
             readPaths: [
               navigator.knowledgeBasePath,
               ...(updatePermissions?.allowedPaths ?? []),

@@ -32,7 +32,7 @@ import { createRequire } from "node:module";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { SandboxConfig } from "./types.js";
+import type { SandboxConfig, SandboxProvider } from "./types.js";
 
 // ── Lazy nono-ts loading ─────────────────────────────────────────────
 // nono-ts uses NAPI-RS native bindings that may not be available on all
@@ -72,27 +72,76 @@ export enum AccessMode {
   ReadWrite = 2,
 }
 
+/** Minimum nono CLI version required for autonav sandboxing. */
+const MIN_NONO_VERSION = "0.5.0";
+
+/** Simple semver comparison: is actual >= required? */
+function meetsMinVersion(actual: string, required: string): boolean {
+  const a = actual.split(".").map(Number);
+  const r = required.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] ?? 0) > (r[i] ?? 0)) return true;
+    if ((a[i] ?? 0) < (r[i] ?? 0)) return false;
+  }
+  return true; // equal
+}
+
 let nonoAvailableCache: boolean | null = null;
+let nonoCliVersion: string | null = null;
 
 /**
  * Check if nono sandboxing is available on this platform (result is cached).
  *
- * Uses nono-ts isSupported() which checks for Seatbelt (macOS) or
- * Landlock (Linux 5.13+) support without spawning a subprocess.
- * Falls back to false if nono-ts native module isn't available.
+ * Checks both:
+ *   1. nono-ts native module (for profile building / querying)
+ *   2. nono CLI binary on PATH (for actual enforcement)
+ *
+ * Falls back to false if either is unavailable.
  */
 export function isNonoAvailable(): boolean {
   if (nonoAvailableCache !== null) {
     return nonoAvailableCache;
   }
 
+  // Check nono-ts native module
   if (!loadNono()) {
     nonoAvailableCache = false;
     return false;
   }
 
   try {
-    nonoAvailableCache = nonoModule.isSupported() === true;
+    if (nonoModule.isSupported() !== true) {
+      nonoAvailableCache = false;
+      return false;
+    }
+  } catch {
+    nonoAvailableCache = false;
+    return false;
+  }
+
+  // Check nono CLI binary is installed and meets minimum version
+  try {
+    const req = createRequire(import.meta.url);
+    const { execFileSync } = req("node:child_process") as typeof import("node:child_process");
+    const output = execFileSync("nono", ["--version"], {
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 3_000,
+      encoding: "utf-8",
+    }).trim();
+    // Output format: "nono X.Y.Z" or just "X.Y.Z"
+    const versionMatch = output.match(/(\d+\.\d+\.\d+)/);
+    if (versionMatch) {
+      nonoCliVersion = versionMatch[1]!;
+      if (!meetsMinVersion(nonoCliVersion, MIN_NONO_VERSION)) {
+        console.error(
+          `[autonav] nono CLI v${nonoCliVersion} is too old (need >=${MIN_NONO_VERSION}). ` +
+          `Sandboxing disabled. Upgrade: brew upgrade always-further/tap/nono`
+        );
+        nonoAvailableCache = false;
+        return false;
+      }
+    }
+    nonoAvailableCache = true;
   } catch {
     nonoAvailableCache = false;
   }
@@ -101,26 +150,83 @@ export function isNonoAvailable(): boolean {
 }
 
 /**
+ * Get the detected nono CLI version, or null if not available.
+ */
+export function getNonoVersion(): string | null {
+  isNonoAvailable(); // ensure detection has run
+  return nonoCliVersion;
+}
+
+/**
+ * Get install instructions for nono CLI.
+ */
+export function getNonoInstallInstructions(): string {
+  return `Install nono (kernel sandbox for autonav agents):
+  macOS:  brew install always-further/tap/nono
+  Linux:  cargo install nono
+  More:   https://github.com/always-further/nono`;
+}
+
+/**
+ * Resolve the effective sandbox provider for this session.
+ *
+ * Returns the provider string and whether it's active.
+ * Throws if provider is "nono" but nono is unavailable (no silent fallback).
+ */
+export function resolveSandboxProvider(config?: SandboxConfig): { provider: SandboxProvider; active: boolean } {
+  // Env var override disables all sandboxing
+  if (process.env.AUTONAV_SANDBOX === "0") {
+    return { provider: "none", active: false };
+  }
+
+  // Explicit disable
+  if (config?.enabled === false) {
+    return { provider: "none", active: false };
+  }
+
+  const provider = config?.provider ?? "nono";
+
+  if (provider === "none") {
+    return { provider: "none", active: false };
+  }
+
+  if (provider === "claude-code") {
+    return { provider: "claude-code", active: true };
+  }
+
+  // Provider is "nono" (default) — require it to be available
+  if (!isNonoAvailable()) {
+    const detected = nonoCliVersion
+      ? `Detected: v${nonoCliVersion} (need >=${MIN_NONO_VERSION})`
+      : "Detected: not installed";
+
+    throw new Error(
+      `Sandbox provider "nono" requires the nono CLI (kernel-enforced sandboxing).\n\n` +
+      `  ${detected}\n\n` +
+      `  ${getNonoInstallInstructions()}\n\n` +
+      `  To use Claude Code's built-in sandbox instead:\n` +
+      `    Set "sandbox": { "provider": "claude-code" } in config.json\n\n` +
+      `  To disable sandboxing entirely:\n` +
+      `    Set "sandbox": { "provider": "none" } in config.json`
+    );
+  }
+
+  return { provider: "nono", active: true };
+}
+
+/**
  * Resolve whether sandboxing should be active for this session.
  *
- * Priority:
- *   1. config.enabled (explicit opt-in/out)
- *   2. AUTONAV_SANDBOX env var ("0" to disable)
- *   3. Auto-detect via nono-ts isSupported()
+ * For backward compatibility — wraps resolveSandboxProvider and catches
+ * errors (returns false if nono is required but missing). Prefer using
+ * resolveSandboxProvider directly for better error handling.
  */
 export function isSandboxEnabled(config?: SandboxConfig): boolean {
-  // Explicit config takes priority
-  if (config?.enabled !== undefined) {
-    return config.enabled && isNonoAvailable();
-  }
-
-  // Env var override
-  if (process.env.AUTONAV_SANDBOX === "0") {
+  try {
+    return resolveSandboxProvider(config).active;
+  } catch {
     return false;
   }
-
-  // Auto-detect
-  return isNonoAvailable();
 }
 
 /**
@@ -329,10 +435,8 @@ export function createSdkWrapper(_profilePath: string, dir: string, _config?: Sa
   //
   // Workaround: nono --silent doesn't suppress WARN messages for missing
   // optional profile paths (e.g., ~/.vscode) and they go to stdout,
-  // corrupting the SDK's JSON stream. We use --exec so nono replaces
-  // itself with claude (no monitoring layer), and pre-create the dirs
-  // nono expects so it doesn't warn. This is simpler and avoids fd
-  // juggling that can interfere with multi-turn pipe management.
+  // corrupting the SDK's JSON stream. We pre-create the dirs nono
+  // expects so it doesn't warn.
   const script = `#!/usr/bin/env bash
 set -euo pipefail
 # Pre-create optional paths the claude-code profile references to
@@ -343,7 +447,6 @@ touch "\${HOME}/.gitignore_global" 2>/dev/null || true
 exec nono run \\
     --silent \\
     --no-diagnostics \\
-    --exec \\
     --profile claude-code \\
     --config "\${NONO_PROFILE}" \\
     \${NONO_FLAGS:-} \\

@@ -26,16 +26,26 @@ export type HarnessType = "claude-code" | "chibi" | "opencode";
  * Falls back gracefully when the underlying mechanism is unavailable
  * (e.g., nono not installed → chibi runs unsandboxed).
  */
+/**
+ * Sandbox provider determines which enforcement mechanism is used.
+ *   - "nono": kernel-enforced via nono (Seatbelt/Landlock). Default. Errors if nono CLI is missing.
+ *   - "claude-code": Claude Code SDK's built-in sandbox (Seatbelt/bubblewrap). No nono dependency.
+ *   - "none": no sandbox enforcement.
+ */
+export type SandboxProvider = "nono" | "claude-code" | "none";
+
 export interface SandboxConfig {
-  /** Explicitly enable/disable. Default: auto-detect nono on PATH. AUTONAV_SANDBOX=0 to disable. */
+  /** Explicitly enable/disable. Default: true when provider is set. */
   enabled?: boolean;
+  /** Sandbox enforcement mechanism. Default: "nono". */
+  provider?: SandboxProvider;
   /** Paths with read-only access */
   readPaths?: string[];
   /** Paths with read+write access */
   writePaths?: string[];
   /** Block all network access */
   blockNetwork?: boolean;
-  /** CLI tools nono should permit (e.g., "linear", "gh") */
+  /** CLI tools the sandbox should permit (e.g., "linear", "gh") */
   allowedCommands?: string[];
   /** Future: network host allowlist (not yet supported by nono) */
   allowedHosts?: string[];
