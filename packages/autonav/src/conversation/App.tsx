@@ -207,6 +207,8 @@ interface ConversationAppProps {
   mcpServers?: Record<string, unknown>;
   /** Full sandbox config for chat (undefined = no sandbox) */
   sandboxConfig?: SandboxConfig;
+  /** CLI commands the navigator is allowed to run without permission prompts */
+  allowedCommands?: string[];
   /** Raw config.json content for config-aware prompts */
   configJson?: string;
 }
@@ -219,6 +221,7 @@ export function ConversationApp({
   harness,
   mcpServers,
   sandboxConfig,
+  allowedCommands,
   configJson,
 }: ConversationAppProps) {
   // Finalized messages go into <Static> — printed once, never repainted.
@@ -431,6 +434,13 @@ Model: ${CONVERSATION_MODEL}`,
           events = sessionRef.current.send(value);
         } else {
           // First message: create new session
+          // Map allowedCommands → SDK allowedTools so the permission system
+          // doesn't prompt for these. Format: "Bash(command *)" allows any
+          // bash invocation starting with that command.
+          const allowedTools = allowedCommands?.length
+            ? allowedCommands.map((cmd) => `Bash(${cmd} *)`)
+            : undefined;
+
           const session = harnessRef.current.run(
             {
               model: CONVERSATION_MODEL,
@@ -438,6 +448,7 @@ Model: ${CONVERSATION_MODEL}`,
               permissionMode: "acceptEdits",
               cwd: navigatorPath,
               mcpServers,
+              allowedTools,
               // Per-nav sandbox: full config from nav-chat.ts
               ...(sandboxConfig ? { sandbox: sandboxConfig } : {}),
             },

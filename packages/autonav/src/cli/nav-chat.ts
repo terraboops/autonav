@@ -237,6 +237,13 @@ export async function run(args: string[]): Promise<void> {
       augmentedSystemPrompt += `\n\n## Sandbox Policy (active)\n${summary}\nUse the sandbox_query tool to check specific operations.\nConfig changes require user approval and take effect on next launch.\n`;
     }
 
+    // Collect allowed commands from both top-level permissions and chat-specific config.
+    // These bypass the SDK permission prompt (separate from nono sandbox enforcement).
+    const allowedCommands = [
+      ...(config.permissions?.allowedCommands ?? []),
+      ...(config.sandbox?.chat?.allowedCommands ?? []),
+    ];
+
     await runConversationTUI({
       navigatorName: config.name,
       navigatorPath,
@@ -245,6 +252,7 @@ export async function run(args: string[]): Promise<void> {
       harness,
       mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
       sandboxConfig,
+      allowedCommands: allowedCommands.length > 0 ? allowedCommands : undefined,
       configJson: configContent,
       model: config.harness?.model,
     });

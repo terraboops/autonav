@@ -35,6 +35,8 @@ export interface ConversationOptions {
   mcpServers?: Record<string, unknown>;
   /** Full sandbox config for chat (undefined = no sandbox) */
   sandboxConfig?: SandboxConfig;
+  /** CLI commands the navigator is allowed to run without permission prompts (e.g., ["linear", "dig"]) */
+  allowedCommands?: string[];
   /** Raw config.json content for config-aware prompts */
   configJson?: string;
   /** Model override for the harness. When undefined, the harness uses its own default. */
