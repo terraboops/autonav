@@ -395,8 +395,8 @@ Any directory with these files becomes an autonomous navigator:
 1. ✅ Autonav CLI
    - `autonav init <name>` - Scaffold new navigator (with interactive interview)
    - `autonav init <name> --pack <pack-name>` - Initialize with knowledge pack
-   - `autonav query <navigator> <question>` - Query a navigator
-   - `autonav chat <navigator>` - Interactive multi-turn mode
+   - `autonav query [navigator] <question>` - Query a navigator (auto-detects from cwd)
+   - `autonav chat [navigator]` - Interactive multi-turn mode (auto-detects from cwd)
 
 2. ✅ Communication Layer (embedded directory)
    - Repository structure templates
@@ -682,6 +682,49 @@ Track these during development:
 - **Self-configuring navs**: Autonomous agents, not orchestrated tools
 - **Follow the dopamine**: Interest and curiosity are valuable signals
 - **Version everything**: Add fields now, build migration tools later
+
+---
+
+## Sandboxing Architecture (nono-ts)
+
+Autonav uses **nono-ts** for kernel-enforced sandboxing (Seatbelt on macOS, Landlock on Linux). This is the unified sandbox for all harnesses — the Claude Code SDK's built-in sandbox is disabled.
+
+### How It Works
+
+1. `permissions.allowedCommands` in config.json → `nono --allow-command <cmd>` flags
+2. `sandbox.<operation>` profiles control per-operation sandboxing
+3. `sandbox.dangerouslyDisableSandbox: true` disables all sandboxing
+4. Navigators get a `sandbox_query` tool for pre-flight permission checks
+
+### Config Example (Bernard)
+```json
+{
+  "permissions": {
+    "allowedCommands": ["linear", "dig"],
+    "allowedPaths": ["/Users/terra/Developer/other-project"]
+  },
+  "sandbox": {
+    "chat": {
+      "enabled": true,
+      "accessLevel": "readwrite",
+      "extraWritePaths": ["/tmp/workspace"]
+    }
+  }
+}
+```
+
+### Key Design Decisions
+
+- **User must approve config changes** — navigators can propose but not self-modify sandbox config
+- **Config changes take effect on next launch** — no hot-reloading sandbox profiles mid-session
+- **Graceful fallback** — when nono is not installed, processes run unsandboxed. `AUTONAV_SANDBOX=0` also disables
+- **Never call `apply()`** — nono-ts `apply()` sandboxes the autonav process itself. We only build profiles for child processes
+
+### Debugging
+
+- Navigators see a **Sandbox Policy** section in their system prompt when sandbox is active
+- The `sandbox_query` MCP tool lets navigators check "would this operation be allowed?"
+- nono prints diagnostic footers to stderr when sandboxed commands exit non-zero
 
 ---
 

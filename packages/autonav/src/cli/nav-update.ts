@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
@@ -10,6 +12,7 @@ import {
   NavigatorLoadError,
 } from "../query-engine/index.js";
 import { resolveAndCreateHarness } from "../harness/index.js";
+import { resolveNavigatorArg } from "./resolve-nav.js";
 
 /**
  * Command line options
@@ -75,8 +78,8 @@ program
   .name("autonav update")
   .description("Update a Platform AI navigator's documentation")
   .version("1.0.0")
-  .argument("<navigator>", "Path to the navigator directory")
-  .argument("<message>", "Update message or report")
+  .argument("[navigator]", "Path to the navigator directory (auto-detects from cwd)")
+  .argument("[message]", "Update message or report")
   .option(
     "--timeout <duration>",
     "Update timeout (e.g., 30s, 1m, 1m30s, or milliseconds)",
@@ -85,8 +88,37 @@ program
   )
   .option("--verbose", "Show additional debug information")
   .option("--harness <type>", "Agent runtime to use (claude-code|chibi|opencode)")
-  .action(async (navigator: string, message: string, options: UpdateCommandOptions) => {
-    await executeUpdate(navigator, message, options);
+  .action(async (firstArg: string | undefined, secondArg: string | undefined, options: UpdateCommandOptions) => {
+    let navigatorPath: string;
+    let message: string;
+
+    if (firstArg && secondArg) {
+      // Two args: navigator + message
+      navigatorPath = resolveNavigatorArg(firstArg);
+      message = secondArg;
+    } else if (firstArg) {
+      // One arg: could be message (if cwd is navigator) or navigator path
+      const cwdConfig = path.join(process.cwd(), "config.json");
+      if (fs.existsSync(cwdConfig)) {
+        // cwd is a navigator, treat the arg as the message
+        navigatorPath = resolveNavigatorArg();
+        message = firstArg;
+      } else {
+        // Not in a navigator dir — missing message arg
+        console.error("Error: Update message is required\n");
+        console.error("Usage: autonav update <navigator> <message>");
+        console.error("       autonav update <message>  (from inside a navigator)\n");
+        process.exit(1);
+      }
+    } else {
+      // No args at all
+      console.error("Error: Update message is required\n");
+      console.error("Usage: autonav update <navigator> <message>");
+      console.error("       autonav update <message>  (from inside a navigator)\n");
+      process.exit(1);
+    }
+
+    await executeUpdate(navigatorPath, message, options);
   });
 
 /**

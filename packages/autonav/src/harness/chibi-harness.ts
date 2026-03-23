@@ -85,9 +85,9 @@ function buildInput(
  */
 function runSync(
   inputJson: string,
-  opts?: { env?: Record<string, string>; sandboxConfig?: SandboxConfig },
+  opts?: { env?: Record<string, string>; sandboxConfig?: SandboxConfig; profileDir?: string },
 ): void {
-  const { command, args } = wrapCommand("chibi-json", [], opts?.sandboxConfig);
+  const { command, args } = wrapCommand("chibi-json", [], opts?.sandboxConfig, opts?.profileDir);
   execFileSync(command, args, {
     input: inputJson,
     stdio: ["pipe", "pipe", "pipe"],
@@ -276,7 +276,7 @@ class ChibiSession implements HarnessSession {
         config.model,
       );
       try {
-        runSync(input, { env: this.extraEnv, sandboxConfig: this.sandboxConfig });
+        runSync(input, { env: this.extraEnv, sandboxConfig: this.sandboxConfig, profileDir: this.ephemeralHome.homePath });
       } catch (error) {
         // Log but don't fail — system prompt is best-effort
         const msg = error instanceof Error ? error.message : String(error);
@@ -304,7 +304,7 @@ class ChibiSession implements HarnessSession {
       this.config.model,
     );
 
-    const { command, args } = wrapCommand("chibi-json", [], this.sandboxConfig);
+    const { command, args } = wrapCommand("chibi-json", [], this.sandboxConfig, this.ephemeralHome?.homePath);
     const child = spawn(command, args, {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, ...this.extraEnv },

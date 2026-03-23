@@ -3,10 +3,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { runConversationTUI, isInteractiveTerminal } from "../conversation/index.js";
-import { resolveAndCreateHarness } from "../harness/index.js";
+import { resolveAndCreateHarness, isSandboxEnabled, getSandboxSummary, type SandboxConfig } from "../harness/index.js";
 import { createRelatedNavsMcpServer } from "../tools/related-navs.js";
 import { createRelatedNavsConfigServer } from "../tools/related-navs-config.js";
 import { createCrossNavMcpServer } from "../tools/cross-nav.js";
+import { createSandboxQueryMcpServer } from "../tools/sandbox-query.js";
+import { resolveNavigatorArg } from "./resolve-nav.js";
 
 /**
  * autonav chat CLI command
@@ -27,10 +29,10 @@ function printUsage() {
 autonav chat - Interactive conversation with a navigator
 
 Usage:
-  autonav chat <navigator-path>
+  autonav chat [navigator-path]
 
 Arguments:
-  navigator-path    Path to the navigator directory
+  navigator-path    Path to the navigator directory (auto-detects from cwd)
 
 Options:
   --verbose         Show debug information
@@ -46,6 +48,7 @@ Description:
 Examples:
   autonav chat ./my-navigator
   autonav chat .                  # Use current directory
+  autonav chat                    # Auto-detect from cwd (if inside a navigator)
 
 Commands available in conversation:
   /help    - Show available commands
@@ -86,7 +89,7 @@ function parseArgs(args: string[]): {
 export async function run(args: string[]): Promise<void> {
 
   // Handle --help
-  if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
+  if (args.includes("--help") || args.includes("-h")) {
     printUsage();
     process.exit(0);
   }
@@ -94,45 +97,31 @@ export async function run(args: string[]): Promise<void> {
   // Parse arguments
   const { navigatorPath: rawPath, options } = parseArgs(args);
 
-  // Validate navigator path
-  if (!rawPath) {
-    console.error("❌ Error: Navigator path is required\n");
-    printUsage();
-    process.exit(1);
-  }
-
-  const navigatorPath = path.resolve(process.cwd(), rawPath);
-
-  // Check if directory exists
-  if (!fs.existsSync(navigatorPath)) {
-    console.error(`❌ Error: Navigator not found: ${navigatorPath}`);
-    console.error("\nMake sure the path is correct and the navigator exists.");
-    console.error("Create a new navigator with: autonav init <name>\n");
-    process.exit(1);
-  }
-
-  // Verify it's a directory
-  const stats = fs.statSync(navigatorPath);
-  if (!stats.isDirectory()) {
-    console.error(`❌ Error: Path is not a directory: ${navigatorPath}`);
-    process.exit(1);
-  }
-
-  // Check for config.json
-  const configPath = path.join(navigatorPath, "config.json");
-  if (!fs.existsSync(configPath)) {
-    console.error(`❌ Error: Not a valid navigator (missing config.json): ${navigatorPath}`);
-    console.error("\nCreate a new navigator with: autonav init <name>\n");
-    process.exit(1);
-  }
+  // Resolve navigator path (auto-detects from cwd if no arg given)
+  const navigatorPath = resolveNavigatorArg(rawPath);
 
   // Load config
+  const configPath = path.join(navigatorPath, "config.json");
   let config: {
     name: string;
     knowledgeBasePath: string;
     instructionsPath?: string;
     relatedNavigators?: Array<{ name: string; description?: string }>;
-    sandbox?: { chat?: { enabled: boolean } };
+    permissions?: {
+      allowedCommands?: string[];
+      allowedPaths?: string[];
+    };
+    sandbox?: {
+      dangerouslyDisableSandbox?: boolean;
+      chat?: {
+        enabled?: boolean;
+        accessLevel?: "readonly" | "readwrite";
+        blockNetwork?: boolean;
+        allowedCommands?: string[];
+        extraReadPaths?: string[];
+        extraWritePaths?: string[];
+      };
+    };
     harness?: { type?: string; model?: string };
   };
   let configContent: string;
@@ -208,17 +197,54 @@ export async function run(args: string[]): Promise<void> {
     );
     mcpServers["autonav-related-navs-config"] = relatedNavsConfigMcp.server;
 
-    // Per-nav sandbox: chat defaults to enabled unless explicitly disabled
-    const chatSandboxEnabled = config.sandbox?.chat?.enabled !== false;
+    // Build full SandboxConfig from navigator config
+    const sandboxConfig: SandboxConfig | undefined = (() => {
+      if (config.sandbox?.dangerouslyDisableSandbox) return undefined;
+      const chatSandbox = config.sandbox?.chat;
+      if (chatSandbox?.enabled === false) return undefined;
+
+      return {
+        enabled: true,
+        readPaths: [
+          navigatorPath,
+          knowledgeBasePath,
+          ...(config.permissions?.allowedPaths ?? []),
+          ...(chatSandbox?.extraReadPaths ?? []),
+        ],
+        writePaths: chatSandbox?.accessLevel === "readwrite"
+          ? [navigatorPath, ...(chatSandbox?.extraWritePaths ?? [])]
+          : undefined,
+        allowedCommands: [
+          ...(config.permissions?.allowedCommands ?? []),
+          ...(chatSandbox?.allowedCommands ?? []),
+        ].length > 0
+          ? [...(config.permissions?.allowedCommands ?? []), ...(chatSandbox?.allowedCommands ?? [])]
+          : undefined,
+        blockNetwork: chatSandbox?.blockNetwork,
+      };
+    })();
+
+    // Register sandbox_query tool so navigators can diagnose permission issues
+    if (sandboxConfig && isSandboxEnabled(sandboxConfig)) {
+      const sandboxMcp = createSandboxQueryMcpServer(harness, sandboxConfig);
+      mcpServers["autonav-sandbox"] = sandboxMcp.server;
+    }
+
+    // Inject sandbox summary into system prompt when sandbox is active
+    let augmentedSystemPrompt = systemPrompt;
+    if (sandboxConfig && isSandboxEnabled(sandboxConfig)) {
+      const summary = getSandboxSummary(sandboxConfig);
+      augmentedSystemPrompt += `\n\n## Sandbox Policy (active)\n${summary}\nUse the sandbox_query tool to check specific operations.\nConfig changes require user approval and take effect on next launch.\n`;
+    }
 
     await runConversationTUI({
       navigatorName: config.name,
       navigatorPath,
-      navigatorSystemPrompt: systemPrompt,
+      navigatorSystemPrompt: augmentedSystemPrompt,
       knowledgeBasePath,
       harness,
       mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
-      sandboxEnabled: chatSandboxEnabled,
+      sandboxConfig,
       configJson: configContent,
       model: config.harness?.model,
     });

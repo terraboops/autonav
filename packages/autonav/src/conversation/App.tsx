@@ -8,7 +8,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Box, Text, Static, useApp, useInput } from "ink";
-import { type Harness, type HarnessSession, ClaudeCodeHarness } from "../harness/index.js";
+import { type Harness, type HarnessSession, type SandboxConfig, ClaudeCodeHarness } from "../harness/index.js";
 import { buildConversationSystemPrompt } from "./prompts.js";
 import {
   ChatBanner,
@@ -205,8 +205,8 @@ interface ConversationAppProps {
   knowledgeBasePath: string;
   harness?: Harness;
   mcpServers?: Record<string, unknown>;
-  /** Whether sandbox is enabled for chat (default: true) */
-  sandboxEnabled?: boolean;
+  /** Full sandbox config for chat (undefined = no sandbox) */
+  sandboxConfig?: SandboxConfig;
   /** Raw config.json content for config-aware prompts */
   configJson?: string;
 }
@@ -218,7 +218,7 @@ export function ConversationApp({
   knowledgeBasePath,
   harness,
   mcpServers,
-  sandboxEnabled = true,
+  sandboxConfig,
   configJson,
 }: ConversationAppProps) {
   // Finalized messages go into <Static> — printed once, never repainted.
@@ -438,12 +438,8 @@ Model: ${CONVERSATION_MODEL}`,
               permissionMode: "acceptEdits",
               cwd: navigatorPath,
               mcpServers,
-              // Per-nav sandbox: chat defaults to enabled (read-only access)
-              ...(sandboxEnabled ? {
-                sandbox: {
-                  readPaths: [navigatorPath],
-                },
-              } : {}),
+              // Per-nav sandbox: full config from nav-chat.ts
+              ...(sandboxConfig ? { sandbox: sandboxConfig } : {}),
             },
             value
           );

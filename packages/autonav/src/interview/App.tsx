@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Box, Text, useApp, useInput } from "ink";
+import { Box, Text, Static, useApp, useInput } from "ink";
 import TextInput from "ink-text-input";
 import {
   getInterviewSystemPrompt,
@@ -36,7 +36,7 @@ const CONFIG_GENERATION_STEPS = [
   { key: "scope", label: "Setting scope..." },
   { key: "knowledgeStructure", label: "Organizing knowledge structure..." },
   { key: "audience", label: "Identifying audience..." },
-  { key: "autonomy", label: "Configuring autonomy..." },
+  { key: "sandbox", label: "Configuring sandbox..." },
   { key: "directories", label: "Suggesting directories..." },
   { key: "claudeMd", label: "Generating CLAUDE.md..." },
 ] as const;
@@ -98,9 +98,9 @@ async function generateConfigFields(
   );
 
   onProgress(5, CONFIG_GENERATION_STEPS[4].label);
-  debugLog("  - Extracting autonomy...");
-  const autonomy = await extractField(
-    "Based on the conversation, describe the navigator's level of autonomous action (e.g., 'fully autonomous', 'ask before changes', etc.). Output ONLY the description. If not discussed, output 'default'."
+  debugLog("  - Extracting sandbox...");
+  const sandbox = await extractField(
+    "Based on the conversation, describe the navigator's sandbox and permissions preferences: file access level (read-only or read+write), network access needs, required CLI tools, and per-operation settings. Output ONLY the description. If not discussed, output 'default'."
   );
 
   onProgress(6, CONFIG_GENERATION_STEPS[5].label);
@@ -113,7 +113,7 @@ async function generateConfigFields(
   onProgress(7, CONFIG_GENERATION_STEPS[6].label);
   debugLog("  - Generating claudeMd...");
   const claudeMd = await extractField(
-    `Generate the complete CLAUDE.md file for the "${name}" navigator based on the conversation. Output ONLY the raw markdown content, starting with "# ${name}". Include sections for: Purpose, Critical Boundaries (if any), Scope, Knowledge Structure, Communication Style, Grounding Rules, and Autonomy. Make it comprehensive based on everything discussed.`
+    `Generate the complete CLAUDE.md file for the "${name}" navigator based on the conversation. Output ONLY the raw markdown content, starting with "# ${name}". Include sections for: Purpose, Critical Boundaries (if any), Scope, Knowledge Structure, Communication Style, Grounding Rules, and Sandbox & Permissions. Make it comprehensive based on everything discussed.`
   );
 
   // Parse suggestedDirectories from comma-separated string
@@ -131,7 +131,7 @@ async function generateConfigFields(
     // Only include optional fields if they have meaningful values
     ...(knowledgeStructure !== "default" && { knowledgeStructure }),
     ...(audience !== "default" && { audience }),
-    ...(autonomy !== "default" && { autonomy }),
+    ...(sandbox !== "default" && { sandbox }),
     ...(suggestedDirectories.length > 0 && { suggestedDirectories }),
   };
 }
@@ -139,6 +139,7 @@ async function generateConfigFields(
 interface Message {
   role: "user" | "assistant";
   content: string;
+  id: number;
 }
 
 interface InterviewAppProps {
@@ -146,7 +147,7 @@ interface InterviewAppProps {
   navigatorPath: string;
   packContext?: PackContext;
   analysisContext?: AnalysisResult;
-  initialMessages?: Message[];
+  initialMessages?: Omit<Message, "id">[];
   onComplete: (config: NavigatorConfig) => void;
   harness: Harness;
 }
@@ -162,7 +163,11 @@ export function InterviewApp({
 }: InterviewAppProps) {
   // Get the system prompt, customized for pack or analysis if provided
   const systemPrompt = getInterviewSystemPrompt(packContext, analysisContext);
-  const [messages, setMessages] = useState<Message[]>(initialMessages || []);
+  const msgIdRef = useRef<number>(initialMessages?.length || 0);
+  const [finalizedMessages, setFinalizedMessages] = useState<Message[]>(
+    initialMessages?.map((m, i) => ({ ...m, id: i + 1 })) || []
+  );
+  const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
   const [input, setInput] = useState("");
   // Don't start loading when resuming - we already have messages to display
   const [isLoading, setIsLoading] = useState(!initialMessages?.length);
@@ -190,27 +195,9 @@ export function InterviewApp({
           const text = event.text;
           if (text) {
             fullText = text;
-            setMessages((prev) => {
-              const newMessages: Message[] = [
-                ...prev,
-                { role: "assistant" as const, content: text },
-              ];
-              // Save progress after assistant message
-              try {
-                const progress: InterviewProgress = {
-                  navigatorName: name,
-                  messages: newMessages,
-                  packContext,
-                  analysisContext,
-                  lastSaved: new Date().toISOString(),
-                };
-                saveProgress(navigatorPath, progress);
-                debugLog("Progress saved after assistant message:", newMessages.length, "messages");
-              } catch (err) {
-                debugLog("Failed to save progress:", err);
-              }
-              return newMessages;
-            });
+            // Update streaming message (live region only)
+            const id = msgIdRef.current; // reuse same id while streaming
+            setStreamingMessage({ role: "assistant" as const, content: text, id });
           }
         } else if (event.type === "result") {
           debugLog("Result received:", event.success ? "success" : "error");
@@ -218,8 +205,31 @@ export function InterviewApp({
         }
       }
 
-      // Check if the response contains a navigator config
+      // Finalize: move streaming message to finalized list
       if (fullText) {
+        const finalId = ++msgIdRef.current;
+        const finalMsg: Message = { role: "assistant" as const, content: fullText, id: finalId };
+        setStreamingMessage(null);
+        setFinalizedMessages((prev) => {
+          const newMessages = [...prev, finalMsg];
+          // Save progress after assistant message
+          try {
+            const progress: InterviewProgress = {
+              navigatorName: name,
+              messages: newMessages,
+              packContext,
+              analysisContext,
+              lastSaved: new Date().toISOString(),
+            };
+            saveProgress(navigatorPath, progress);
+            debugLog("Progress saved after assistant message:", newMessages.length, "messages");
+          } catch (err) {
+            debugLog("Failed to save progress:", err);
+          }
+          return newMessages;
+        });
+
+        // Check if the response contains a navigator config
         debugLog("Checking for navigator config in response...");
         const config = parseNavigatorConfig(fullText);
         if (config) {
@@ -235,7 +245,6 @@ export function InterviewApp({
             debugLog("Failed to clear progress:", err);
           }
           // Defer onComplete to next tick to avoid render race conditions
-          // This ensures the component finishes its current render before unmounting
           setTimeout(() => onComplete(config), 0);
           debugLog("onComplete scheduled, should be exiting soon");
           return;
@@ -314,11 +323,11 @@ export function InterviewApp({
 
   // Show hint after 5+ user messages
   useEffect(() => {
-    const userMessageCount = messages.filter(m => m.role === 'user').length;
+    const userMessageCount = finalizedMessages.filter(m => m.role === 'user').length;
     if (userMessageCount >= 5 && !showHint) {
       setShowHint(true);
     }
-  }, [messages, showHint]);
+  }, [finalizedMessages, showHint]);
 
   // Handle user input submission
   const handleSubmit = useCallback(
@@ -332,7 +341,7 @@ export function InterviewApp({
       // Fast path: when user says "done", check if any recent assistant message already has valid config
       // This handles the race condition where Claude generated valid JSON but the interview didn't exit
       if (isDoneCommand) {
-        const assistantMessages = messages.filter(m => m.role === 'assistant');
+        const assistantMessages = finalizedMessages.filter(m => m.role === 'assistant');
         // Check the last 3 assistant messages for a valid config
         for (let i = assistantMessages.length - 1; i >= Math.max(0, assistantMessages.length - 3); i--) {
           const msg = assistantMessages[i];
@@ -355,7 +364,7 @@ export function InterviewApp({
         setCompletionStep(CONFIG_GENERATION_STEPS[0].label);
 
         try {
-          const conversationHistory = messages
+          const conversationHistory = finalizedMessages
             .map((m) => `<${m.role}>\n${m.content}\n</${m.role}>`)
             .join("\n\n");
 
@@ -382,31 +391,33 @@ export function InterviewApp({
       }
 
       setInput("");
-      const newMessages: Message[] = [...messages, { role: "user" as const, content: value }];
-      setMessages(newMessages);
+      const userId = ++msgIdRef.current;
+      const userMsg: Message = { role: "user" as const, content: value, id: userId };
+      setFinalizedMessages((prev) => {
+        const newMessages = [...prev, userMsg];
+        // Save progress after user input
+        try {
+          const progress: InterviewProgress = {
+            navigatorName: name,
+            messages: newMessages,
+            packContext,
+            analysisContext,
+            lastSaved: new Date().toISOString(),
+          };
+          saveProgress(navigatorPath, progress);
+          debugLog("Progress saved after user input:", newMessages.length, "messages");
+        } catch (err) {
+          debugLog("Failed to save progress:", err);
+        }
+        return newMessages;
+      });
       setIsLoading(true);
-
-      // Save progress after user input
-      try {
-        const progress: InterviewProgress = {
-          navigatorName: name,
-          messages: newMessages,
-          packContext,
-          analysisContext,
-          lastSaved: new Date().toISOString(),
-        };
-        saveProgress(navigatorPath, progress);
-        debugLog("Progress saved after user input:", newMessages.length, "messages");
-      } catch (err) {
-        debugLog("Failed to save progress:", err);
-        // Don't block on save failures
-      }
 
       try {
         debugLog("Sending user message:", value);
 
-        // Build conversation history
-        const conversationHistory = messages
+        // Build conversation history (use current finalizedMessages + new user message)
+        const conversationHistory = [...finalizedMessages, userMsg]
           .map((m) => `<${m.role}>\n${m.content}\n</${m.role}>`)
           .join("\n\n");
 
@@ -439,7 +450,7 @@ Continue the interview by responding to their message. Remember: after gathering
         setIsLoading(false);
       }
     },
-    [isLoading, messages, systemPrompt, processResponse, name, navigatorPath, packContext, analysisContext, onComplete, harness]
+    [isLoading, finalizedMessages, systemPrompt, processResponse, name, navigatorPath, packContext, analysisContext, onComplete, harness]
   );
 
   // Handle Ctrl+C to exit
@@ -452,21 +463,30 @@ Continue the interview by responding to their message. Remember: after gathering
   return (
     <Box flexDirection="column" padding={1}>
       {/* Banner - only show at start */}
-      {messages.length === 0 && <Banner name={name} version="1.2.0" />}
+      {finalizedMessages.length === 0 && !streamingMessage && <Banner name={name} version="1.2.0" />}
 
-      {/* Conversation history */}
-      {messages.map((msg, i) => (
-        <Box key={i} flexDirection="column">
-          {msg.role === "user" ? (
-            <UserResponse content={msg.content} />
-          ) : (
-            <>
-              <SystemMessage content={msg.content} />
-              {i < messages.length - 1 && <Divider />}
-            </>
-          )}
+      {/* Finalized messages — printed once, never redrawn */}
+      <Static items={finalizedMessages}>
+        {(msg) => (
+          <Box key={msg.id} flexDirection="column">
+            {msg.role === "user" ? (
+              <UserResponse content={msg.content} />
+            ) : (
+              <>
+                <SystemMessage content={msg.content} />
+                <Divider />
+              </>
+            )}
+          </Box>
+        )}
+      </Static>
+
+      {/* Currently streaming assistant message — live region */}
+      {streamingMessage && (
+        <Box flexDirection="column">
+          <SystemMessage content={streamingMessage.content} />
         </Box>
-      ))}
+      )}
 
       {/* Error display */}
       {error && (
@@ -479,6 +499,8 @@ Continue the interview by responding to their message. Remember: after gathering
       {isLoading && (
         <Box marginBottom={1}>
           <ActivityIndicator
+            lines={1}
+            width={30}
             message={isCompleting && completionStep ? completionStep : isCompleting ? "completing interview..." : "thinking..."}
           />
         </Box>

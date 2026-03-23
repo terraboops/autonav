@@ -99,22 +99,70 @@ export const NavigatorConfigSchema = z.object({
   }).optional().describe('Harness configuration'),
 
   /**
+   * Top-level permission grants that apply across all operations.
+   * These are merged with per-operation sandbox profiles.
+   */
+  permissions: z.object({
+    /** CLI tools nono should permit (e.g., ["linear", "gh"]) */
+    allowedCommands: z.array(z.string()).optional().describe('CLI tools the sandbox permits'),
+    /** Extra paths the navigator needs access to (read-only) */
+    allowedPaths: z.array(z.string()).optional().describe('Extra read paths for the sandbox'),
+  }).optional().describe('Permission grants across all operations'),
+
+  /**
    * Per-operation sandbox profiles.
    *
-   * Controls whether kernel-enforced sandboxing is active for each operation.
-   * Each harness translates this to its native mechanism:
-   *   - ChibiHarness → nono (Landlock/Seatbelt)
-   *   - ClaudeCodeHarness → SDK sandbox (Seatbelt/bubblewrap)
+   * Controls kernel-enforced sandboxing (nono) for each operation.
+   * nono provides Seatbelt (macOS) and Landlock (Linux) enforcement.
    *
    * Defaults: sandbox ON for query/update/chat/standup, OFF for memento.
    * Override per-nav in config.json.
+   *
+   * Set dangerouslyDisableSandbox: true to disable all sandboxing.
    */
   sandbox: z.object({
-    query: z.object({ enabled: z.boolean() }).default({ enabled: true }),
-    update: z.object({ enabled: z.boolean() }).default({ enabled: true }),
-    chat: z.object({ enabled: z.boolean() }).default({ enabled: true }),
-    memento: z.object({ enabled: z.boolean() }).default({ enabled: false }),
-    standup: z.object({ enabled: z.boolean() }).default({ enabled: true }),
+    /** Disable sandboxing entirely (not recommended) */
+    dangerouslyDisableSandbox: z.boolean().optional().describe('Disable all sandboxing'),
+    query: z.object({
+      enabled: z.boolean(),
+      accessLevel: z.enum(['readonly', 'readwrite']).optional(),
+      blockNetwork: z.boolean().optional(),
+      allowedCommands: z.array(z.string()).optional(),
+      extraReadPaths: z.array(z.string()).optional(),
+      extraWritePaths: z.array(z.string()).optional(),
+    }).default({ enabled: true }),
+    update: z.object({
+      enabled: z.boolean(),
+      accessLevel: z.enum(['readonly', 'readwrite']).optional(),
+      blockNetwork: z.boolean().optional(),
+      allowedCommands: z.array(z.string()).optional(),
+      extraReadPaths: z.array(z.string()).optional(),
+      extraWritePaths: z.array(z.string()).optional(),
+    }).default({ enabled: true }),
+    chat: z.object({
+      enabled: z.boolean(),
+      accessLevel: z.enum(['readonly', 'readwrite']).optional(),
+      blockNetwork: z.boolean().optional(),
+      allowedCommands: z.array(z.string()).optional(),
+      extraReadPaths: z.array(z.string()).optional(),
+      extraWritePaths: z.array(z.string()).optional(),
+    }).default({ enabled: true }),
+    memento: z.object({
+      enabled: z.boolean(),
+      accessLevel: z.enum(['readonly', 'readwrite']).optional(),
+      blockNetwork: z.boolean().optional(),
+      allowedCommands: z.array(z.string()).optional(),
+      extraReadPaths: z.array(z.string()).optional(),
+      extraWritePaths: z.array(z.string()).optional(),
+    }).default({ enabled: false }),
+    standup: z.object({
+      enabled: z.boolean(),
+      accessLevel: z.enum(['readonly', 'readwrite']).optional(),
+      blockNetwork: z.boolean().optional(),
+      allowedCommands: z.array(z.string()).optional(),
+      extraReadPaths: z.array(z.string()).optional(),
+      extraWritePaths: z.array(z.string()).optional(),
+    }).default({ enabled: true }),
   }).optional().describe('Per-operation sandbox profiles'),
 
   /**

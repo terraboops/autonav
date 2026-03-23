@@ -7,8 +7,10 @@
  */
 
 import { query, tool, createSdkMcpServer, type Query, type SDKMessage, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
+import * as os from "node:os";
 import type { Harness, HarnessSession, AgentConfig, AgentEvent } from "./types.js";
 import type { ToolDefinition } from "./tool-server.js";
+import { isSandboxEnabled, writeProfile, createSdkWrapper } from "./sandbox.js";
 
 /**
  * Flatten an SDK message into zero or more AgentEvents.
@@ -122,10 +124,17 @@ function configToSdkOptions(config: AgentConfig): Record<string, unknown> {
   if (config.permissionMode) options.permissionMode = config.permissionMode;
   if (config.stderr) options.stderr = config.stderr;
 
-  // Explicitly disable SDK sandbox. The SDK's Seatbelt/bubblewrap sandbox blocks
-  // all network access by default and allowedDomains can't be reliably wired up
-  // yet. File-level sandboxing is handled by ChibiHarness via nono.
-  // ClaudeCodeHarness relies on cwd scoping, tool allowlists, and permission modes.
+  // Use nono wrapper for sandboxing when a sandbox config is provided.
+  // The wrapper script runs `nono run --config <profile> -- claude` so that
+  // nono enforces the sandbox on the Claude Code subprocess.
+  if (config.sandbox && isSandboxEnabled(config.sandbox)) {
+    const profileDir = os.tmpdir();
+    const profilePath = writeProfile(config.sandbox, profileDir);
+    const wrapperPath = createSdkWrapper(profilePath, profileDir, config.sandbox);
+    options.pathToClaudeCodeExecutable = wrapperPath;
+  }
+
+  // Always disable SDK's own sandbox — nono handles enforcement
   options.sandbox = { enabled: false };
 
   return options;

@@ -41,6 +41,15 @@ export {
 } from "./ephemeral-home.js";
 
 export {
+  isNonoAvailable,
   isSandboxEnabled,
   wrapCommand,
+  writeProfile,
+  createSdkWrapper,
+  buildCapabilitySet,
+  querySandbox,
+  querySandboxNetwork,
+  getSandboxSummary,
+  AccessMode,
+  type QueryResultInfo,
 } from "./sandbox.js";
