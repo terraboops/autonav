@@ -17,7 +17,8 @@ import { sanitizeError } from "../plugins/utils/security.js";
 import { createSelfConfigMcpServer, createResponseMcpServer, createCrossNavMcpServer, SUBMIT_ANSWER_TOOL } from "../tools/index.js";
 import { createRelatedNavsMcpServer } from "../tools/related-navs.js";
 import { createRelatedNavsConfigServer } from "../tools/related-navs-config.js";
-import { type Harness, ClaudeCodeHarness } from "../harness/index.js";
+import { createSandboxQueryMcpServer } from "../tools/sandbox-query.js";
+import { type Harness, type SandboxConfig, ClaudeCodeHarness } from "../harness/index.js";
 
 /**
  * Optional LangSmith integration for tracing Claude Agent SDK calls
@@ -448,6 +449,17 @@ export class NavigatorAdapter {
     // Build full sandbox config from navigator permissions + per-operation profile
     const navConfig = navigator.config as Record<string, unknown>;
     const permissions = navConfig.permissions as { allowedCommands?: string[]; allowedPaths?: string[] } | undefined;
+
+    // Build sandbox config for the sandbox_query tool
+    const querySandboxConfig: SandboxConfig | undefined = querySandboxEnabled ? {
+      enabled: true,
+      readPaths: [navigator.navigatorPath, navigator.knowledgeBasePath, ...(permissions?.allowedPaths ?? [])],
+      allowedCommands: permissions?.allowedCommands,
+    } : undefined;
+
+    // Always register sandbox_query — navigators should always be able to diagnose sandbox status
+    const sandboxMcp = createSandboxQueryMcpServer(this.harness, querySandboxConfig);
+    mcpServers["autonav-sandbox"] = sandboxMcp.server;
 
     const session = this.harness.run(
       {

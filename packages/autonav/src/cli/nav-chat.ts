@@ -224,11 +224,10 @@ export async function run(args: string[]): Promise<void> {
       };
     })();
 
-    // Register sandbox_query tool so navigators can diagnose permission issues
-    if (sandboxConfig && isSandboxEnabled(sandboxConfig)) {
-      const sandboxMcp = createSandboxQueryMcpServer(harness, sandboxConfig);
-      mcpServers["autonav-sandbox"] = sandboxMcp.server;
-    }
+    // Always register sandbox_query tool — navigators should always be able
+    // to diagnose their sandbox status, whether sandbox is active or not.
+    const sandboxMcp = createSandboxQueryMcpServer(harness, sandboxConfig);
+    mcpServers["autonav-sandbox"] = sandboxMcp.server;
 
     // Inject sandbox summary into system prompt when sandbox is active
     let augmentedSystemPrompt = systemPrompt;
