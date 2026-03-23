@@ -10,7 +10,7 @@ import { query, tool, createSdkMcpServer, type Query, type SDKMessage, type SDKR
 import * as os from "node:os";
 import type { Harness, HarnessSession, AgentConfig, AgentEvent } from "./types.js";
 import type { ToolDefinition } from "./tool-server.js";
-import { resolveSandboxProvider, writeProfile, createSdkWrapper, buildNonoFlags } from "./sandbox.js";
+import { resolveSandboxProvider, createSdkWrapper, buildNonoFlags } from "./sandbox.js";
 
 /**
  * Flatten an SDK message into zero or more AgentEvents.
@@ -132,19 +132,17 @@ function configToSdkOptions(config: AgentConfig): Record<string, unknown> {
 
   if (sandboxResolution.provider === "nono" && sandboxResolution.active && config.sandbox) {
     // nono: kernel-enforced sandbox via wrapper script.
-    // Uses trellis pattern: NONO_PROFILE + NONO_FLAGS env vars.
-    const profileDir = os.tmpdir();
+    // Uses --profile claude-code as base + navigator paths via NONO_FLAGS.
+    const wrapperDir = os.tmpdir();
     if (config.stderr) {
       config.stderr(`[nono] SandboxConfig: ${JSON.stringify({ provider: "nono", readPaths: config.sandbox.readPaths, writePaths: config.sandbox.writePaths, allowedCommands: config.sandbox.allowedCommands })}\n`);
     }
-    const profilePath = writeProfile(config.sandbox, profileDir);
-    const wrapperPath = createSdkWrapper(profilePath, profileDir, config.sandbox);
+    const wrapperPath = createSdkWrapper("", wrapperDir, config.sandbox);
     const nonoFlags = buildNonoFlags(config.sandbox);
 
     options.pathToClaudeCodeExecutable = wrapperPath;
     options.env = {
       ...process.env,
-      NONO_PROFILE: profilePath,
       NONO_FLAGS: nonoFlags,
     };
     // Disable SDK sandbox — nono is the security boundary.

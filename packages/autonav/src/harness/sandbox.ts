@@ -286,6 +286,39 @@ export function buildCapabilitySet(config: SandboxConfig): any | null {
     }
   }
 
+  // Claude Code infrastructure paths — equivalent to nono's built-in
+  // claude-code profile. Baked into the profile so we don't need
+  // --profile claude-code (which doesn't stack with --config).
+  const home = os.homedir();
+  const claudePaths: Array<{ path: string; mode: "read" | "readwrite"; file?: boolean }> = [
+    { path: path.join(home, ".claude"), mode: "readwrite" },
+    { path: path.join(home, ".claude-personal"), mode: "readwrite" },
+    { path: path.join(home, ".gitconfig"), mode: "read", file: true },
+    { path: path.join(home, ".gitignore_global"), mode: "read", file: true },
+    { path: path.join(home, ".config", "git", "ignore"), mode: "read", file: true },
+  ];
+  // macOS keychain for OAuth
+  if (os.platform() === "darwin") {
+    claudePaths.push({ path: path.join(home, "Library", "Keychains", "login.keychain-db"), mode: "read", file: true });
+  }
+  // Claude tmp directory
+  const claudeTmp = path.join("/private/tmp", `claude-${process.getuid?.() ?? 501}`);
+  if (fs.existsSync(claudeTmp)) {
+    claudePaths.push({ path: claudeTmp, mode: "readwrite" });
+  }
+
+  for (const { path: p, mode, file } of claudePaths) {
+    try {
+      if (file) {
+        caps.allowFile(p, mode === "readwrite" ? AM.ReadWrite : AM.Read);
+      } else {
+        caps.allowPath(p, mode === "readwrite" ? AM.ReadWrite : AM.Read);
+      }
+    } catch {
+      // Path doesn't exist — skip (optional infra path)
+    }
+  }
+
   // Read-only paths
   if (config.readPaths) {
     for (const p of config.readPaths) {
@@ -367,12 +400,29 @@ function commandFlags(config?: SandboxConfig): string[] {
  * from the environment (trellis pattern).
  */
 export function buildNonoFlags(config: SandboxConfig): string {
-  // Note: do NOT include --exec here. The SDK spawns claude with pipes
-  // (not TTY), and --exec causes nono to do execvp() which can interfere
-  // with pipe-based stdio management. --exec is only for interactive
-  // terminal sessions (e.g., running `nono run -- claude` directly).
   const parts: string[] = ["--allow-cwd"];
+
+  // Navigator-specific paths as --read/--allow flags.
+  // These stack with --profile claude-code's base paths.
+  // We can't use --config/profile JSON because nono-ts 0.3.0 format
+  // is incompatible with nono CLI 0.15.0's profile parser.
+  if (config.readPaths) {
+    for (const p of config.readPaths) {
+      if (fs.existsSync(p)) parts.push("--read", p);
+    }
+  }
+  if (config.writePaths) {
+    for (const p of config.writePaths) {
+      if (fs.existsSync(p)) parts.push("--allow", p);
+    }
+  }
+
   parts.push(...commandFlags(config));
+
+  if (config.blockNetwork) {
+    parts.push("--net-block");
+  }
+
   return parts.join(" ");
 }
 
@@ -433,14 +483,17 @@ export function createSdkWrapper(_profilePath: string, dir: string, _config?: Sa
   // maintained by the nono team. Our custom --config adds navigator-specific
   // paths on top, and NONO_FLAGS adds --allow-command flags.
   //
-  // Workaround: nono --silent doesn't suppress WARN messages for missing
-  // optional profile paths (e.g., ~/.vscode) and they go to stdout,
-  // corrupting the SDK's JSON stream. We pre-create the dirs nono
-  // expects so it doesn't warn.
+  // Use --profile claude-code as base, then NONO_FLAGS adds navigator
+  // paths as --read/--allow flags + --allow-command flags.
+  // We can't use a profile JSON file because nono-ts 0.3.0's JSON format
+  // is not compatible with nono CLI 0.15.0's profile parser (custom fs
+  // entries are silently ignored). --read/--allow flags DO stack with
+  // --profile, so we pass everything via NONO_FLAGS.
+  //
+  // Pre-create optional dirs that claude-code profile references to
+  // suppress WARN messages on stdout (corrupts SDK JSON stream).
   const script = `#!/usr/bin/env bash
 set -euo pipefail
-# Pre-create optional paths the claude-code profile references to
-# avoid nono WARN messages on stdout that corrupt the SDK JSON stream.
 mkdir -p "\${HOME}/.vscode" 2>/dev/null || true
 mkdir -p "\${HOME}/Library/Application Support/Code" 2>/dev/null || true
 touch "\${HOME}/.gitignore_global" 2>/dev/null || true
@@ -448,9 +501,8 @@ exec nono run \\
     --silent \\
     --no-diagnostics \\
     --profile claude-code \\
-    --config "\${NONO_PROFILE}" \\
-    \${NONO_FLAGS:-} \\
     --allow "\${HOME}/.claude-personal" \\
+    \${NONO_FLAGS:-} \\
     -- claude "$@"
 `;
   fs.writeFileSync(wrapperPath, script, "utf-8");
