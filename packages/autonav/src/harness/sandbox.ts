@@ -20,24 +20,57 @@
  * own API calls (chibi). It's only useful for scenarios where the API
  * connection is managed in-process.
  *
- * Falls back gracefully when nono is not installed — the process runs
- * without sandboxing.
+ * Falls back gracefully when nono-ts native module is not available
+ * (e.g., unsupported platform, missing native binary in CI) — the
+ * process runs without sandboxing.
  *
  * CRITICAL: Never call nono-ts `apply()` — that sandboxes the autonav
  * process itself. We only build profiles for child processes.
  */
 
-import {
-  CapabilitySet,
-  AccessMode,
-  SandboxState,
-  QueryContext,
-  isSupported,
-} from "nono-ts";
+import { createRequire } from "node:module";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { SandboxConfig } from "./types.js";
+
+// ── Lazy nono-ts loading ─────────────────────────────────────────────
+// nono-ts uses NAPI-RS native bindings that may not be available on all
+// platforms (e.g., CI runners without the native binary). We load it
+// lazily so the module itself always loads — functions just return
+// "not available" when the native module is missing.
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let nonoModule: any = null;
+let nonoLoadAttempted = false;
+
+function loadNono(): boolean {
+  if (nonoLoadAttempted) return nonoModule !== null;
+  nonoLoadAttempted = true;
+
+  try {
+    // Use createRequire for synchronous loading in ESM context.
+    // nono-ts is a native module (NAPI-RS) that may not have binaries
+    // for all platforms. This fails gracefully when the native binary
+    // is missing (e.g., CI runners without platform-specific binaries).
+    const req = createRequire(import.meta.url);
+    nonoModule = req("nono-ts");
+  } catch {
+    nonoModule = null;
+  }
+
+  return nonoModule !== null;
+}
+
+/**
+ * Access mode for sandbox path queries.
+ * Mirrors nono-ts AccessMode enum so consumers don't need to import nono-ts directly.
+ */
+export enum AccessMode {
+  Read = 0,
+  Write = 1,
+  ReadWrite = 2,
+}
 
 let nonoAvailableCache: boolean | null = null;
 
@@ -46,19 +79,25 @@ let nonoAvailableCache: boolean | null = null;
  *
  * Uses nono-ts isSupported() which checks for Seatbelt (macOS) or
  * Landlock (Linux 5.13+) support without spawning a subprocess.
+ * Falls back to false if nono-ts native module isn't available.
  */
 export function isNonoAvailable(): boolean {
   if (nonoAvailableCache !== null) {
     return nonoAvailableCache;
   }
 
+  if (!loadNono()) {
+    nonoAvailableCache = false;
+    return false;
+  }
+
   try {
-    nonoAvailableCache = isSupported();
+    nonoAvailableCache = nonoModule.isSupported() === true;
   } catch {
     nonoAvailableCache = false;
   }
 
-  return nonoAvailableCache;
+  return nonoAvailableCache!;
 }
 
 /**
@@ -122,14 +161,20 @@ function getSystemReadPaths(): string[] {
  *
  * Paths that don't exist on disk are silently skipped (nono-ts
  * validates path existence and throws on missing paths).
+ *
+ * Returns null if nono-ts is not available.
  */
-export function buildCapabilitySet(config: SandboxConfig): CapabilitySet {
-  const caps = new CapabilitySet();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function buildCapabilitySet(config: SandboxConfig): any | null {
+  if (!loadNono()) return null;
+
+  const { CapabilitySet: CapsClass, AccessMode: AM } = nonoModule;
+  const caps = new CapsClass();
 
   // System binary paths (read-only) — needed for plugin script execution
   for (const p of getSystemReadPaths()) {
     try {
-      caps.allowPath(p, AccessMode.Read);
+      caps.allowPath(p, AM.Read);
     } catch {
       // Path may not exist or be inaccessible — skip
     }
@@ -139,7 +184,7 @@ export function buildCapabilitySet(config: SandboxConfig): CapabilitySet {
   if (config.readPaths) {
     for (const p of config.readPaths) {
       try {
-        caps.allowPath(p, AccessMode.Read);
+        caps.allowPath(p, AM.Read);
       } catch {
         // Path doesn't exist — skip silently
       }
@@ -150,7 +195,7 @@ export function buildCapabilitySet(config: SandboxConfig): CapabilitySet {
   if (config.writePaths) {
     for (const p of config.writePaths) {
       try {
-        caps.allowPath(p, AccessMode.ReadWrite);
+        caps.allowPath(p, AM.ReadWrite);
       } catch {
         // Path doesn't exist — skip silently
       }
@@ -184,7 +229,12 @@ export function buildCapabilitySet(config: SandboxConfig): CapabilitySet {
  */
 export function writeProfile(config: SandboxConfig, dir: string): string {
   const caps = buildCapabilitySet(config);
-  const state = SandboxState.fromCaps(caps);
+  if (!caps) {
+    throw new Error("nono-ts not available — cannot write sandbox profile");
+  }
+
+  const { SandboxState: SSClass } = nonoModule;
+  const state = SSClass.fromCaps(caps);
   const json = state.toJson();
 
   const profilePath = path.join(dir, `nono-profile-${Date.now()}.json`);
@@ -290,8 +340,16 @@ export function querySandbox(
   mode: AccessMode,
 ): QueryResultInfo {
   const caps = buildCapabilitySet(config);
-  const qc = new QueryContext(caps);
-  return qc.queryPath(targetPath, mode) as QueryResultInfo;
+  if (!caps) {
+    return { status: "allowed", reason: "nono_unavailable" };
+  }
+
+  const { QueryContext: QCClass, AccessMode: AM } = nonoModule;
+  const nonoMode = mode === AccessMode.Read ? AM.Read
+    : mode === AccessMode.Write ? AM.Write
+    : AM.ReadWrite;
+  const qc = new QCClass(caps);
+  return qc.queryPath(targetPath, nonoMode) as QueryResultInfo;
 }
 
 /**
@@ -299,7 +357,12 @@ export function querySandbox(
  */
 export function querySandboxNetwork(config: SandboxConfig): QueryResultInfo {
   const caps = buildCapabilitySet(config);
-  const qc = new QueryContext(caps);
+  if (!caps) {
+    return { status: "allowed", reason: "nono_unavailable" };
+  }
+
+  const { QueryContext: QCClass } = nonoModule;
+  const qc = new QCClass(caps);
   return qc.queryNetwork() as QueryResultInfo;
 }
 
@@ -310,8 +373,8 @@ export function querySandboxNetwork(config: SandboxConfig): QueryResultInfo {
  */
 export function getSandboxSummary(config: SandboxConfig): string {
   const caps = buildCapabilitySet(config);
+  if (!caps) {
+    return "Sandbox: nono-ts not available on this platform";
+  }
   return caps.summary();
 }
-
-// Re-export AccessMode for consumers that need it (e.g., sandbox-query tool)
-export { AccessMode };

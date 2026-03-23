@@ -61,7 +61,6 @@
     "marked": "^15.0.12",
     "marked-terminal": "^7.3.0",
     "micromatch": "^4.0.8",
-    "nono-ts": "^0.3.0",
     "ora": "^5.4.1",
     "react": "^18.3.1",
     "tar": "^6.2.0",
@@ -75,6 +74,9 @@
     "ink-testing-library": "^4.0.0",
     "typescript": "^5.3.0",
     "vitest": "^1.2.0"
+  },
+  "optionalDependencies": {
+    "nono-ts": "^0.3.0"
   },
   "peerDependencies": {
     "langsmith": "^0.3.0"
