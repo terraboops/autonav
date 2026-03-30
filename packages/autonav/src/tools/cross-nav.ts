@@ -11,7 +11,7 @@
 
 import { z } from "zod";
 import { loadNavigator } from "../query-engine/navigator-loader.js";
-import { type Harness, collectText, defineTool } from "../harness/index.js";
+import { type Harness, collectText, defineTool, buildSandboxConfigForOperation } from "../harness/index.js";
 
 const MAX_QUERY_DEPTH = 3;
 
@@ -64,13 +64,20 @@ Specify the navigator by its directory path (relative or absolute).`,
         // Load target navigator
         const nav = loadNavigator(args.navigator);
 
-        // Run query via harness
+        // Build sandbox config from target navigator's config
+        const sandboxConfig = buildSandboxConfigForOperation(
+          nav.config, nav.navigatorPath, nav.knowledgeBasePath, "query"
+        );
+
+        // Run query via harness — inherit target nav's sandbox
         const session = harness.run(
           {
             model: "claude-haiku-4-5",
             maxTurns: 10,
             systemPrompt: nav.systemPrompt,
             cwd: nav.navigatorPath,
+            disallowedTools: ["Write", "Edit", "NotebookEdit"],
+            ...(sandboxConfig ? { sandbox: sandboxConfig } : {}),
           },
           args.question
         );
