@@ -18,6 +18,15 @@ export type {
 export { ClaudeCodeHarness } from "./claude-code-harness.js";
 
 export {
+  FakeHarness,
+  fakeTextResponse,
+  fakeToolResponse,
+  fakeErrorResponse,
+  type FakeScript,
+  type FakeHarnessOptions,
+} from "./fake-harness.js";
+
+export {
   resolveHarnessType,
   createHarness,
   resolveAndCreateHarness,
