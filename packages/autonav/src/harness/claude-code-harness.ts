@@ -187,8 +187,15 @@ class ClaudeCodeSession implements HarnessSession {
   async *[Symbol.asyncIterator](): AsyncIterator<AgentEvent> {
     let lastAssistantText = "";
     const toolCalls: string[] = [];
+    const debug = process.env.AUTONAV_DEBUG === "1";
 
     for await (const message of this.queryInstance) {
+      if (debug) {
+        const msgType = (message as Record<string, unknown>).type;
+        const msgSubtype = (message as Record<string, unknown>).subtype;
+        const label = msgSubtype ? `${msgType}:${msgSubtype}` : msgType;
+        process.stderr.write(`[harness] SDK message: ${label}\n`);
+      }
       const events = flattenMessage(message);
       for (const event of events) {
         if (event.type === "text") {
@@ -295,7 +302,8 @@ export class ClaudeCodeHarness implements Harness {
 
   createToolServer(name: string, tools: ToolDefinition[]): { server: unknown } {
     const sdkTools = tools.map((td) =>
-      tool(td.name, td.description, td.inputSchema, td.handler)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tool(td.name, td.description, td.inputSchema, ((args: any) => td.handler(args)) as any)
     );
     const server = createSdkMcpServer({
       name,

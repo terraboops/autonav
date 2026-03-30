@@ -25,6 +25,12 @@ import {
 // Check if debug mode is enabled
 const DEBUG = process.env.AUTONAV_DEBUG === "1" || process.env.DEBUG === "1";
 
+// Stderr callback for SDK subprocess — captures nono/claude errors that would
+// otherwise be silently discarded (SDK sets stdio to "ignore" without this).
+const sdkStderr = DEBUG
+  ? (data: string) => { console.error("[SDK stderr]", data.trimEnd()); }
+  : (data: string) => { /* capture but don't display unless needed */ void data; };
+
 // Model to use for conversation
 const CONVERSATION_MODEL = "claude-sonnet-4-5";
 
@@ -459,6 +465,7 @@ Model: ${CONVERSATION_MODEL}`,
               mcpServers,
               allowedTools,
               additionalDirectories,
+              stderr: sdkStderr,
               // Per-nav sandbox: full config from nav-chat.ts
               ...(sandboxConfig ? { sandbox: sandboxConfig } : {}),
             },
