@@ -112,11 +112,13 @@ const ALLOWED_ENV_VARS = new Set([
   "PATH", "HOME", "USER", "SHELL", "TERM", "LANG", "LC_ALL", "LC_CTYPE",
   "TMPDIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME",
   // macOS
-  "DEVELOPER_DIR", "SDKROOT",
+  "DEVELOPER_DIR", "SDKROOT", "SECURITYSESSIONID",
   // Anthropic API (the subprocess needs this to authenticate)
   "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL",
-  // Claude Code
-  "CLAUDE_CODE_MAX_MEMORY",
+  // Claude Code (config dir has OAuth tokens, CLAUDECODE signals SDK context)
+  "CLAUDE_CONFIG_DIR", "CLAUDECODE", "CLAUDE_CODE_MAX_MEMORY",
+  // SSH (needed for git operations)
+  "SSH_AUTH_SOCK",
   // Autonav internals
   "AUTONAV_DEBUG", "AUTONAV_SANDBOX", "AUTONAV_QUERY_DEPTH",
   "AUTONAV_METRICS", "AUTONAV_HARNESS",
@@ -133,11 +135,11 @@ function buildCleanEnv(extra: Record<string, string> = {}): Record<string, strin
       env[key] = process.env[key];
     }
   }
-  // Forward AUTONAV_NAV_PATH_* vars (needed for related-nav resolution)
+  // Forward prefixed vars needed by subprocesses
   for (const [key, value] of Object.entries(process.env)) {
-    if (key.startsWith("AUTONAV_NAV_PATH_") && value !== undefined) {
-      env[key] = value;
-    }
+    if (value === undefined) continue;
+    if (key.startsWith("AUTONAV_NAV_PATH_")) env[key] = value; // related-nav resolution
+    if (key.startsWith("CLAUDE_")) env[key] = value;           // Claude Code config/auth
   }
   return { ...env, ...extra };
 }
