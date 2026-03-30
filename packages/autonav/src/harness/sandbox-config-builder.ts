@@ -66,5 +66,6 @@ export function buildSandboxConfigForOperation(
     writePaths,
     allowedCommands: allCommands.length > 0 ? allCommands : undefined,
     blockNetwork: profile?.blockNetwork,
+    nonoProfile: sandboxSection?.nonoProfile,
   };
 }

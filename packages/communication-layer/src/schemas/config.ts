@@ -171,6 +171,8 @@ export const NavigatorConfigSchema = z.object({
   sandbox: z.object({
     /** Sandbox enforcement mechanism. Default: "nono" (kernel-enforced). */
     provider: z.enum(['nono', 'claude-code', 'none']).optional().default('nono').describe('Sandbox provider'),
+    /** Override nono profile name (default: "claude-code"). Use for custom nono profiles. */
+    nonoProfile: z.string().optional().describe('Custom nono profile name'),
     /** Disable sandboxing entirely (alias for provider: "none", kept for backward compat) */
     dangerouslyDisableSandbox: z.boolean().optional().describe('Disable all sandboxing'),
     query: z.object({

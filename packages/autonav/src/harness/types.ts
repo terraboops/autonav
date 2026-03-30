@@ -49,6 +49,8 @@ export interface SandboxConfig {
   allowedCommands?: string[];
   /** Future: network host allowlist (not yet supported by nono) */
   allowedHosts?: string[];
+  /** Override nono profile name (default: "claude-code"). For custom profiles. */
+  nonoProfile?: string;
 }
 
 /**

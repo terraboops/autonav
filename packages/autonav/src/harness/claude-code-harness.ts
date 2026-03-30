@@ -180,7 +180,11 @@ function configToSdkOptions(config: AgentConfig): Record<string, unknown> {
     const flagsFilePath = writeNonoFlagsFile(nonoFlags, wrapperDir);
 
     options.pathToClaudeCodeExecutable = wrapperPath;
-    options.env = buildCleanEnv({ NONO_FLAGS_FILE: flagsFilePath });
+    const extraEnv: Record<string, string> = { NONO_FLAGS_FILE: flagsFilePath };
+    if (config.sandbox.nonoProfile) {
+      extraEnv.NONO_PROFILE = config.sandbox.nonoProfile;
+    }
+    options.env = buildCleanEnv(extraEnv);
     // Disable SDK sandbox — nono is the security boundary.
     options.sandbox = { enabled: false };
   } else if (sandboxResolution.provider === "claude-code" && sandboxResolution.active) {

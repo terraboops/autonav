@@ -514,7 +514,7 @@ fi
 exec nono run \\
     --silent \\
     --no-diagnostics \\
-    --profile claude-code \\
+    --profile "\${NONO_PROFILE:-claude-code}" \\
     --allow "\${HOME}/.claude-personal" \\
     "\${NONO_ARGS[@]}" \\
     -- claude "$@"
