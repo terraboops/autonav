@@ -57,6 +57,7 @@ export {
 export {
   NavigatorConfigSchema,
   KnowledgePackMetadataSchema,
+  DENIED_SANDBOX_COMMANDS,
   type NavigatorConfig,
   type KnowledgePackMetadata,
   createNavigatorConfig,

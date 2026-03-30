@@ -10,7 +10,7 @@ import { query, tool, createSdkMcpServer, type Query, type SDKMessage, type SDKR
 import * as os from "node:os";
 import type { Harness, HarnessSession, AgentConfig, AgentEvent } from "./types.js";
 import type { ToolDefinition } from "./tool-server.js";
-import { resolveSandboxProvider, createSdkWrapper, buildNonoFlags } from "./sandbox.js";
+import { resolveSandboxProvider, createSdkWrapper, buildNonoFlags, writeNonoFlagsFile } from "./sandbox.js";
 
 /**
  * Flatten an SDK message into zero or more AgentEvents.
@@ -106,6 +106,42 @@ function flattenMessage(message: SDKMessage): AgentEvent[] {
   return events;
 }
 
+/** Environment variables the Claude Code subprocess needs. Everything else is stripped. */
+const ALLOWED_ENV_VARS = new Set([
+  // System
+  "PATH", "HOME", "USER", "SHELL", "TERM", "LANG", "LC_ALL", "LC_CTYPE",
+  "TMPDIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME",
+  // macOS
+  "DEVELOPER_DIR", "SDKROOT",
+  // Anthropic API (the subprocess needs this to authenticate)
+  "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL",
+  // Claude Code
+  "CLAUDE_CODE_MAX_MEMORY",
+  // Autonav internals
+  "AUTONAV_DEBUG", "AUTONAV_SANDBOX", "AUTONAV_QUERY_DEPTH",
+  "AUTONAV_METRICS", "AUTONAV_HARNESS",
+  // Git
+  "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL",
+  // Node
+  "NODE_PATH", "NODE_ENV",
+]);
+
+function buildCleanEnv(extra: Record<string, string> = {}): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = {};
+  for (const key of ALLOWED_ENV_VARS) {
+    if (process.env[key] !== undefined) {
+      env[key] = process.env[key];
+    }
+  }
+  // Forward AUTONAV_NAV_PATH_* vars (needed for related-nav resolution)
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.startsWith("AUTONAV_NAV_PATH_") && value !== undefined) {
+      env[key] = value;
+    }
+  }
+  return { ...env, ...extra };
+}
+
 /**
  * Map AgentConfig to Claude Code SDK Options
  */
@@ -132,19 +168,17 @@ function configToSdkOptions(config: AgentConfig): Record<string, unknown> {
 
   if (sandboxResolution.provider === "nono" && sandboxResolution.active && config.sandbox) {
     // nono: kernel-enforced sandbox via wrapper script.
-    // Uses --profile claude-code as base + navigator paths via NONO_FLAGS.
+    // Uses --profile claude-code as base + navigator flags from a temp file.
     const wrapperDir = os.tmpdir();
     if (config.stderr) {
       config.stderr(`[nono] SandboxConfig: ${JSON.stringify({ provider: "nono", readPaths: config.sandbox.readPaths, writePaths: config.sandbox.writePaths, allowedCommands: config.sandbox.allowedCommands })}\n`);
     }
     const wrapperPath = createSdkWrapper("", wrapperDir, config.sandbox);
     const nonoFlags = buildNonoFlags(config.sandbox);
+    const flagsFilePath = writeNonoFlagsFile(nonoFlags, wrapperDir);
 
     options.pathToClaudeCodeExecutable = wrapperPath;
-    options.env = {
-      ...process.env,
-      NONO_FLAGS: nonoFlags,
-    };
+    options.env = buildCleanEnv({ NONO_FLAGS_FILE: flagsFilePath });
     // Disable SDK sandbox — nono is the security boundary.
     options.sandbox = { enabled: false };
   } else if (sandboxResolution.provider === "claude-code" && sandboxResolution.active) {

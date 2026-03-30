@@ -44,6 +44,8 @@ export {
   type ToolResult,
 } from "./tool-server.js";
 
+export { buildSandboxConfigForOperation } from "./sandbox-config-builder.js";
+
 export {
   createEphemeralHome,
   type EphemeralHome,
@@ -60,6 +62,7 @@ export {
   writeProfile,
   createSdkWrapper,
   buildNonoFlags,
+  writeNonoFlagsFile,
   buildCapabilitySet,
   querySandbox,
   querySandboxNetwork,

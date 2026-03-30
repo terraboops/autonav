@@ -29,6 +29,7 @@
  */
 
 import { createRequire } from "node:module";
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -217,14 +218,17 @@ export function resolveSandboxProvider(config?: SandboxConfig): { provider: Sand
 /**
  * Resolve whether sandboxing should be active for this session.
  *
- * For backward compatibility — wraps resolveSandboxProvider and catches
- * errors (returns false if nono is required but missing). Prefer using
- * resolveSandboxProvider directly for better error handling.
+ * @deprecated Use resolveSandboxProvider() directly for proper error handling.
+ * This function silently returns false when nono is required but missing,
+ * which can lead to undetected sandbox bypass. Will be removed in a future version.
  */
 export function isSandboxEnabled(config?: SandboxConfig): boolean {
   try {
     return resolveSandboxProvider(config).active;
-  } catch {
+  } catch (e) {
+    process.stderr.write(
+      `[autonav] WARNING: Sandbox check failed, running without sandbox: ${e instanceof Error ? e.message : String(e)}\n`
+    );
     return false;
   }
 }
@@ -394,18 +398,14 @@ function commandFlags(config?: SandboxConfig): string[] {
 }
 
 /**
- * Build nono CLI flags string for env var passing (NONO_FLAGS).
+ * Build nono CLI flags as an array.
  *
- * Used by ClaudeCodeHarness where the wrapper script reads NONO_FLAGS
- * from the environment (trellis pattern).
+ * Returns individual flag strings — each is a single argument to nono.
+ * Use writeNonoFlagsFile() to serialize safely for the wrapper script.
  */
-export function buildNonoFlags(config: SandboxConfig): string {
+export function buildNonoFlags(config: SandboxConfig): string[] {
   const parts: string[] = ["--allow-cwd"];
 
-  // Navigator-specific paths as --read/--allow flags.
-  // These stack with --profile claude-code's base paths.
-  // We can't use --config/profile JSON because nono-ts 0.3.0 format
-  // is incompatible with nono CLI 0.15.0's profile parser.
   if (config.readPaths) {
     for (const p of config.readPaths) {
       if (fs.existsSync(p)) parts.push("--read", p);
@@ -423,7 +423,20 @@ export function buildNonoFlags(config: SandboxConfig): string {
     parts.push("--net-block");
   }
 
-  return parts.join(" ");
+  return parts;
+}
+
+/**
+ * Write nono flags to a temp file (one per line) for safe shell consumption.
+ *
+ * Avoids shell injection from unquoted env var expansion — the wrapper
+ * script reads this file line-by-line instead of word-splitting a string.
+ */
+export function writeNonoFlagsFile(flags: string[], dir: string): string {
+  const id = crypto.randomUUID().slice(0, 8);
+  const flagsPath = path.join(dir, `nono-flags-${id}.txt`);
+  fs.writeFileSync(flagsPath, flags.join("\n") + "\n", "utf-8");
+  return flagsPath;
 }
 
 /**
@@ -477,36 +490,36 @@ export function wrapCommand(
  * @returns Absolute path to the wrapper script.
  */
 export function createSdkWrapper(_profilePath: string, dir: string, _config?: SandboxConfig): string {
-  const wrapperPath = path.join(dir, "nono-claude-wrapper.sh");
-  // Use nono's built-in claude-code profile as a base — it provides all
-  // the paths claude needs (config, keychain, tmp dirs, etc.) and is
-  // maintained by the nono team. Our custom --config adds navigator-specific
-  // paths on top, and NONO_FLAGS adds --allow-command flags.
-  //
-  // Use --profile claude-code as base, then NONO_FLAGS adds navigator
-  // paths as --read/--allow flags + --allow-command flags.
-  // We can't use a profile JSON file because nono-ts 0.3.0's JSON format
-  // is not compatible with nono CLI 0.15.0's profile parser (custom fs
-  // entries are silently ignored). --read/--allow flags DO stack with
-  // --profile, so we pass everything via NONO_FLAGS.
+  const id = crypto.randomUUID().slice(0, 12);
+  const wrapperPath = path.join(dir, `nono-claude-wrapper-${id}.sh`);
+  // Use nono's built-in claude-code profile as base + navigator flags
+  // from a temp file (NONO_FLAGS_FILE). Flags are read line-by-line to
+  // avoid shell injection from unquoted env var expansion.
   //
   // Pre-create optional dirs that claude-code profile references to
   // suppress WARN messages on stdout (corrupts SDK JSON stream).
+  //
+  // Uses `while read` instead of `mapfile` for macOS system bash (3.2) compat.
   const script = `#!/usr/bin/env bash
 set -euo pipefail
 mkdir -p "\${HOME}/.vscode" 2>/dev/null || true
 mkdir -p "\${HOME}/Library/Application Support/Code" 2>/dev/null || true
 touch "\${HOME}/.gitignore_global" 2>/dev/null || true
+NONO_ARGS=()
+if [[ -n "\${NONO_FLAGS_FILE:-}" && -f "\${NONO_FLAGS_FILE}" ]]; then
+    while IFS= read -r line; do
+        [[ -n "\$line" ]] && NONO_ARGS+=("\$line")
+    done < "\${NONO_FLAGS_FILE}"
+fi
 exec nono run \\
     --silent \\
     --no-diagnostics \\
     --profile claude-code \\
     --allow "\${HOME}/.claude-personal" \\
-    \${NONO_FLAGS:-} \\
+    "\${NONO_ARGS[@]}" \\
     -- claude "$@"
 `;
-  fs.writeFileSync(wrapperPath, script, "utf-8");
-  fs.chmodSync(wrapperPath, 0o755);
+  fs.writeFileSync(wrapperPath, script, { mode: 0o700, encoding: "utf-8" });
   return wrapperPath;
 }
 

@@ -1,6 +1,54 @@
 import { z } from 'zod';
 import { PROTOCOL_VERSION } from '../version.js';
 
+// ── Security schemas for sandbox config fields ──────────────────────────
+
+/** Validated filesystem path — rejects traversal and null bytes. */
+const SafePathSchema = z.string()
+  .min(1, 'Path cannot be empty')
+  .refine((p) => !p.includes('\0'), 'Path cannot contain null bytes')
+  .refine(
+    (p) => !p.includes('..'),
+    'Path traversal (..) is not allowed — use absolute paths or paths relative to navigator root'
+  );
+
+/**
+ * Commands that MUST NOT be allowed in sandbox configs.
+ * These provide escape hatches that would bypass sandbox enforcement.
+ */
+export const DENIED_SANDBOX_COMMANDS = new Set([
+  // Shells
+  'bash', 'sh', 'zsh', 'fish', 'csh', 'tcsh', 'ksh', 'dash',
+  // Privilege escalation
+  'sudo', 'su', 'doas',
+  // Execution wrappers
+  'env', 'nohup', 'strace', 'ltrace', 'dtrace',
+  // Permission modification
+  'chmod', 'chown', 'chgrp',
+  // Destructive deletion
+  'rm', 'rmdir',
+  // Raw disk / mount
+  'dd', 'mount', 'umount',
+  // Process control
+  'pkill', 'kill', 'killall',
+  // Interpreters (shell escape)
+  'python', 'python3', 'node', 'ruby', 'perl',
+  // Network tools
+  'nc', 'ncat', 'netcat', 'socat',
+]);
+
+/** Validated command name — rejects denied commands and paths. */
+const SafeCommandSchema = z.string()
+  .min(1, 'Command cannot be empty')
+  .refine(
+    (cmd) => !DENIED_SANDBOX_COMMANDS.has(cmd.toLowerCase()),
+    (cmd) => ({ message: `Command "${cmd}" is denied — it could bypass sandbox enforcement` })
+  )
+  .refine(
+    (cmd) => !cmd.includes('/'),
+    'Commands must be bare names (no paths) — the sandbox resolves them from PATH'
+  );
+
 /**
  * Navigator Configuration Schema
  *
@@ -79,7 +127,7 @@ export const NavigatorConfigSchema = z.object({
    * Additional directories this navigator needs access to (absolute or relative to nav root).
    * Used to sandbox the navigator to only the directories it manages.
    */
-  workingDirectories: z.array(z.string()).optional().describe(
+  workingDirectories: z.array(SafePathSchema).optional().describe(
     'Additional directories this navigator needs access to (absolute or relative to nav root)'
   ),
 
@@ -104,9 +152,9 @@ export const NavigatorConfigSchema = z.object({
    */
   permissions: z.object({
     /** CLI tools nono should permit (e.g., ["linear", "gh"]) */
-    allowedCommands: z.array(z.string()).optional().describe('CLI tools the sandbox permits'),
+    allowedCommands: z.array(SafeCommandSchema).optional().describe('CLI tools the sandbox permits'),
     /** Extra paths the navigator needs access to (read-only) */
-    allowedPaths: z.array(z.string()).optional().describe('Extra read paths for the sandbox'),
+    allowedPaths: z.array(SafePathSchema).optional().describe('Extra read paths for the sandbox'),
   }).optional().describe('Permission grants across all operations'),
 
   /**
@@ -129,41 +177,41 @@ export const NavigatorConfigSchema = z.object({
       enabled: z.boolean(),
       accessLevel: z.enum(['readonly', 'readwrite']).optional(),
       blockNetwork: z.boolean().optional(),
-      allowedCommands: z.array(z.string()).optional(),
-      extraReadPaths: z.array(z.string()).optional(),
-      extraWritePaths: z.array(z.string()).optional(),
+      allowedCommands: z.array(SafeCommandSchema).optional(),
+      extraReadPaths: z.array(SafePathSchema).optional(),
+      extraWritePaths: z.array(SafePathSchema).optional(),
     }).default({ enabled: true }),
     update: z.object({
       enabled: z.boolean(),
       accessLevel: z.enum(['readonly', 'readwrite']).optional(),
       blockNetwork: z.boolean().optional(),
-      allowedCommands: z.array(z.string()).optional(),
-      extraReadPaths: z.array(z.string()).optional(),
-      extraWritePaths: z.array(z.string()).optional(),
+      allowedCommands: z.array(SafeCommandSchema).optional(),
+      extraReadPaths: z.array(SafePathSchema).optional(),
+      extraWritePaths: z.array(SafePathSchema).optional(),
     }).default({ enabled: true }),
     chat: z.object({
       enabled: z.boolean(),
       accessLevel: z.enum(['readonly', 'readwrite']).optional(),
       blockNetwork: z.boolean().optional(),
-      allowedCommands: z.array(z.string()).optional(),
-      extraReadPaths: z.array(z.string()).optional(),
-      extraWritePaths: z.array(z.string()).optional(),
+      allowedCommands: z.array(SafeCommandSchema).optional(),
+      extraReadPaths: z.array(SafePathSchema).optional(),
+      extraWritePaths: z.array(SafePathSchema).optional(),
     }).default({ enabled: true }),
     memento: z.object({
       enabled: z.boolean(),
       accessLevel: z.enum(['readonly', 'readwrite']).optional(),
       blockNetwork: z.boolean().optional(),
-      allowedCommands: z.array(z.string()).optional(),
-      extraReadPaths: z.array(z.string()).optional(),
-      extraWritePaths: z.array(z.string()).optional(),
+      allowedCommands: z.array(SafeCommandSchema).optional(),
+      extraReadPaths: z.array(SafePathSchema).optional(),
+      extraWritePaths: z.array(SafePathSchema).optional(),
     }).default({ enabled: false }),
     standup: z.object({
       enabled: z.boolean(),
       accessLevel: z.enum(['readonly', 'readwrite']).optional(),
       blockNetwork: z.boolean().optional(),
-      allowedCommands: z.array(z.string()).optional(),
-      extraReadPaths: z.array(z.string()).optional(),
-      extraWritePaths: z.array(z.string()).optional(),
+      allowedCommands: z.array(SafeCommandSchema).optional(),
+      extraReadPaths: z.array(SafePathSchema).optional(),
+      extraWritePaths: z.array(SafePathSchema).optional(),
     }).default({ enabled: true }),
   }).optional().describe('Per-operation sandbox profiles'),
 

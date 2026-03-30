@@ -10,7 +10,7 @@
 import { z } from "zod";
 import { loadNavigator } from "../query-engine/navigator-loader.js";
 import { resolveNavigatorPath } from "../registry.js";
-import { type Harness, collectText, defineTool, type ToolDefinition } from "../harness/index.js";
+import { type Harness, collectText, defineTool, type ToolDefinition, buildSandboxConfigForOperation } from "../harness/index.js";
 
 const MAX_QUERY_DEPTH = 3;
 
@@ -86,12 +86,19 @@ export function createRelatedNavsMcpServer(
         try {
           const target = loadNavigator(navPath);
 
+          // Build sandbox config from target navigator's config
+          const sandboxConfig = buildSandboxConfigForOperation(
+            target.config, target.navigatorPath, target.knowledgeBasePath, "query"
+          );
+
           const session = harness.run(
             {
               model: "claude-haiku-4-5",
               maxTurns: 10,
               systemPrompt: target.systemPrompt,
               cwd: target.navigatorPath,
+              disallowedTools: ["Write", "Edit", "NotebookEdit"],
+              ...(sandboxConfig ? { sandbox: sandboxConfig } : {}),
             },
             args.question
           );
