@@ -66,7 +66,7 @@ export class KnowledgePackServer {
   /**
    * Handle GET /packs/{pack-name}/latest
    */
-  private handleLatest(req: Request, res: Response): void {
+  private handleLatest(req: Request<{ packName: string }>, res: Response): void {
     const packName = req.params.packName;
     if (!packName) {
       return this.sendError(res, 400, "INVALID_PACK_NAME", "Pack name is required");
@@ -121,7 +121,7 @@ export class KnowledgePackServer {
   /**
    * Handle GET /packs/{pack-name}/versions
    */
-  private handleVersions(req: Request, res: Response): void {
+  private handleVersions(req: Request<{ packName: string }>, res: Response): void {
     const packName = req.params.packName;
     if (!packName) {
       return this.sendError(res, 400, "INVALID_PACK_NAME", "Pack name is required");
@@ -190,7 +190,7 @@ export class KnowledgePackServer {
   /**
    * Handle GET /packs/{pack-name}/metadata
    */
-  private handleMetadata(req: Request, res: Response): void {
+  private handleMetadata(req: Request<{ packName: string }>, res: Response): void {
     const packName = req.params.packName;
     if (!packName) {
       return this.sendError(res, 400, "INVALID_PACK_NAME", "Pack name is required");
@@ -246,7 +246,10 @@ export class KnowledgePackServer {
   /**
    * Handle GET /packs/{pack-name}/{version}
    */
-  private handleSpecificVersion(req: Request, res: Response): void {
+  private handleSpecificVersion(
+    req: Request<{ packName: string; version: string }>,
+    res: Response
+  ): void {
     const packName = req.params.packName;
     const version = req.params.version;
 
