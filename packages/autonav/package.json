@@ -72,7 +72,7 @@
     "@types/react": "^18.3.0",
     "ink-testing-library": "^4.0.0",
     "typescript": "^6.0.3",
-    "vitest": "^1.2.0"
+    "vitest": "^4.1.10"
   },
   "optionalDependencies": {
     "nono-ts": "^0.3.0"
