@@ -126,9 +126,15 @@ export class FileWatcherPlugin implements Plugin<
       }
     }
 
-    // Initialize watcher
+    // Initialize watcher.
+    // chokidar v4+ dropped glob support: `ignored` string matchers are now
+    // treated as literal paths, not globs. Convert the glob ignorePatterns to a
+    // match function (via micromatch) so node_modules/.git/dist keep being
+    // ignored during directory traversal.
+    const ignorePatterns = config.ignorePatterns;
     this.watcher = watch(config.paths, {
-      ignored: config.ignorePatterns,
+      ignored: (watchedPath: string) =>
+        ignorePatterns.length > 0 && micromatch.isMatch(watchedPath, ignorePatterns),
       persistent: true,
       ignoreInitial: true,
       awaitWriteFinish: {
