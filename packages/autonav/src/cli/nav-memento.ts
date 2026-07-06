@@ -208,8 +208,11 @@ async function executeMemento(
       console.log(`${chalk.blue("Branch:")} ${result.branch}`);
     }
 
-    if (result.prUrl) {
-      console.log(`${chalk.blue("PR:")} ${result.prUrl}`);
+    if (result.prUrls && result.prUrls.length > 0) {
+      console.log(chalk.blue(`PRs (${result.prUrls.length}):`));
+      for (const url of result.prUrls) {
+        console.log(`  ${url}`);
+      }
     }
 
     if (result.completionMessage) {
