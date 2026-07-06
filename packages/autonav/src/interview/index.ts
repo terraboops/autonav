@@ -93,7 +93,7 @@ export function runInterviewTUI(
         initialMessages: options.savedProgress?.messages,
         onComplete: handleComplete,
         harness: options.harness,
-      }) as React.ReactNode
+      })
     );
 
     // Handle unmount without completion (user cancelled)

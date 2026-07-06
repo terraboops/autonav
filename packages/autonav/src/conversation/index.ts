@@ -74,7 +74,7 @@ export function runConversationTUI(options: ConversationOptions): Promise<void> 
   return new Promise((resolve, reject) => {
     try {
       const instance = render(
-        React.createElement(ConversationApp, options) as React.ReactNode,
+        React.createElement(ConversationApp, options),
         { exitOnCtrlC: false }
       );
 
