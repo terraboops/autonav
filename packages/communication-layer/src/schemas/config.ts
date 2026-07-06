@@ -42,7 +42,7 @@ const SafeCommandSchema = z.string()
   .min(1, 'Command cannot be empty')
   .refine(
     (cmd) => !DENIED_SANDBOX_COMMANDS.has(cmd.toLowerCase()),
-    { error: (iss) => `Command "${iss.input}" is denied — it could bypass sandbox enforcement` }
+    'Command is denied — it could bypass sandbox enforcement'
   )
   .refine(
     (cmd) => !cmd.includes('/'),
