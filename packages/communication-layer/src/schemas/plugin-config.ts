@@ -114,7 +114,7 @@ export function validatePluginConfig(config: unknown): {
 
   return {
     valid: false,
-    errors: result.error.issues.map((e) =>
+    errors: result.error.issues.map((e: { path: PropertyKey[]; message: string }) =>
       `${e.path.join('.')}: ${e.message}`
     ),
   };

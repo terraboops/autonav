@@ -42,9 +42,7 @@ const SafeCommandSchema = z.string()
   .min(1, 'Command cannot be empty')
   .refine(
     (cmd) => !DENIED_SANDBOX_COMMANDS.has(cmd.toLowerCase()),
-    // zod 4: dynamic messages use the `error` fn (the value is on `issue.input`);
-    // the old `(val) => ({ message })` positional form was removed.
-    { error: (issue) => `Command "${String(issue.input)}" is denied — it could bypass sandbox enforcement` }
+    'Command is denied — it could bypass sandbox enforcement'
   )
   .refine(
     (cmd) => !cmd.includes('/'),
