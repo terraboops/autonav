@@ -6,7 +6,7 @@
  * Run with: npm run test:indicator
  */
 
-import { createElement } from "react";
+import { createElement, type ReactNode } from "react";
 import { render, Box, Text } from "ink";
 import chalk from "chalk";
 import { ActivityIndicator } from "./ActivityIndicator.js";
@@ -115,4 +115,4 @@ function TestApp() {
   );
 }
 
-render(createElement(TestApp));
+render(createElement(TestApp) as ReactNode);
