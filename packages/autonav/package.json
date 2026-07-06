@@ -58,7 +58,7 @@
     "ignore": "^7.0.5",
     "ink": "^5.1.0",
     "ink-text-input": "^6.0.0",
-    "marked": "^15.0.12",
+    "marked": "^18.0.5",
     "marked-terminal": "^7.3.0",
     "micromatch": "^4.0.8",
     "ora": "^9.4.1",
