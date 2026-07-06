@@ -41,12 +41,26 @@ flows, or cautions change.
 
 ## Dependency cautions
 
-- `@anthropic-ai/claude-agent-sdk` — core harness dependency. A prior
-  `0.1 → 0.2` bump required the FakeHarness E2E work; test the harness
-  paths before bumping (mock at Harness level, not SDK level).
-- ESM-only majors held back: chalk 5, chokidar 5, ora 9, ink 7, marked 18,
-  tar 7. zod 3→4, react 18→19, typescript 5→6, vitest 1→4 are separate
-  discussions.
+- `@anthropic-ai/claude-agent-sdk` — core harness dependency, at `0.3.201`
+  (2026-07). Peer-requires `@anthropic-ai/sdk >=0.93` and `zod ^4`. Harness
+  code (`claude-code-harness.ts`) was unchanged across 0.2→0.3.
+- **zod 4** (merged 2026-07) — needs a **top-level `overrides.zod`** in root
+  `package.json`, or `nono-ts → mintlify` (a big zod-3 subtree) wins the root
+  hoist and our packages resolve zod 3 → runtime `_zod.def` crash in
+  `config-describe.ts`. `.refine(fn, { error })` object form breaks under TS 6
+  — use the string-message form. Commit a **freshly regenerated lockfile**
+  (`rm package-lock.json && npm install`); incremental installs leave zod 3.
+- **Node 25 (local) is unsupported.** CI is Node 20/22; on Node 25 the zod
+  hoist resolves to zod 3 and tests fail locally even when CI is green —
+  **trust CI, not local `npm ci`, on Node 25.**
+- **react 19 / ink 7 — BLOCKED (PR #67 open).** `ink-testing-library@4` (its
+  latest) can't capture ink 7 render output → `interview-app.test.tsx` gets
+  empty frames (2 tests). Also needs `overrides` deduping react/react-dom/ink/
+  `@types/react`. Merge only once ink-testing-library supports ink 7 or those
+  tests are rewritten.
+- Merged majors (2026-07): typescript 6, vitest 4, express 5, octokit 22,
+  slack 7, commander 15, chalk 5, chokidar 5, ora 9, marked 18, tar 7,
+  @anthropic-ai/sdk 0.110.
 
 ## `--pr` verification note
 
