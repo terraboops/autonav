@@ -75,7 +75,7 @@ export async function checkNavigatorHealth(navPath: string): Promise<MendResult>
           check: "config.json schema",
           status: "fail",
           message: "config.json schema validation failed",
-          details: parseResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join("; "),
+          details: parseResult.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join("; "),
           autoFixable: false,
         });
       } else {

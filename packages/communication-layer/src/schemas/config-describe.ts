@@ -23,59 +23,80 @@ interface FieldInfo {
 
 // ── Schema analysis ─────────────────────────────────────────────────────────
 
+/**
+ * Zod 4 internal definition shape.
+ *
+ * Zod 4 replaced the v3 `_def.typeName` discriminator with `_zod.def.type`
+ * (a lowercase string), and renamed several fields (array item is `element`,
+ * enum values live in `entries`, `defaultValue` is now a plain value rather
+ * than a thunk). We read these internals to introspect the schema.
+ */
+interface ZodDef {
+  type: string;
+  innerType?: z.ZodTypeAny;
+  defaultValue?: unknown;
+  entries?: Record<string, string>;
+  element?: z.ZodTypeAny;
+  shape?: Record<string, z.ZodTypeAny>;
+}
+
+function getDef(schema: z.ZodTypeAny): ZodDef {
+  return (schema as unknown as { _zod: { def: ZodDef } })._zod.def;
+}
+
 function analyzeZodField(schema: z.ZodTypeAny): FieldInfo {
-  const def = schema._def as Record<string, unknown>;
-  const typeName = def.typeName as string;
+  const def = getDef(schema);
+  const typeName = def.type;
+  const ownDescription = schema.description;
 
   // Unwrap wrapper types (order matters: optional/default/nullable are outermost)
-  if (typeName === 'ZodOptional') {
+  if (typeName === 'optional') {
     const inner = analyzeZodField(def.innerType as z.ZodTypeAny);
     inner.optional = true;
-    if (!inner.description && def.description) inner.description = def.description as string;
+    if (!inner.description && ownDescription) inner.description = ownDescription;
     return inner;
   }
 
-  if (typeName === 'ZodDefault') {
+  if (typeName === 'default') {
     const inner = analyzeZodField(def.innerType as z.ZodTypeAny);
     inner.optional = true; // has default → not required in JSON
-    inner.defaultValue = (def.defaultValue as () => unknown)();
-    if (!inner.description && def.description) inner.description = def.description as string;
+    inner.defaultValue = def.defaultValue; // zod 4: plain value, not a thunk
+    if (!inner.description && ownDescription) inner.description = ownDescription;
     return inner;
   }
 
-  if (typeName === 'ZodNullable') {
+  if (typeName === 'nullable') {
     const inner = analyzeZodField(def.innerType as z.ZodTypeAny);
     inner.type += ' | null';
-    if (!inner.description && def.description) inner.description = def.description as string;
+    if (!inner.description && ownDescription) inner.description = ownDescription;
     return inner;
   }
 
   // Base types
-  const description = (def.description as string) || '';
+  const description = ownDescription || '';
 
-  if (typeName === 'ZodString') {
+  if (typeName === 'string') {
     return { type: 'string', description, optional: false };
   }
-  if (typeName === 'ZodNumber') {
+  if (typeName === 'number') {
     return { type: 'number', description, optional: false };
   }
-  if (typeName === 'ZodBoolean') {
+  if (typeName === 'boolean') {
     return { type: 'boolean', description, optional: false };
   }
-  if (typeName === 'ZodEnum') {
+  if (typeName === 'enum') {
     return {
       type: 'enum',
       description,
       optional: false,
-      enumValues: def.values as string[],
+      enumValues: Object.values(def.entries ?? {}),
     };
   }
-  if (typeName === 'ZodRecord') {
+  if (typeName === 'record') {
     return { type: 'object (key-value pairs)', description, optional: false };
   }
-  if (typeName === 'ZodArray') {
-    const itemType = def.type as z.ZodTypeAny;
-    const itemInfo = analyzeZodField(itemType);
+  if (typeName === 'array') {
+    const itemInfo = analyzeZodField(def.element as z.ZodTypeAny);
     if (itemInfo.children) {
       return {
         type: 'array of objects',
@@ -86,8 +107,8 @@ function analyzeZodField(schema: z.ZodTypeAny): FieldInfo {
     }
     return { type: `${itemInfo.type}[]`, description, optional: false };
   }
-  if (typeName === 'ZodObject') {
-    const shape = (schema as z.ZodObject<z.ZodRawShape>).shape;
+  if (typeName === 'object') {
+    const shape = def.shape ?? {};
     const children: Record<string, FieldInfo> = {};
     for (const [key, childField] of Object.entries(shape)) {
       children[key] = analyzeZodField(childField as z.ZodTypeAny);
