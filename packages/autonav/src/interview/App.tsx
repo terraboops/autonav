@@ -6,7 +6,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Box, Text, Static, useApp, useInput } from "ink";
-import TextInput from "ink-text-input";
 import {
   getInterviewSystemPrompt,
   parseNavigatorConfig,
@@ -15,7 +14,7 @@ import {
 } from "./prompts.js";
 import type { AnalysisResult } from "../repo-analyzer/index.js";
 import { saveProgress, clearProgress, type InterviewProgress } from "./progress.js";
-import { ActivityIndicator, Banner, SystemMessage, UserResponse, Divider } from "./ui/index.js";
+import { ActivityIndicator, Banner, SystemMessage, UserResponse, Divider, ChatInput } from "./ui/index.js";
 import { type Harness, type AgentEvent, collectText } from "../harness/index.js";
 
 // Check if debug mode is enabled
@@ -516,8 +515,7 @@ Continue the interview by responding to their message. Remember: after gathering
       {/* Input */}
       {!isLoading && !error && (
         <Box marginBottom={1}>
-          <Text color="green" bold>{"▸ "}</Text>
-          <TextInput
+          <ChatInput
             value={input}
             onChange={setInput}
             onSubmit={handleSubmit}
