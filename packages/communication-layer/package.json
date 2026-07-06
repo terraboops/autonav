@@ -42,7 +42,7 @@
     "url": "https://github.com/terraboops/autonav/issues"
   },
   "dependencies": {
-    "zod": "^3.25.76"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

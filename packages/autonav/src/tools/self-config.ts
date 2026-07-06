@@ -81,7 +81,7 @@ This allows you to autonomously manage your own behavior based on user requests.
       plugin: z.enum(CONFIGURABLE_PLUGINS).describe(
         "The plugin to configure (slack, signal, github, or email)"
       ),
-      updates: z.record(z.unknown()).describe(
+      updates: z.record(z.string(), z.unknown()).describe(
         `Configuration updates to apply. Common patterns:
 - signal: { checkInSchedule: "custom", nextCheckIn: "2025-01-15T15:00:00Z", notificationTypes: ["urgent"] }
 - slack: { channels: ["platform-team"], summaryFrequency: "weekly" }

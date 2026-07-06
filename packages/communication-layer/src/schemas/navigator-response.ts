@@ -44,7 +44,7 @@ export const NavigatorResponseSchema = z.object({
    * Additional metadata for future extensions
    * Examples: search strategy used, tokens consumed, execution time
    */
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 
   /**
    * Timestamp when the response was generated

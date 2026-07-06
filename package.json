@@ -33,5 +33,11 @@
   "engines": {
     "node": ">=20.0.0",
     "npm": ">=9.0.0"
+  },
+  "overrides": {
+    "zod": "^4.4.3",
+    "@anthropic-ai/claude-agent-sdk": {
+      "zod": "^4.4.3"
+    }
   }
 }
