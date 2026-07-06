@@ -343,7 +343,7 @@ export class ClaudeCodeHarness implements Harness {
   createToolServer(name: string, tools: ToolDefinition[]): { server: unknown } {
     const sdkTools = tools.map((td) =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tool(td.name, td.description, td.inputSchema, ((args: any) => td.handler(args)) as any)
+      tool(td.name, td.description, td.inputSchema as any, ((args: any) => td.handler(args)) as any)
     );
     const server = createSdkMcpServer({
       name,

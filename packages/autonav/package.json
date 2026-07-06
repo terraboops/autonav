@@ -45,35 +45,34 @@
     "README.md"
   ],
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.87",
-    "@anthropic-ai/sdk": "^0.52.0",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.201",
+    "@anthropic-ai/sdk": "^0.110.0",
     "@autonav/communication-layer": "*",
-    "@octokit/rest": "^20.0.2",
+    "@octokit/rest": "^22.0.1",
     "@opencode-ai/sdk": "^1.2.6",
-    "@slack/web-api": "^6.11.2",
+    "@slack/web-api": "^7.18.0",
     "@types/micromatch": "^4.0.10",
-    "chalk": "^4.1.2",
-    "chokidar": "^3.5.3",
-    "commander": "^14.0.2",
+    "chalk": "^5.6.2",
+    "chokidar": "^5.0.0",
+    "commander": "^15.0.0",
     "ignore": "^7.0.5",
     "ink": "^7.1.0",
-    "marked": "^15.0.12",
+    "marked": "^18.0.5",
     "marked-terminal": "^7.3.0",
     "micromatch": "^4.0.8",
-    "ora": "^5.4.1",
+    "ora": "^9.4.1",
     "react": "^19.2.7",
-    "tar": "^6.2.0",
-    "zod": "^3.24.1"
+    "tar": "^7.5.19",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^20.0.0",
     "@types/react": "^19.2.17",
-    "@types/tar": "^6.1.0",
     "ink-testing-library": "^4.0.0",
-    "typescript": "^5.3.0",
-    "vitest": "^1.2.0"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
   },
   "optionalDependencies": {
     "nono-ts": "^0.3.0"

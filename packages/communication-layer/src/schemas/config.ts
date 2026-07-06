@@ -42,7 +42,7 @@ const SafeCommandSchema = z.string()
   .min(1, 'Command cannot be empty')
   .refine(
     (cmd) => !DENIED_SANDBOX_COMMANDS.has(cmd.toLowerCase()),
-    (cmd) => ({ message: `Command "${cmd}" is denied — it could bypass sandbox enforcement` })
+    'Command is denied — it could bypass sandbox enforcement'
   )
   .refine(
     (cmd) => !cmd.includes('/'),
@@ -111,7 +111,7 @@ export const NavigatorConfigSchema = z.object({
    * Additional configuration options
    * For future extensions without breaking changes
    */
-  metadata: z.record(z.unknown()).optional().describe('Additional metadata'),
+  metadata: z.record(z.string(), z.unknown()).optional().describe('Additional metadata'),
 
   /**
    * Knowledge pack metadata

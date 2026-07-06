@@ -23,7 +23,7 @@ export const PluginConfigFileSchema = z.record(
   z.string(), // Plugin name
   z.object({
     enabled: z.boolean(),
-    config: z.record(z.unknown()).optional(),
+    config: z.record(z.string(), z.unknown()).optional(),
   })
 );
 

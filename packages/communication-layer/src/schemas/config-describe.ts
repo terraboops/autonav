@@ -24,57 +24,62 @@ interface FieldInfo {
 // ── Schema analysis ─────────────────────────────────────────────────────────
 
 function analyzeZodField(schema: z.ZodTypeAny): FieldInfo {
-  const def = schema._def as Record<string, unknown>;
-  const typeName = def.typeName as string;
+  // Zod 4 exposes the internal definition under `_zod.def` and uses lowercase
+  // `type` discriminators (e.g. "string", "optional") instead of `typeName`.
+  const def = (schema as unknown as { _zod: { def: Record<string, unknown> } })._zod.def;
+  const type = def.type as string;
+  // Descriptions now live in the global registry, surfaced via `.description`.
+  const ownDescription = (schema.description as string | undefined) || '';
 
   // Unwrap wrapper types (order matters: optional/default/nullable are outermost)
-  if (typeName === 'ZodOptional') {
+  if (type === 'optional') {
     const inner = analyzeZodField(def.innerType as z.ZodTypeAny);
     inner.optional = true;
-    if (!inner.description && def.description) inner.description = def.description as string;
+    if (!inner.description && ownDescription) inner.description = ownDescription;
     return inner;
   }
 
-  if (typeName === 'ZodDefault') {
+  if (type === 'default') {
     const inner = analyzeZodField(def.innerType as z.ZodTypeAny);
     inner.optional = true; // has default → not required in JSON
-    inner.defaultValue = (def.defaultValue as () => unknown)();
-    if (!inner.description && def.description) inner.description = def.description as string;
+    // In Zod 4 `defaultValue` is the value itself (no longer a factory function).
+    inner.defaultValue = def.defaultValue;
+    if (!inner.description && ownDescription) inner.description = ownDescription;
     return inner;
   }
 
-  if (typeName === 'ZodNullable') {
+  if (type === 'nullable') {
     const inner = analyzeZodField(def.innerType as z.ZodTypeAny);
     inner.type += ' | null';
-    if (!inner.description && def.description) inner.description = def.description as string;
+    if (!inner.description && ownDescription) inner.description = ownDescription;
     return inner;
   }
 
   // Base types
-  const description = (def.description as string) || '';
+  const description = ownDescription;
 
-  if (typeName === 'ZodString') {
+  if (type === 'string') {
     return { type: 'string', description, optional: false };
   }
-  if (typeName === 'ZodNumber') {
+  if (type === 'number') {
     return { type: 'number', description, optional: false };
   }
-  if (typeName === 'ZodBoolean') {
+  if (type === 'boolean') {
     return { type: 'boolean', description, optional: false };
   }
-  if (typeName === 'ZodEnum') {
+  if (type === 'enum') {
     return {
       type: 'enum',
       description,
       optional: false,
-      enumValues: def.values as string[],
+      enumValues: Object.values(def.entries as Record<string, string>),
     };
   }
-  if (typeName === 'ZodRecord') {
+  if (type === 'record') {
     return { type: 'object (key-value pairs)', description, optional: false };
   }
-  if (typeName === 'ZodArray') {
-    const itemType = def.type as z.ZodTypeAny;
+  if (type === 'array') {
+    const itemType = def.element as z.ZodTypeAny;
     const itemInfo = analyzeZodField(itemType);
     if (itemInfo.children) {
       return {
@@ -86,7 +91,7 @@ function analyzeZodField(schema: z.ZodTypeAny): FieldInfo {
     }
     return { type: `${itemInfo.type}[]`, description, optional: false };
   }
-  if (typeName === 'ZodObject') {
+  if (type === 'object') {
     const shape = (schema as z.ZodObject<z.ZodRawShape>).shape;
     const children: Record<string, FieldInfo> = {};
     for (const [key, childField] of Object.entries(shape)) {
