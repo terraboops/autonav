@@ -9,7 +9,7 @@ export const PluginsConfigSchema = z.record(
   z.string(), // Plugin name
   z.object({
     enabled: z.boolean(),
-    config: z.record(z.unknown()).optional(), // Plugin-specific config
+    config: z.record(z.string(), z.unknown()).optional(), // Plugin-specific config
   })
 );
 
